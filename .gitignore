@@ -131,3 +131,4 @@ dmypy.json
 #
 site/themes
 src/.env
+config
