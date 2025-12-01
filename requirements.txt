@@ -1,0 +1,4 @@
+fitbit
+pandas
+requests
+requests-oauthlib
