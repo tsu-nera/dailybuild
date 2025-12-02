@@ -17,6 +17,7 @@ BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config/fitbit_creds.json'
 TOKEN_FILE = BASE_DIR / 'config/fitbit_token.json'
 OUT_FILE = BASE_DIR / 'data/sleep_master.csv'
+OUT_LEVELS_FILE = BASE_DIR / 'data/sleep_levels.csv'
 
 
 def main():
@@ -41,9 +42,18 @@ def main():
     df.sort_index(inplace=True)
 
     df.to_csv(OUT_FILE)
-    print(f"データを保存しました: {OUT_FILE}")
+    print(f"サマリーデータを保存しました: {OUT_FILE}")
     print(f"取得件数: {len(df)}")
-    print(df.tail())
+
+    # 詳細な睡眠ステージデータを保存
+    levels_data = fitbit_api.parse_sleep_levels(response)
+    if levels_data:
+        df_levels = pd.DataFrame(levels_data)
+        df_levels['dateTime'] = pd.to_datetime(df_levels['dateTime'])
+        df_levels.sort_values(['dateOfSleep', 'dateTime'], inplace=True)
+        df_levels.to_csv(OUT_LEVELS_FILE, index=False)
+        print(f"詳細データを保存しました: {OUT_LEVELS_FILE}")
+        print(f"詳細レコード数: {len(df_levels)}")
 
 
 if __name__ == '__main__':

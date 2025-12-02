@@ -152,3 +152,48 @@ def parse_sleep(data):
         results.append(row)
 
     return results
+
+
+def parse_sleep_levels(data):
+    """
+    睡眠ステージの詳細データをリストに変換
+
+    Args:
+        data: get_sleep_log_by_dateまたはget_sleep_log_by_date_rangeの戻り値
+
+    Returns:
+        睡眠ステージの時系列データリスト
+        各レコード: logId, dateOfSleep, dateTime, level, seconds
+    """
+    if not data.get('sleep'):
+        return []
+
+    results = []
+    for entry in data['sleep']:
+        log_id = entry.get('logId')
+        date_of_sleep = entry.get('dateOfSleep')
+        levels = entry.get('levels', {})
+
+        # メインの睡眠ステージデータ
+        for item in levels.get('data', []):
+            results.append({
+                'logId': log_id,
+                'dateOfSleep': date_of_sleep,
+                'dateTime': item.get('dateTime'),
+                'level': item.get('level'),
+                'seconds': item.get('seconds'),
+                'isShort': False,
+            })
+
+        # 短い覚醒データ（3分以内）
+        for item in levels.get('shortData', []):
+            results.append({
+                'logId': log_id,
+                'dateOfSleep': date_of_sleep,
+                'dateTime': item.get('dateTime'),
+                'level': item.get('level'),
+                'seconds': item.get('seconds'),
+                'isShort': True,
+            })
+
+    return results
