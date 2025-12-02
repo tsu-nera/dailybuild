@@ -2,6 +2,9 @@
 # coding: utf-8
 """
 Fitbit API クライアント
+
+python-fitbitライブラリはOAuth認証のみに使用。
+APIコールはv1.2エンドポイントを直接呼び出す。
 """
 
 import json
@@ -21,7 +24,12 @@ def save_token(token_file, token):
 
 
 def create_client(creds_file, token_file):
-    """Fitbitクライアントを作成"""
+    """
+    Fitbitクライアントを作成
+
+    python-fitbitはOAuth認証とトークン管理に使用。
+    APIコールはmake_requestで任意のURLを指定可能。
+    """
     with open(creds_file, 'r') as f:
         creds = json.load(f)
 
@@ -42,24 +50,105 @@ def create_client(creds_file, token_file):
     return client
 
 
-def parse_sleep_log(data):
-    """睡眠ログをフラットな辞書に変換"""
+# =============================================================================
+# Sleep API v1.2
+# https://dev.fitbit.com/build/reference/web-api/sleep/
+# =============================================================================
+
+def get_sleep_log_by_date(client, date):
+    """
+    指定日の睡眠データを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: sleep配列 + summary
+
+    https://dev.fitbit.com/build/reference/web-api/sleep/get-sleep-log-by-date/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1.2/user/-/sleep/date/{date_str}.json"
+    return client.make_request(url)
+
+
+def get_sleep_log_by_date_range(client, start_date, end_date):
+    """
+    期間指定で睡眠データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: sleep配列のみ
+
+    Note:
+        最大100日間まで一括取得可能
+
+    https://dev.fitbit.com/build/reference/web-api/sleep/get-sleep-log-by-date-range/
+    """
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1.2/user/-/sleep/date/{start_str}/{end_str}.json"
+    return client.make_request(url)
+
+
+def parse_sleep(data):
+    """
+    睡眠ログをリストに変換（API v1.2用）
+
+    Args:
+        data: get_sleepの戻り値
+
+    Returns:
+        睡眠エントリのリスト（単日でも期間でも同じ形式）
+    """
     if not data.get('sleep'):
-        return None
+        return []
 
-    sleep = data['sleep'][0].copy()
-    summary = data['summary'].copy()
-    stages = summary.get('stages', {})
+    results = []
+    for entry in data['sleep']:
+        levels = entry.get('levels', {})
+        summary = levels.get('summary', {})
 
-    sleep.pop('minuteData', None)
-    sleep.pop('levels', None)
-    summary.pop('stages', None)
+        row = {
+            # 基本情報
+            'dateOfSleep': entry.get('dateOfSleep'),
+            'startTime': entry.get('startTime'),
+            'endTime': entry.get('endTime'),
+            'duration': entry.get('duration'),
+            'timeInBed': entry.get('timeInBed'),
+            # 睡眠品質
+            'efficiency': entry.get('efficiency'),
+            'minutesAsleep': entry.get('minutesAsleep'),
+            'minutesAwake': entry.get('minutesAwake'),
+            'minutesAfterWakeup': entry.get('minutesAfterWakeup'),
+            'minutesToFallAsleep': entry.get('minutesToFallAsleep'),
+            # メタデータ
+            'logId': entry.get('logId'),
+            'logType': entry.get('logType'),
+            'type': entry.get('type'),
+            'infoCode': entry.get('infoCode'),
+            'isMainSleep': entry.get('isMainSleep'),
+            # 睡眠ステージ（分）
+            'deepMinutes': summary.get('deep', {}).get('minutes'),
+            'lightMinutes': summary.get('light', {}).get('minutes'),
+            'remMinutes': summary.get('rem', {}).get('minutes'),
+            'wakeMinutes': summary.get('wake', {}).get('minutes'),
+            # 睡眠ステージ（回数）
+            'deepCount': summary.get('deep', {}).get('count'),
+            'lightCount': summary.get('light', {}).get('count'),
+            'remCount': summary.get('rem', {}).get('count'),
+            'wakeCount': summary.get('wake', {}).get('count'),
+            # 30日平均
+            'deepAvg30': summary.get('deep', {}).get('thirtyDayAvgMinutes'),
+            'lightAvg30': summary.get('light', {}).get('thirtyDayAvgMinutes'),
+            'remAvg30': summary.get('rem', {}).get('thirtyDayAvgMinutes'),
+            'wakeAvg30': summary.get('wake', {}).get('thirtyDayAvgMinutes'),
+        }
+        results.append(row)
 
-    return {
-        **sleep,
-        **summary,
-        'deepStage': stages.get('deep'),
-        'lightStage': stages.get('light'),
-        'remStage': stages.get('rem'),
-        'wakeStage': stages.get('wake'),
-    }
+    return results

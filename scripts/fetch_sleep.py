@@ -27,15 +27,9 @@ def main():
     start_date = end_date - dt.timedelta(days=14)
 
     print(f"睡眠データを取得中... ({start_date} ~ {end_date})")
-    sleep_data = []
-    current_date = start_date
 
-    while current_date <= end_date:
-        sleep_log = client.sleep(date=current_date)
-        row = fitbit_api.parse_sleep_log(sleep_log)
-        if row:
-            sleep_data.append(row)
-        current_date += dt.timedelta(days=1)
+    response = fitbit_api.get_sleep_log_by_date_range(client, start_date, end_date)
+    sleep_data = fitbit_api.parse_sleep(response)
 
     if not sleep_data:
         print("データがありません")
@@ -44,6 +38,7 @@ def main():
     df = pd.DataFrame(sleep_data)
     df['dateOfSleep'] = pd.to_datetime(df['dateOfSleep'])
     df.set_index('dateOfSleep', inplace=True)
+    df.sort_index(inplace=True)
 
     df.to_csv(OUT_FILE)
     print(f"データを保存しました: {OUT_FILE}")
