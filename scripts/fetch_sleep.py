@@ -9,9 +9,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
+import argparse
 import datetime as dt
 import pandas as pd
-from lib import fitbit_api
+from lib import fitbit_api, csv_utils
 
 BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config/fitbit_creds.json'
@@ -21,6 +22,10 @@ OUT_LEVELS_FILE = BASE_DIR / 'data/sleep_levels.csv'
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Fitbit睡眠データ取得')
+    parser.add_argument('--overwrite', action='store_true', help='既存データを上書き（デフォルトは追記）')
+    args = parser.parse_args()
+
     print("Fitbitクライアントを作成中...")
     client = fitbit_api.create_client(str(CREDS_FILE), str(TOKEN_FILE))
 
@@ -41,9 +46,12 @@ def main():
     df.set_index('dateOfSleep', inplace=True)
     df.sort_index(inplace=True)
 
+    if not args.overwrite:
+        df = csv_utils.merge_csv(df, OUT_FILE, 'dateOfSleep')
+
     df.to_csv(OUT_FILE)
     print(f"サマリーデータを保存しました: {OUT_FILE}")
-    print(f"取得件数: {len(df)}")
+    print(f"総レコード数: {len(df)}")
 
     # 詳細な睡眠ステージデータを保存
     levels_data = fitbit_api.parse_sleep_levels(response)
@@ -51,6 +59,15 @@ def main():
         df_levels = pd.DataFrame(levels_data)
         df_levels['dateTime'] = pd.to_datetime(df_levels['dateTime'])
         df_levels.sort_values(['dateOfSleep', 'dateTime'], inplace=True)
+
+        if not args.overwrite:
+            df_levels = csv_utils.merge_csv_by_columns(
+                df_levels, OUT_LEVELS_FILE,
+                key_columns=['dateOfSleep', 'dateTime'],
+                parse_dates=['dateTime'],
+                sort_by=['dateOfSleep', 'dateTime']
+            )
+
         df_levels.to_csv(OUT_LEVELS_FILE, index=False)
         print(f"詳細データを保存しました: {OUT_LEVELS_FILE}")
         print(f"詳細レコード数: {len(df_levels)}")

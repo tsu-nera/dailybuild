@@ -10,9 +10,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
+import argparse
 import json
 import pandas as pd
-from lib import healthplanet_unofficial as hp
+from lib import healthplanet_unofficial as hp, csv_utils
 
 BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config/healthplanet_creds.json'
@@ -25,6 +26,10 @@ def load_creds():
 
 
 def main():
+    parser = argparse.ArgumentParser(description='HealthPlanet体組成計データ取得')
+    parser.add_argument('--overwrite', action='store_true', help='既存データを上書き（デフォルトは追記）')
+    args = parser.parse_args()
+
     creds = load_creds()
 
     print("HealthPlanetにログイン中...")
@@ -42,9 +47,12 @@ def main():
     df.index.name = 'date'
     df.sort_index(inplace=True)
 
+    if not args.overwrite:
+        df = csv_utils.merge_csv(df, OUT_FILE, 'date')
+
     df.to_csv(OUT_FILE)
     print(f"データを保存しました: {OUT_FILE}")
-    print(f"取得件数: {len(df)}")
+    print(f"総レコード数: {len(df)}")
     print(df.tail())
 
 
