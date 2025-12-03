@@ -1,0 +1,45 @@
+name: Daily Fitbit Sleep Fetch
+
+on:
+  # schedule:
+  #   # 毎日 07:00 JST (= 22:00 UTC 前日)
+  #   - cron: '0 22 * * *'
+  workflow_dispatch:  # 手動実行のみ有効
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  fetch-sleep-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch sleep data and update sheets
+        id: fetch
+        env:
+          FITBIT_CREDS: ${{ secrets.FITBIT_CREDS }}
+          FITBIT_TOKEN: ${{ secrets.FITBIT_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+        run: python scripts/fetch_sleep_to_sheets.py --days 7
+
+      - name: Update Fitbit token secret if refreshed
+        if: steps.fetch.outputs.fitbit_token != ''
+        uses: hmanzur/actions-set-secret@v2.0.0
+        with:
+          name: 'FITBIT_TOKEN'
+          value: ${{ steps.fetch.outputs.fitbit_token }}
+          repository: ${{ github.repository }}
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
