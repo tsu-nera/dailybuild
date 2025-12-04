@@ -3,7 +3,7 @@
 """
 日次睡眠レポート生成スクリプト
 
-lib/sleep_analysis.py の関数を使用してマークダウンレポートを生成します。
+lib/sleep.py の関数を使用してマークダウンレポートを生成します。
 
 Usage:
     python generate_sleep_report_daily.py [--output <REPORT_DIR>] [--days <N>]
@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import sleep_analysis
+from lib import sleep
 
 # データファイルパス
 BASE_DIR = project_root
@@ -137,6 +137,69 @@ def generate_markdown_report(output_dir, results):
 {results['timing_table'].to_markdown(index=False)}
 """
 
+    # サイクル分析セクションを追加
+    if results.get('cycle_stats') and results.get('cycle_table') is not None:
+        cs = results['cycle_stats']
+        df_cycles = results['cycle_table']
+
+        # 表示用のサイクルテーブルを作成
+        cycle_display = df_cycles[['dateOfSleep', 'cycle_count', 'avg_cycle_length',
+                                    'avg_rem_interval', 'deep_latency', 'first_rem_latency', 'deep_in_first_half']].copy()
+        cycle_display.columns = ['日付', 'サイクル数', '平均長', 'REM間隔', '深い潜時', 'REM潜時', '前半深い(%)']
+        cycle_display['日付'] = pd.to_datetime(cycle_display['日付']).dt.strftime('%m/%d')
+        cycle_display = cycle_display.round(0)
+
+        # REM開始時刻テーブル（夢想起用）
+        rem_display = pd.DataFrame()
+        rem_display['日付'] = pd.to_datetime(df_cycles['dateOfSleep']).dt.strftime('%m/%d')
+
+        # REM1-4の開始時刻（入眠からの分数）
+        for i in range(1, 5):
+            col = f'rem{i}_onset'
+            if col in df_cycles.columns:
+                rem_display[f'REM{i}'] = df_cycles[col].apply(
+                    lambda x: f'{int(x)}' if pd.notna(x) else '-'
+                )
+
+        # 就寝時刻（ライブラリで計算済み）
+        if 'bedtime' in df_cycles.columns:
+            rem_display['就寝'] = df_cycles['bedtime']
+
+        # REM1-4の実時刻
+        for i in range(1, 5):
+            time_col = f'rem{i}_time'
+            if time_col in df_cycles.columns:
+                rem_display[f'REM{i}時'] = df_cycles[time_col].fillna('-')
+
+        report += f"""
+---
+
+## 睡眠サイクル分析
+
+> 睡眠は約90分のサイクルで構成。深い睡眠は前半、REMは後半に集中するのが理想。
+
+### サイクル構造の質
+
+| 指標 | 平均値 | 正常範囲 |
+|------|--------|----------|
+| サイクル数 | {cs['avg_cycle_count']:.1f}回 | 3-5回 |
+| サイクル長 | {cs['avg_cycle_length']:.0f}分 | 90分前後 |
+| REM間隔 | {cs['avg_rem_interval']:.0f}分 | 90分前後 |
+| 深い睡眠潜時 | {cs['avg_deep_latency']:.0f}分 | 15-30分 |
+| REM潜時 | {cs['avg_first_rem_latency']:.0f}分 | 60-90分 |
+| 前半の深い睡眠 | {cs['avg_deep_in_first_half']:.0f}% | 70-80%以上 |
+
+### 日別サイクル
+
+{cycle_display.to_markdown(index=False)}
+
+### REM開始時刻（夢想起用）
+
+> 入眠からの経過時間。夢を覚えて起きたい場合、REM中に起床すると夢想起率が高い。
+
+{rem_display.to_markdown(index=False)}
+"""
+
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write(report)
 
@@ -193,7 +256,7 @@ def run_analysis(output_dir, days=None, week=None, year=None):
 
     # 統計計算
     print('計算中: 睡眠統計...')
-    stats = sleep_analysis.calc_sleep_stats(df_master)
+    stats = sleep.calc_sleep_stats(df_master)
     results['stats'] = stats
 
     # 入眠潜時・起床後時間の計算（sleep_levelsが必要）
@@ -202,7 +265,7 @@ def run_analysis(output_dir, days=None, week=None, year=None):
         df_levels_for_timing = pd.read_csv(LEVELS_CSV)
         target_dates = df_master['dateOfSleep'].tolist()
         df_levels_for_timing = df_levels_for_timing[df_levels_for_timing['dateOfSleep'].isin(target_dates)]
-        sleep_timing = sleep_analysis.calc_sleep_timing(df_levels_for_timing)
+        sleep_timing = sleep.calc_sleep_timing(df_levels_for_timing)
 
         # 平均を計算してstatsに追加
         if sleep_timing:
@@ -265,11 +328,11 @@ def run_analysis(output_dir, days=None, week=None, year=None):
 
     # 個別グラフ生成
     print('プロット中: Time in Bed...')
-    sleep_analysis.plot_time_in_bed_stacked(df_master, save_path=img_dir / 'time_in_bed.png')
+    sleep.plot_time_in_bed_stacked(df_master, save_path=img_dir / 'time_in_bed.png')
     results['time_in_bed_img'] = 'time_in_bed.png'
 
     print('プロット中: 睡眠ステージ推移...')
-    sleep_analysis.plot_sleep_stages_stacked(df_master, save_path=img_dir / 'sleep_stages_stacked.png')
+    sleep.plot_sleep_stages_stacked(df_master, save_path=img_dir / 'sleep_stages_stacked.png')
     results['stages_stacked_img'] = 'sleep_stages_stacked.png'
 
     # タイムライン生成・入眠潜時計算
@@ -283,11 +346,31 @@ def run_analysis(output_dir, days=None, week=None, year=None):
 
         print('プロット中: 睡眠タイムライン...')
         timeline_img = 'sleep_timeline.png'
-        sleep_analysis.plot_sleep_timeline(df_levels, save_path=img_dir / timeline_img)
+        sleep.plot_sleep_timeline(df_levels, save_path=img_dir / timeline_img)
         results['timeline_img'] = timeline_img
+
+        # サイクル分析
+        print('計算中: 睡眠サイクル...')
+        df_cycles = sleep.cycles_to_dataframe(
+            df_levels, df_master=df_master, max_cycle_length=180
+        )
+        results['cycle_table'] = df_cycles
+
+        # サイクル統計
+        cycle_stats = {
+            'avg_cycle_length': df_cycles['avg_cycle_length'].mean(),
+            'avg_rem_interval': df_cycles['avg_rem_interval'].mean(),
+            'avg_deep_latency': df_cycles['deep_latency'].mean(),
+            'avg_first_rem_latency': df_cycles['first_rem_latency'].mean(),
+            'avg_deep_in_first_half': df_cycles['deep_in_first_half'].mean(),
+            'avg_cycle_count': df_cycles['cycle_count'].mean(),
+        }
+        results['cycle_stats'] = cycle_stats
     else:
         print(f'警告: {LEVELS_CSV} が見つかりません。タイムラインをスキップします。')
         results['timeline_img'] = None
+        results['cycle_table'] = None
+        results['cycle_stats'] = None
 
     # レポート生成
     generate_markdown_report(output_dir, results)
