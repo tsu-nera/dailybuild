@@ -225,7 +225,7 @@ def _prepare_df_for_plot(df_master):
     else:
         dates = df.index
 
-    date_labels = [str(d)[-5:] for d in dates]
+    date_labels = [pd.to_datetime(d).strftime('%m/%d') for d in dates]
     return df, date_labels
 
 
@@ -258,9 +258,9 @@ def plot_sleep_duration(df_master, save_path=None):
     return fig, ax
 
 
-def plot_sleep_efficiency(df_master, save_path=None):
+def plot_time_in_bed_stacked(df_master, save_path=None):
     """
-    睡眠効率の推移グラフ
+    Time in Bedの内訳積み上げグラフ（入眠/睡眠/覚醒/起後）
 
     Args:
         df_master: sleep_master.csvを読み込んだDataFrame
@@ -269,14 +269,28 @@ def plot_sleep_efficiency(df_master, save_path=None):
     df, date_labels = _prepare_df_for_plot(df_master)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(range(len(df)), df['efficiency'], marker='o', color='green')
-    ax.axhline(y=85, color='orange', linestyle='--', label='Good threshold (85%)')
+    x = range(len(df))
+
+    # 入眠潜時
+    fall_asleep = df['minutesToFallAsleep'].fillna(0)
+    # 睡眠時間
+    asleep = df['minutesAsleep']
+    # 中途覚醒
+    wake = df['wakeMinutes'].fillna(0)
+    # 起床後
+    after_wakeup = df['minutesAfterWakeup'].fillna(0)
+
+    # 積み上げグラフ
+    ax.bar(x, fall_asleep, label='Fall Asleep', color='#FFB74D')  # オレンジ
+    ax.bar(x, asleep, bottom=fall_asleep, label='Asleep', color='#4FC3F7')  # 水色
+    ax.bar(x, wake, bottom=fall_asleep + asleep, label='Wake', color='#EF5350')  # 赤
+    ax.bar(x, after_wakeup, bottom=fall_asleep + asleep + wake, label='After Wake', color='#AB47BC')  # 紫
+
     ax.set_xticks(range(len(df)))
     ax.set_xticklabels(date_labels, rotation=45)
-    ax.set_ylabel('Efficiency (%)')
-    ax.set_title('Sleep Efficiency')
-    ax.set_ylim(60, 100)
-    ax.legend()
+    ax.set_ylabel('Minutes')
+    ax.set_title('Time in Bed Breakdown')
+    ax.legend(loc='upper right')
     plt.tight_layout()
 
     if save_path:

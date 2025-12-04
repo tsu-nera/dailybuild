@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-週次睡眠レポート生成スクリプト
+日次睡眠レポート生成スクリプト
 
 lib/sleep_analysis.py の関数を使用してマークダウンレポートを生成します。
 
 Usage:
-    python generate_sleep_report.py [--output <REPORT_DIR>] [--days <N>]
+    python generate_sleep_report_daily.py [--output <REPORT_DIR>] [--days <N>]
 """
 
 import sys
@@ -52,7 +52,7 @@ def generate_markdown_report(output_dir, results):
     else:
         debt_text = f"{debt_hours:.1f}時間（不足）"
 
-    report = f"""# 週次睡眠レポート
+    report = f"""# 日次睡眠レポート
 
 - **生成日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 - **対象期間**: {stats['period']['start']} ～ {stats['period']['end']}
@@ -60,7 +60,7 @@ def generate_markdown_report(output_dir, results):
 
 ---
 
-## 今週のサマリー
+## サマリー
 
 | 指標 | 値 |
 |------|-----|
@@ -73,40 +73,26 @@ def generate_markdown_report(output_dir, results):
 
 ---
 
-## 睡眠効率
+## Time in Bed分析
+
+> ベッド時間の使い方を分析。効率 = 睡眠 / ベッド × 100。85%以上が良好。
 
 | 指標 | 値 |
 |------|-----|
 | 平均効率 | **{stats['efficiency']['mean']:.1f}%** |
-| 最低 | {stats['efficiency']['min']}% |
-| 最高 | {stats['efficiency']['max']}% |
+| 最低〜最高 | {stats['efficiency']['min']}% 〜 {stats['efficiency']['max']}% |
+| 平均入眠 | {stats.get('timing', {}).get('avg_fall_asleep', 0):.0f}分 |
+| 平均起床後 | {stats.get('timing', {}).get('avg_after_wakeup', 0):.0f}分 |
 
-> 85%以上が良好な睡眠効率とされています。
+![Time in Bed](img/{results['time_in_bed_img']})
 
-![睡眠効率](img/{results['efficiency_img']})
-
----
-
-## 就寝・起床時刻
-
-| 指標 | 就寝 | 起床 |
-|------|------|------|
-| 平均 | **{stats['bedtime']['mean']}** | **{stats['waketime']['mean']}** |
-| 最早 | {stats['bedtime']['earliest']} | {stats['waketime']['earliest']} |
-| 最遅 | {stats['bedtime']['latest']} | {stats['waketime']['latest']} |
-| ばらつき | ±{stats['bedtime']['std_minutes']:.0f}分 | ±{stats['waketime']['std_minutes']:.0f}分 |
-| 入眠/起床後 | {stats.get('timing', {}).get('avg_fall_asleep', 0):.0f}分 | {stats.get('timing', {}).get('avg_after_wakeup', 0):.0f}分 |
-
-> 入眠潜時は就寝から眠りにつくまで、起床後は目覚めてからベッドを出るまでの時間。
+{results['efficiency_table'].to_markdown(index=False)}
 
 ---
 
-## 睡眠時間・ステージ推移
+## Total Sleep Time分析
 
-![睡眠時間・ステージ推移](img/{results['stages_stacked_img']})
-
-- 緑の破線: 推奨睡眠時間（7時間）
-- 赤の破線: 今週の平均睡眠時間
+> 睡眠時間の質を分析。各ステージのバランスを確認。
 
 ### 睡眠時間
 
@@ -125,25 +111,30 @@ def generate_markdown_report(output_dir, results):
 | レム睡眠 | {stats['stages']['rem_minutes']:.0f}分 | {stats['stages'].get('rem_pct', 0):.1f}% | {stats['stages']['rem_count']:.0f}回 | 20-25% |
 | 覚醒 | {stats['stages']['wake_minutes']:.0f}分 | - | - | - |
 
----
+![睡眠時間・ステージ推移](img/{results['stages_stacked_img']})
 
-## 日別サマリー
+{results['stages_table'].to_markdown(index=False)}
 
-{results['daily_table'].to_markdown(index=False)}
-
----
-
-## 睡眠ステージ タイムライン
-
-各日の睡眠ステージの推移を可視化しています。
+### 睡眠ステージ タイムライン
 
 ![睡眠タイムライン](img/{results['timeline_img']})
 
-**凡例**:
-- 🟠 オレンジ: 覚醒（Wake）
-- 🟣 紫: レム睡眠（REM）
-- 🔵 水色: 浅い睡眠（Light）
-- 🔷 濃紺: 深い睡眠（Deep）
+- 🟠 覚醒 / 🟣 レム / 🔵 浅い / 🔷 深い
+
+---
+
+## 就寝・起床時刻
+
+> 睡眠リズムの規則性を分析。ばらつきが大きいと社会的時差ボケの原因に。
+
+| 指標 | 就寝 | 起床 |
+|------|------|------|
+| 平均 | **{stats['bedtime']['mean']}** | **{stats['waketime']['mean']}** |
+| 最早 | {stats['bedtime']['earliest']} | {stats['waketime']['earliest']} |
+| 最遅 | {stats['bedtime']['latest']} | {stats['waketime']['latest']} |
+| ばらつき | ±{stats['bedtime']['std_minutes']:.0f}分 | ±{stats['waketime']['std_minutes']:.0f}分 |
+
+{results['timing_table'].to_markdown(index=False)}
 """
 
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -169,7 +160,7 @@ def run_analysis(output_dir, days=None, week=None, year=None):
         年（週番号指定時に使用、Noneの場合は現在の年）
     """
     print('='*60)
-    print('週次睡眠レポート生成')
+    print('日次睡眠レポート生成')
     print('='*60)
     print()
 
@@ -222,11 +213,14 @@ def run_analysis(output_dir, days=None, week=None, year=None):
                 'avg_after_wakeup': avg_after_wake,
             }
 
-    # 日別サマリーテーブル作成
-    daily_data = []
+    # 日別サマリーテーブル作成（3分割：効率・ステージ・時刻）
+    efficiency_data = []
+    stages_data = []
+    timing_data = []
     for _, row in df_master.iterrows():
         date = row['dateOfSleep'] if 'dateOfSleep' in df_master.columns else row.name
-        hours = row['minutesAsleep'] / 60
+        sleep_hours = row['minutesAsleep'] / 60
+        bed_hours = row['timeInBed'] / 60
         # 就寝・起床時刻を抽出
         bedtime = pd.to_datetime(row['startTime']).strftime('%H:%M') if 'startTime' in row else '-'
         waketime = pd.to_datetime(row['endTime']).strftime('%H:%M') if 'endTime' in row else '-'
@@ -234,25 +228,45 @@ def run_analysis(output_dir, days=None, week=None, year=None):
         timing = sleep_timing.get(date, {})
         fall_asleep = timing.get('minutes_to_fall_asleep', 0)
         after_wake = timing.get('minutes_after_wakeup', 0)
-        daily_data.append({
-            '日付': str(date)[-5:],
-            '就寝': bedtime,
-            '入眠': f"{fall_asleep:.0f}分",
-            '起床': waketime,
-            '起後': f"{after_wake:.0f}分",
-            '睡眠': f"{hours:.1f}h",
+
+        date_short = pd.to_datetime(date).strftime('%m/%d')
+
+        # 睡眠効率テーブル（Time in Bedの詳細）
+        efficiency_data.append({
+            '日付': date_short,
             '効率': f"{row['efficiency']}%",
+            '睡眠': f"{sleep_hours:.1f}h",
+            'ベッド': f"{bed_hours:.1f}h",
+            '入眠': f"{fall_asleep:.0f}分",
+            '起後': f"{after_wake:.0f}分",
+            '覚醒': f"{row['wakeMinutes']}分",
+            '回数': f"{row['wakeCount']}回",
+        })
+
+        # 睡眠ステージテーブル（Total Sleep Timeの分析）
+        stages_data.append({
+            '日付': date_short,
+            '睡眠': f"{sleep_hours:.1f}h",
             '深い': f"{row['deepMinutes']}分",
             '浅い': f"{row['lightMinutes']}分",
             'レム': f"{row['remMinutes']}分",
-            '覚醒': f"{row['wakeMinutes']}分/{row['wakeCount']}回",
         })
-    results['daily_table'] = pd.DataFrame(daily_data)
+
+        # 就寝・起床テーブル（時刻のばらつき）
+        timing_data.append({
+            '日付': date_short,
+            '就寝': bedtime,
+            '起床': waketime,
+        })
+
+    results['efficiency_table'] = pd.DataFrame(efficiency_data)
+    results['stages_table'] = pd.DataFrame(stages_data)
+    results['timing_table'] = pd.DataFrame(timing_data)
 
     # 個別グラフ生成
-    print('プロット中: 睡眠効率...')
-    sleep_analysis.plot_sleep_efficiency(df_master, save_path=img_dir / 'sleep_efficiency.png')
-    results['efficiency_img'] = 'sleep_efficiency.png'
+    print('プロット中: Time in Bed...')
+    sleep_analysis.plot_time_in_bed_stacked(df_master, save_path=img_dir / 'time_in_bed.png')
+    results['time_in_bed_img'] = 'time_in_bed.png'
 
     print('プロット中: 睡眠ステージ推移...')
     sleep_analysis.plot_sleep_stages_stacked(df_master, save_path=img_dir / 'sleep_stages_stacked.png')
@@ -263,10 +277,9 @@ def run_analysis(output_dir, days=None, week=None, year=None):
         print(f'Loading: {LEVELS_CSV}')
         df_levels = pd.read_csv(LEVELS_CSV)
 
-        if days is not None:
-            # 対象日付でフィルタ
-            target_dates = df_master['dateOfSleep'].tolist() if 'dateOfSleep' in df_master.columns else df_master.index.tolist()
-            df_levels = df_levels[df_levels['dateOfSleep'].isin(target_dates)]
+        # 対象日付でフィルタ（days指定時も week指定時も適用）
+        target_dates = df_master['dateOfSleep'].tolist() if 'dateOfSleep' in df_master.columns else df_master.index.tolist()
+        df_levels = df_levels[df_levels['dateOfSleep'].isin(target_dates)]
 
         print('プロット中: 睡眠タイムライン...')
         timeline_img = 'sleep_timeline.png'
@@ -292,7 +305,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description='週次睡眠レポートの生成'
+        description='日次睡眠レポートの生成'
     )
     parser.add_argument(
         '--output',
