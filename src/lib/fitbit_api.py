@@ -197,3 +197,125 @@ def parse_sleep_levels(data):
             })
 
     return results
+
+
+# =============================================================================
+# Nutrition API
+# https://dev.fitbit.com/build/reference/web-api/nutrition/
+# =============================================================================
+
+def get_food_log(client, date):
+    """
+    指定日の食事ログを取得
+    https://dev.fitbit.com/build/reference/web-api/nutrition/get-food-log/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/foods/log/date/{date_str}.json"
+    return client.make_request(url)
+
+
+def search_foods(client, query):
+    """
+    食品を検索
+    https://dev.fitbit.com/build/reference/web-api/nutrition/search-foods/
+    """
+    import urllib.parse
+    encoded_query = urllib.parse.quote(query)
+    url = f"{client.API_ENDPOINT}/1/user/-/foods/log/search.json?query={encoded_query}"
+    return client.make_request(url)
+
+
+def log_food(client, food_id, meal_type_id, unit_id, amount, date):
+    """
+    食品をログに記録
+    https://dev.fitbit.com/build/reference/web-api/nutrition/create-food-log/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/foods/log.json"
+    data = {
+        'foodId': food_id,
+        'mealTypeId': meal_type_id,
+        'unitId': unit_id,
+        'amount': amount,
+        'date': date_str
+    }
+    return client.make_request(url, data=data, method='POST')
+
+
+def delete_food_log(client, food_log_id):
+    """
+    食事ログを削除
+    https://dev.fitbit.com/build/reference/web-api/nutrition/delete-food-log/
+    """
+    url = f"{client.API_ENDPOINT}/1/user/-/foods/log/{food_log_id}.json"
+    return client.make_request(url, method='DELETE')
+
+
+def edit_food_log(client, food_log_id, meal_type_id, unit_id, amount):
+    """
+    食事ログを編集
+    https://dev.fitbit.com/build/reference/web-api/nutrition/update-food-log/
+    """
+    url = f"{client.API_ENDPOINT}/1/user/-/foods/log/{food_log_id}.json"
+    data = {
+        'mealTypeId': meal_type_id,
+        'unitId': unit_id,
+        'amount': amount
+    }
+    return client.make_request(url, data=data, method='POST')
+
+
+def create_meal(client, name, description, meal_elements):
+    """
+    カスタム食事（Meal）を作成
+    https://dev.fitbit.com/build/reference/web-api/nutrition/create-meal/
+    """
+    url = f"{client.API_ENDPOINT}/1/user/-/meals.json"
+    # mealElements is a list of dicts: [{'foodId': ..., 'unitId': ..., 'amount': ...}, ...]
+    # API expects parameters like mealElements[0][foodId]=...
+    data = {
+        'name': name,
+        'description': description,
+    }
+    for i, element in enumerate(meal_elements):
+        data[f'mealElements[{i}][foodId]'] = element['foodId']
+        data[f'mealElements[{i}][unitId]'] = element['unitId']
+        data[f'mealElements[{i}][amount]'] = element['amount']
+
+    return client.make_request(url, data=data, method='POST')
+
+
+def get_meals(client):
+    """
+    カスタム食事（Meal）のリストを取得
+    https://dev.fitbit.com/build/reference/web-api/nutrition/get-meals/
+    """
+    url = f"{client.API_ENDPOINT}/1/user/-/meals.json"
+    return client.make_request(url)
+
+
+def edit_meal(client, meal_id, name, description, meal_elements):
+    """
+    カスタム食事（Meal）を編集
+    https://dev.fitbit.com/build/reference/web-api/nutrition/update-meal/
+    """
+    url = f"{client.API_ENDPOINT}/1/user/-/meals/{meal_id}.json"
+    data = {
+        'name': name,
+        'description': description,
+    }
+    for i, element in enumerate(meal_elements):
+        data[f'mealElements[{i}][foodId]'] = element['foodId']
+        data[f'mealElements[{i}][unitId]'] = element['unitId']
+        data[f'mealElements[{i}][amount]'] = element['amount']
+
+    return client.make_request(url, data=data, method='POST')
+
+
+def delete_meal(client, meal_id):
+    """
+    カスタム食事（Meal）を削除
+    https://dev.fitbit.com/build/reference/web-api/nutrition/delete-meal/
+    """
+    url = f"{client.API_ENDPOINT}/1/user/-/meals/{meal_id}.json"
+    return client.make_request(url, method='DELETE')
