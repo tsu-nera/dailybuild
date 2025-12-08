@@ -13,6 +13,7 @@ from .sleep_analysis import (
     # 統計分析
     calc_sleep_stats,
     calc_sleep_timing,
+    calc_time_stats,
     print_sleep_stats,
     # 可視化
     plot_sleep_duration,
@@ -45,6 +46,7 @@ __all__ = [
     'STAGE_Y_POSITION',
     'calc_sleep_stats',
     'calc_sleep_timing',
+    'calc_time_stats',
     'print_sleep_stats',
     'plot_sleep_duration',
     'plot_time_in_bed_stacked',

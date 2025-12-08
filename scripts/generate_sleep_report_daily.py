@@ -127,12 +127,12 @@ def generate_markdown_report(output_dir, results):
 
 > 睡眠リズムの規則性を分析。ばらつきが大きいと社会的時差ボケの原因に。
 
-| 指標 | 就寝 | 起床 |
-|------|------|------|
-| 平均 | **{stats['bedtime']['mean']}** | **{stats['waketime']['mean']}** |
-| 最早 | {stats['bedtime']['earliest']} | {stats['waketime']['earliest']} |
-| 最遅 | {stats['bedtime']['latest']} | {stats['waketime']['latest']} |
-| ばらつき | ±{stats['bedtime']['std_minutes']:.0f}分 | ±{stats['waketime']['std_minutes']:.0f}分 |
+| 指標 | 就寝 | 入眠 | 起床 | 離床 |
+|------|------|------|------|------|
+| 平均 | **{stats['bedtime']['mean']}** | **{stats.get('fallasleep', {}).get('mean', '-')}** | **{stats.get('wakeup', {}).get('mean', '-')}** | **{stats['waketime']['mean']}** |
+| 最早 | {stats['bedtime']['earliest']} | {stats.get('fallasleep', {}).get('earliest', '-')} | {stats.get('wakeup', {}).get('earliest', '-')} | {stats['waketime']['earliest']} |
+| 最遅 | {stats['bedtime']['latest']} | {stats.get('fallasleep', {}).get('latest', '-')} | {stats.get('wakeup', {}).get('latest', '-')} | {stats['waketime']['latest']} |
+| ばらつき | ±{stats['bedtime']['std_minutes']:.0f}分 | ±{stats.get('fallasleep', {}).get('std_minutes', 0):.0f}分 | ±{stats.get('wakeup', {}).get('std_minutes', 0):.0f}分 | ±{stats['waketime']['std_minutes']:.0f}分 |
 
 {results['timing_table'].to_markdown(index=False)}
 """
@@ -276,6 +276,27 @@ def run_analysis(output_dir, days=None, week=None, year=None):
                 'avg_after_wakeup': avg_after_wake,
             }
 
+            # 入眠時刻・起床時刻の統計を計算
+            fall_asleep_times = []
+            wakeup_times = []
+            for _, row in df_master.iterrows():
+                date = row['dateOfSleep']
+                timing = sleep_timing.get(date, {})
+                fall_asleep_min = timing.get('minutes_to_fall_asleep', 0)
+                after_wake_min = timing.get('minutes_after_wakeup', 0)
+                if 'startTime' in row and fall_asleep_min > 0:
+                    fall_asleep_times.append(pd.to_datetime(row['startTime']) + pd.Timedelta(minutes=fall_asleep_min))
+                if 'endTime' in row and after_wake_min > 0:
+                    wakeup_times.append(pd.to_datetime(row['endTime']) - pd.Timedelta(minutes=after_wake_min))
+
+            # 入眠時刻統計
+            if fall_asleep_times:
+                stats['fallasleep'] = sleep.calc_time_stats(fall_asleep_times)
+
+            # 起床時刻統計
+            if wakeup_times:
+                stats['wakeup'] = sleep.calc_time_stats(wakeup_times)
+
     # 日別サマリーテーブル作成（3分割：効率・ステージ・時刻）
     efficiency_data = []
     stages_data = []
@@ -315,11 +336,23 @@ def run_analysis(output_dir, days=None, week=None, year=None):
             'レム': f"{row['remMinutes']}分",
         })
 
+        # 入眠時刻・起床時刻を計算
+        if 'startTime' in row and fall_asleep > 0:
+            fall_asleep_time = (pd.to_datetime(row['startTime']) + pd.Timedelta(minutes=fall_asleep)).strftime('%H:%M')
+        else:
+            fall_asleep_time = '-'
+        if 'endTime' in row and after_wake > 0:
+            wakeup_time = (pd.to_datetime(row['endTime']) - pd.Timedelta(minutes=after_wake)).strftime('%H:%M')
+        else:
+            wakeup_time = '-'
+
         # 就寝・起床テーブル（時刻のばらつき）
         timing_data.append({
             '日付': date_short,
             '就寝': bedtime,
-            '起床': waketime,
+            '入眠': fall_asleep_time,
+            '起床': wakeup_time,
+            '離床': waketime,
         })
 
     results['efficiency_table'] = pd.DataFrame(efficiency_data)

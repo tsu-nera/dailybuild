@@ -149,6 +149,31 @@ def calc_sleep_stats(df_master, recommended_hours=7.0):
     return stats
 
 
+def calc_time_stats(times):
+    """
+    datetime型のリストから時刻統計を計算
+
+    Args:
+        times: datetime型のリスト
+
+    Returns:
+        dict: 平均・最早・最遅・標準偏差を含む辞書
+    """
+    if not times:
+        return {}
+
+    minutes_list = [_time_to_minutes(t) for t in times]
+    mean_min = sum(minutes_list) / len(minutes_list)
+    std_min = (sum((m - mean_min) ** 2 for m in minutes_list) / len(minutes_list)) ** 0.5
+
+    return {
+        'mean': _minutes_to_time_str(mean_min),
+        'earliest': _minutes_to_time_str(min(minutes_list)),
+        'latest': _minutes_to_time_str(max(minutes_list)),
+        'std_minutes': std_min,
+    }
+
+
 def calc_sleep_timing(df_levels):
     """
     睡眠レベルデータから入眠潜時と起床後時間を計算

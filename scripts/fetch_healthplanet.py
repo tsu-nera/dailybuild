@@ -36,7 +36,7 @@ def main():
     session = hp.create_login_session(creds['login_id'], creds['password'])
 
     print("体組成計データを取得中...")
-    records = hp.get_innerscan_data(session, days=90)
+    records = hp.get_innerscan_data(session, days=14)
 
     if not records:
         print("データがありません")
