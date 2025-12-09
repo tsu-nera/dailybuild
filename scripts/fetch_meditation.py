@@ -33,10 +33,22 @@ SHEET_NAME = 'fitbit_meditation'
 
 def get_fitbit_credentials():
     """Fitbit認証情報を取得（環境変数優先）"""
-    if os.environ.get('FITBIT_CREDS') and os.environ.get('FITBIT_TOKEN'):
-        creds = json.loads(os.environ['FITBIT_CREDS'])
-        token = json.loads(os.environ['FITBIT_TOKEN'])
+    fitbit_creds_env = os.environ.get('FITBIT_CREDS')
+    fitbit_token_env = os.environ.get('FITBIT_TOKEN')
+
+    if fitbit_creds_env and fitbit_token_env:
+        print("環境変数から認証情報を取得")
+        creds = json.loads(fitbit_creds_env)
+        token = json.loads(fitbit_token_env)
         return creds, token, None
+
+    print("ファイルから認証情報を取得")
+    if not CREDS_FILE.exists():
+        raise FileNotFoundError(
+            f"認証情報が見つかりません。\n"
+            f"環境変数 FITBIT_CREDS/FITBIT_TOKEN を設定するか、\n"
+            f"{CREDS_FILE} を配置してください。"
+        )
 
     with open(CREDS_FILE) as f:
         creds = json.load(f)
