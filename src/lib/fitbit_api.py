@@ -319,3 +319,147 @@ def delete_meal(client, meal_id):
     """
     url = f"{client.API_ENDPOINT}/1/user/-/meals/{meal_id}.json"
     return client.make_request(url, method='DELETE')
+
+
+# =============================================================================
+# Activity API
+# https://dev.fitbit.com/build/reference/web-api/activity/
+# =============================================================================
+
+def get_activity_log_list(client, before_date=None, after_date=None, sort='desc', limit=20):
+    """
+    アクティビティログのリストを取得
+
+    Args:
+        client: Fitbitクライアント
+        before_date: この日付より前のログを取得（datetime.date）
+        after_date: この日付より後のログを取得（datetime.date）
+        sort: 'asc' or 'desc'（デフォルト: 'desc'）
+        limit: 取得件数（最大100、デフォルト: 20）
+
+    Returns:
+        APIレスポンス（dict）: activities配列 + pagination
+
+    Note:
+        before_dateまたはafter_dateのどちらか一方が必須
+
+    https://dev.fitbit.com/build/reference/web-api/activity/get-activity-log-list/
+    """
+    params = {
+        'sort': sort,
+        'limit': limit,
+        'offset': 0,
+    }
+
+    if before_date:
+        params['beforeDate'] = before_date.strftime('%Y-%m-%d')
+    elif after_date:
+        params['afterDate'] = after_date.strftime('%Y-%m-%d')
+    else:
+        raise ValueError("before_date or after_date is required")
+
+    query = '&'.join(f"{k}={v}" for k, v in params.items())
+    url = f"{client.API_ENDPOINT}/1/user/-/activities/list.json?{query}"
+    return client.make_request(url)
+
+
+def get_activity_tcx(client, log_id):
+    """
+    アクティビティのTCX（GPSデータ）を取得
+
+    Args:
+        client: Fitbitクライアント
+        log_id: アクティビティログID
+
+    Returns:
+        TCX XML形式のデータ
+
+    https://dev.fitbit.com/build/reference/web-api/activity/get-activity-tcx/
+    """
+    url = f"{client.API_ENDPOINT}/1/user/-/activities/{log_id}.tcx"
+    return client.make_request(url)
+
+
+def get_daily_activity_summary(client, date):
+    """
+    指定日のアクティビティサマリーを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: activities, goals, summary
+
+    https://dev.fitbit.com/build/reference/web-api/activity/get-daily-activity-summary/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/activities/date/{date_str}.json"
+    return client.make_request(url)
+
+
+def parse_activity_log(data):
+    """
+    アクティビティログをリストに変換
+
+    Args:
+        data: get_activity_log_listの戻り値
+
+    Returns:
+        アクティビティエントリのリスト
+    """
+    if not data.get('activities'):
+        return []
+
+    results = []
+    for entry in data['activities']:
+        row = {
+            'logId': entry.get('logId'),
+            'activityName': entry.get('activityName'),
+            'activityTypeId': entry.get('activityTypeId'),
+            'startTime': entry.get('startTime'),
+            'originalStartTime': entry.get('originalStartTime'),
+            'duration': entry.get('duration'),  # milliseconds
+            'durationMinutes': entry.get('duration', 0) // 60000,  # minutes
+            'calories': entry.get('calories'),
+            'steps': entry.get('steps'),
+            'distance': entry.get('distance'),
+            'distanceUnit': entry.get('distanceUnit'),
+            'logType': entry.get('logType'),  # auto_detected, manual, mobile_run, tracker
+            'hasGps': entry.get('hasGps'),
+            'hasStartTime': entry.get('hasStartTime'),
+            # Heart rate zones
+            'averageHeartRate': entry.get('averageHeartRate'),
+            'heartRateZones': entry.get('heartRateZones'),
+            # Active zone minutes
+            'activeZoneMinutes': entry.get('activeZoneMinutes'),
+        }
+        results.append(row)
+
+    return results
+
+
+# Activity Type IDs
+ACTIVITY_TYPE_MEDITATING = 7075
+
+
+def get_meditation_logs(client, before_date=None, after_date=None, limit=100):
+    """
+    瞑想アクティビティのみ取得
+
+    Args:
+        client: Fitbitクライアント
+        before_date: この日付より前のログを取得（datetime.date）
+        after_date: この日付より後のログを取得（datetime.date）
+        limit: 取得件数（最大100、デフォルト: 100）
+
+    Returns:
+        瞑想アクティビティのリスト
+
+    Note:
+        Fitbit APIはactivityTypeでフィルタできないため、
+        取得後にクライアント側でフィルタリング
+    """
+    data = get_activity_log_list(client, before_date, after_date, limit=limit)
+    activities = parse_activity_log(data)
+    return [act for act in activities if act['activityTypeId'] == ACTIVITY_TYPE_MEDITATING]

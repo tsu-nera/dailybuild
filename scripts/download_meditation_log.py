@@ -131,16 +131,27 @@ def download_sheet_as_csv(
     range_name = f"'{sheet_name}'"
     print(f"\nデータを取得中: {range_name}")
 
-    result = sheets_service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range=range_name
-    ).execute()
+    try:
+        result = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+    except Exception as e:
+        print(f"⚠️  シート '{sheet_name}' が見つかりません（空のCSVを作成）")
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.touch()
+        return str(output_file)
 
     values = result.get('values', [])
 
     if not values:
-        print("⚠️  データが見つかりませんでした")
-        return None
+        print("⚠️  データが見つかりませんでした（空のCSVを作成）")
+        # 空のCSVを作成
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.touch()
+        return str(output_file)
 
     print(f"✅ {len(values)} 行のデータを取得")
 

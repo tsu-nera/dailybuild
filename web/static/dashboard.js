@@ -7,6 +7,18 @@
  *   - title: dashboard title
  */
 
+// Source colors for duration chart
+const sourceColors = {
+    muse: {
+        border: 'rgb(75, 192, 192)',
+        background: 'rgba(75, 192, 192, 0.6)'
+    },
+    fitbit: {
+        border: 'rgb(255, 159, 64)',
+        background: 'rgba(255, 159, 64, 0.6)'
+    }
+};
+
 // Metric group configurations
 const metricGroups = {
     duration: {
@@ -17,7 +29,8 @@ const metricGroups = {
         yLabel: 'Duration (min)',
         trendLabel: 'Total Duration (min)',
         trendLabelRight: 'Cumulative (min)',
-        showCumulativeInTrend: true
+        showCumulativeInTrend: true,
+        showBySource: true  // Show separate bars by source
     },
     power: {
         metrics: ['alpha_mean', 'beta_mean'],
@@ -25,7 +38,8 @@ const metricGroups = {
         colors: ['rgb(54, 162, 235)', 'rgb(255, 99, 132)'],
         bgColors: ['rgba(54, 162, 235, 0.2)', 'rgba(255, 99, 132, 0.2)'],
         yLabel: 'Power (dB)',
-        trendLabel: 'Avg Power (dB)'
+        trendLabel: 'Avg Power (dB)',
+        museOnly: true  // Only show Muse EEG data
     },
     iaf: {
         metrics: ['iaf_mean'],
@@ -33,7 +47,8 @@ const metricGroups = {
         colors: ['rgb(255, 159, 64)'],
         bgColors: ['rgba(255, 159, 64, 0.2)'],
         yLabel: 'Frequency (Hz)',
-        trendLabel: 'Avg IAF (Hz)'
+        trendLabel: 'Avg IAF (Hz)',
+        museOnly: true
     },
     focus: {
         metrics: ['fm_theta_mean', 'theta_alpha_mean'],
@@ -41,9 +56,15 @@ const metricGroups = {
         colors: ['rgb(153, 102, 255)', 'rgb(75, 192, 192)'],
         bgColors: ['rgba(153, 102, 255, 0.2)', 'rgba(75, 192, 192, 0.2)'],
         yLabel: 'Ratio',
-        trendLabel: 'Avg Ratio'
+        trendLabel: 'Avg Ratio',
+        museOnly: true
     }
 };
+
+// Filter data by source
+function filterBySource(data, source) {
+    return data.filter(d => d.source === source);
+}
 
 let currentMetricGroup = 'duration';
 let currentPeriod = '1w';
@@ -115,11 +136,106 @@ function aggregateData(data, mode, metrics) {
 function createDailyChart(data, group) {
     const ctx = document.getElementById('dailyChart').getContext('2d');
     const config = metricGroups[group];
-    const labels = data.map(d => d.timestamp.split(' ')[0]);  // Date only
 
+    // Filter for muse-only metrics
+    let chartData = config.museOnly ? filterBySource(data, 'muse') : data;
+
+    // For duration with showBySource, create separate datasets per source
+    if (config.showBySource && group === 'duration') {
+        const museData = filterBySource(data, 'muse');
+        const fitbitData = filterBySource(data, 'fitbit');
+
+        // Combine all unique dates
+        const allDates = [...new Set([
+            ...museData.map(d => d.timestamp.split(' ')[0]),
+            ...fitbitData.map(d => d.timestamp.split(' ')[0])
+        ])].sort();
+
+        // Aggregate by date for each source
+        const museByDate = {};
+        museData.forEach(d => {
+            const date = d.timestamp.split(' ')[0];
+            if (!museByDate[date]) museByDate[date] = 0;
+            museByDate[date] += d.duration_min;
+        });
+
+        const fitbitByDate = {};
+        fitbitData.forEach(d => {
+            const date = d.timestamp.split(' ')[0];
+            if (!fitbitByDate[date]) fitbitByDate[date] = 0;
+            fitbitByDate[date] += d.duration_min;
+        });
+
+        // Calculate total (combined) per date
+        const totalByDate = {};
+        allDates.forEach(date => {
+            totalByDate[date] = (museByDate[date] || 0) + (fitbitByDate[date] || 0);
+        });
+
+        // Create datasets
+        const datasets = [];
+
+        // Total (combined) line - always show first
+        datasets.push({
+            label: 'Total',
+            data: allDates.map(date => totalByDate[date] || null),
+            borderColor: 'rgb(99, 102, 241)',  // Indigo
+            backgroundColor: 'rgba(99, 102, 241, 0.2)',
+            borderWidth: 3,
+            tension: 0.1,
+            order: 0  // Draw on top
+        });
+
+        if (museData.length > 0) {
+            datasets.push({
+                label: 'Muse EEG',
+                data: allDates.map(date => museByDate[date] || null),
+                borderColor: sourceColors.muse.border,
+                backgroundColor: sourceColors.muse.background,
+                borderWidth: 2,
+                tension: 0.1,
+                order: 1
+            });
+        }
+
+        if (fitbitData.length > 0) {
+            datasets.push({
+                label: 'Fitbit',
+                data: allDates.map(date => fitbitByDate[date] || null),
+                borderColor: sourceColors.fitbit.border,
+                backgroundColor: sourceColors.fitbit.background,
+                borderWidth: 2,
+                tension: 0.1,
+                order: 2
+            });
+        }
+
+        return new Chart(ctx, {
+            type: 'line',
+            data: { labels: allDates, datasets },
+            options: {
+                responsive: true,
+                plugins: { title: { display: false } },
+                spanGaps: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: config.yLabel }
+                    },
+                    x: {
+                        title: { display: true, text: 'Date' },
+                        ticks: { maxTicksLimit: 10 }
+                    }
+                }
+            }
+        });
+    }
+
+    // Default behavior for other metrics
+    const labels = chartData.map(d => d.timestamp.split(' ')[0]);
     const datasets = config.metrics.map((metric, i) => ({
         label: config.labels[i],
-        data: data.map(d => d[metric]),
+        data: chartData.map(d => d[metric]),
         borderColor: config.colors[i],
         backgroundColor: config.bgColors[i],
         tension: 0.1,
@@ -243,7 +359,10 @@ function updateCharts() {
     const rawData = window.dashboardConfig.rawData;
     const filtered = filterByPeriod(rawData, currentPeriod);
     const config = metricGroups[currentMetricGroup];
-    const aggregated = aggregateData(rawData, currentAggregation, config.metrics);
+
+    // For muse-only metrics, filter data before aggregation
+    const dataForAggregation = config.museOnly ? filterBySource(rawData, 'muse') : rawData;
+    const aggregated = aggregateData(dataForAggregation, currentAggregation, config.metrics);
 
     dailyChart = createDailyChart(filtered, currentMetricGroup);
     trendChart = createTrendChart(aggregated, currentMetricGroup);
