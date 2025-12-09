@@ -20,8 +20,11 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
+from lib import sleep
+
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
+SLEEP_MASTER_CSV = BASE_DIR / 'data/sleep_master.csv'
 
 
 def calc_stats(df):
@@ -81,6 +84,39 @@ def plot_main_chart(df, save_path):
     plt.close()
 
 
+def calc_sleep_stats_for_period(start_date, end_date):
+    """
+    指定期間の睡眠統計を計算
+
+    Parameters
+    ----------
+    start_date : str
+        開始日（YYYY-MM-DD）
+    end_date : str
+        終了日（YYYY-MM-DD）
+
+    Returns
+    -------
+    dict or None
+        睡眠統計。データがない場合はNone
+    """
+    if not SLEEP_MASTER_CSV.exists():
+        return None
+
+    df_sleep = pd.read_csv(SLEEP_MASTER_CSV)
+    df_sleep['dateOfSleep'] = pd.to_datetime(df_sleep['dateOfSleep'])
+
+    # 期間でフィルタ
+    mask = (df_sleep['dateOfSleep'] >= start_date) & (df_sleep['dateOfSleep'] <= end_date)
+    df_period = df_sleep[mask]
+
+    if len(df_period) == 0:
+        return None
+
+    # ライブラリの関数を使用して回復スコアを計算
+    return sleep.calc_recovery_score(df_period)
+
+
 def format_change(val, unit='', positive_is_good=True):
     """変化量をフォーマット（良い/悪いの色付きマーク）"""
     if val == 0:
@@ -89,7 +125,7 @@ def format_change(val, unit='', positive_is_good=True):
     return f"{sign}{val:.2f}{unit}"
 
 
-def generate_report(output_dir, df, stats):
+def generate_report(output_dir, df, stats, sleep_stats=None):
     """マークダウンレポートを生成"""
     report_path = output_dir / 'REPORT.md'
 
@@ -112,6 +148,39 @@ def generate_report(output_dir, df, stats):
         )
     daily_table = '\n'.join(daily_rows)
 
+    # 睡眠セクション
+    sleep_section = ""
+    if sleep_stats:
+        # 回復スコアの評価
+        score = sleep_stats['recovery_score']
+        if score >= 90:
+            score_eval = "優秀"
+        elif score >= 75:
+            score_eval = "良好"
+        elif score >= 60:
+            score_eval = "普通"
+        else:
+            score_eval = "要改善"
+
+        sleep_section = f"""
+---
+
+## 睡眠と回復
+
+> 筋肉の回復には質の良い睡眠が不可欠。深い睡眠中に成長ホルモンが分泌される。
+
+### 回復スコア: **{score:.0f}/100** ({score_eval})
+
+| 指標 | 値 | 推奨 |
+|------|-----|------|
+| 平均睡眠時間 | {sleep_stats['avg_sleep_hours']:.1f}時間 | 7-9時間 |
+| 平均効率 | {sleep_stats['avg_efficiency']:.0f}% | 85%以上 |
+| 深い睡眠 | {sleep_stats['avg_deep_minutes']:.0f}分 ({sleep_stats.get('deep_pct', 0):.0f}%) | 13-23% |
+| レム睡眠 | {sleep_stats['avg_rem_minutes']:.0f}分 ({sleep_stats.get('rem_pct', 0):.0f}%) | 20-25% |
+
+> 回復スコア = 深い睡眠(40%) + 効率(30%) + 時間(30%)
+"""
+
     report = f"""# 週次体組成レポート
 
 **期間**: {start} 〜 {end}（{len(df)}日間）
@@ -128,7 +197,7 @@ def generate_report(output_dir, df, stats):
 | 除脂肪体重 | {stats['lbm']['first']:.2f}kg | {stats['lbm']['last']:.2f}kg | **{format_change(stats['lbm']['change'], 'kg')}** |
 
 > 除脂肪体重 = 体重 − 体脂肪量
-
+{sleep_section}
 ---
 
 ## 推移
@@ -200,11 +269,19 @@ def main():
     # Calculate stats
     stats = calc_stats(df)
 
+    # Calculate sleep stats for the same period
+    dates = pd.to_datetime(df['date'])
+    start_date = dates.min().strftime('%Y-%m-%d')
+    end_date = dates.max().strftime('%Y-%m-%d')
+    sleep_stats = calc_sleep_stats_for_period(start_date, end_date)
+    if sleep_stats:
+        print(f'Sleep data: {sleep_stats["days"]} days')
+
     # Generate chart
     plot_main_chart(df, img_dir / 'trend.png')
 
     # Generate report
-    generate_report(output_dir, df, stats)
+    generate_report(output_dir, df, stats, sleep_stats)
 
     return 0
 

@@ -14,6 +14,7 @@ from .sleep_analysis import (
     calc_sleep_stats,
     calc_sleep_timing,
     calc_time_stats,
+    calc_recovery_score,
     print_sleep_stats,
     # 可視化
     plot_sleep_duration,
@@ -47,6 +48,7 @@ __all__ = [
     'calc_sleep_stats',
     'calc_sleep_timing',
     'calc_time_stats',
+    'calc_recovery_score',
     'print_sleep_stats',
     'plot_sleep_duration',
     'plot_time_in_bed_stacked',

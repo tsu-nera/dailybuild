@@ -212,6 +212,64 @@ def calc_sleep_timing(df_levels):
     return results
 
 
+def calc_recovery_score(df_master):
+    """
+    筋トレ向け回復スコアを計算
+
+    深い睡眠（成長ホルモン分泌）、睡眠効率、睡眠時間から
+    筋肉回復に適した睡眠かを0-100のスコアで評価する。
+
+    Args:
+        df_master: sleep_master.csvを読み込んだDataFrame
+
+    Returns:
+        dict: 回復スコアと各指標
+    """
+    df = df_master.copy()
+
+    # 基本統計
+    avg_sleep_hours = df['minutesAsleep'].mean() / 60
+    avg_efficiency = df['efficiency'].mean()
+    avg_deep_minutes = df['deepMinutes'].mean()
+    avg_rem_minutes = df['remMinutes'].mean()
+    avg_light_minutes = df['lightMinutes'].mean()
+    total_sleep_hours = df['minutesAsleep'].sum() / 60
+
+    result = {
+        'days': len(df),
+        'avg_sleep_hours': avg_sleep_hours,
+        'avg_efficiency': avg_efficiency,
+        'avg_deep_minutes': avg_deep_minutes,
+        'avg_rem_minutes': avg_rem_minutes,
+        'avg_light_minutes': avg_light_minutes,
+        'total_sleep_hours': total_sleep_hours,
+    }
+
+    # 深い睡眠・REMの割合
+    total_sleep = df['minutesAsleep'].mean()
+    if total_sleep > 0:
+        result['deep_pct'] = avg_deep_minutes / total_sleep * 100
+        result['rem_pct'] = avg_rem_minutes / total_sleep * 100
+    else:
+        result['deep_pct'] = 0
+        result['rem_pct'] = 0
+
+    # 回復スコア計算
+    # 深い睡眠: 18%を100点（13-23%が推奨範囲の中央）
+    # 効率: 85%を100点
+    # 時間: 7時間を100点
+    deep_score = min(result['deep_pct'] / 18 * 100, 100)
+    efficiency_score = min(avg_efficiency / 85 * 100, 100)
+    duration_score = min(avg_sleep_hours / 7 * 100, 100)
+
+    result['recovery_score'] = deep_score * 0.4 + efficiency_score * 0.3 + duration_score * 0.3
+    result['deep_score'] = deep_score
+    result['efficiency_score'] = efficiency_score
+    result['duration_score'] = duration_score
+
+    return result
+
+
 def print_sleep_stats(stats):
     """統計情報を整形して出力"""
     print("=== 睡眠データ基本情報 ===")

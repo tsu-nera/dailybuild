@@ -1,0 +1,81 @@
+name: Deploy Meditation Dashboard
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+  # Schedule: Run daily at 9:00 AM JST (0:00 UTC)
+  schedule:
+    - cron: '0 0 * * *'
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Tokyo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-auth google-api-python-client
+
+      - name: Setup Google credentials
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+        run: |
+          mkdir -p /tmp/credentials
+          echo "$GDRIVE_CREDENTIALS" > /tmp/credentials/gdrive.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials/gdrive.json" >> $GITHUB_ENV
+
+      - name: Download meditation log from Google Spreadsheet
+        env:
+          GSHEET_SESSION_LOG_ID: ${{ secrets.GSHEET_SESSION_LOG_ID }}
+        run: |
+          python scripts/download_meditation_log.py \
+            --sheet-id "$GSHEET_SESSION_LOG_ID" \
+            --output ./data/meditation_log.csv
+
+      - name: Build meditation dashboard
+        run: |
+          python scripts/build_meditation_dashboard.py
+          echo "Dashboard built successfully"
+          ls -la web/meditation/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './web/meditation'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
