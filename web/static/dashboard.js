@@ -69,7 +69,7 @@ function filterBySource(data, source) {
 let currentMetricGroup = 'duration';
 let currentPeriod = '1w';
 let currentAggregation = 'weekly';
-let currentUnit = 'hours';  // 'hours' or 'chu' (1炷 = 40min)
+let currentUnit = 'chu';  // 'hours' or 'chu' (1炷 = 40min)
 const CHU_MINUTES = 40;
 let dailyChart, trendChart;
 
