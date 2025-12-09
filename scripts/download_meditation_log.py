@@ -28,7 +28,7 @@ from googleapiclient.discovery import build
 
 # デフォルト設定
 DEFAULT_SHEET_ID = "1S0SwyRbM2cAATv_IOpkOspor-_Ov49rTygyTFr2gkwA"
-DEFAULT_CREDENTIALS = "private/gdrive-creds.json"
+DEFAULT_CREDENTIALS = "config/gcloud_creds.json"
 
 # APIスコープ（読み取り専用）
 SCOPES = [
