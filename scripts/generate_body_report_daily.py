@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-週次体組成レポート生成スクリプト
+体組成レポート生成スクリプト（日次・週次・月次）
 
 Usage:
-    python generate_body_report_weekly.py [--days <N>] [--week <N>]
+    python generate_body_report_daily.py [--days <N>] [--week <N>] [--month <N>]
 """
 
 import sys
@@ -181,7 +181,7 @@ def generate_report(output_dir, df, stats, sleep_stats=None):
 > 回復スコア = 深い睡眠(40%) + 効率(30%) + 時間(30%)
 """
 
-    report = f"""# 週次体組成レポート
+    report = f"""# 体組成レポート
 
 **期間**: {start} 〜 {end}（{len(df)}日間）
 
@@ -222,19 +222,23 @@ def generate_report(output_dir, df, stats, sleep_stats=None):
 def main():
     import argparse
 
+
     parser = argparse.ArgumentParser(description='Body Composition Report')
     parser.add_argument('--output', type=Path, default=BASE_DIR / 'tmp/body_report')
     parser.add_argument('--days', type=int, default=None)
     parser.add_argument('--week', type=str, default=None)
+    parser.add_argument('--month', type=str, default=None)
     parser.add_argument('--year', type=int, default=None)
     args = parser.parse_args()
 
     # Load data
     df = pd.read_csv(DATA_CSV, index_col='date', parse_dates=True)
 
-    # Filter by week or days
+    # Filter by week, month or days
     week = None
+    month = None
     year = args.year
+    
     if args.week:
         if args.week.lower() == 'current':
             iso = datetime.now().isocalendar()
@@ -247,6 +251,18 @@ def main():
         df['iso_year'] = df.index.isocalendar().year
         df = df[(df['iso_week'] == week) & (df['iso_year'] == year)]
         df = df.drop(columns=['iso_week', 'iso_year'])
+
+    elif args.month:
+        if args.month.lower() == 'current':
+            now = datetime.now()
+            month = now.month
+            year = year or now.year
+        else:
+            month = int(args.month)
+            year = year or datetime.now().year
+        
+        df = df[(df.index.month == month) & (df.index.year == year)]
+
     elif args.days:
         df = df.tail(args.days)
 
@@ -260,6 +276,8 @@ def main():
     # Output directory
     if week:
         output_dir = BASE_DIR / f'reports/body/weekly/{year}-W{week:02d}'
+    elif month:
+        output_dir = BASE_DIR / f'reports/body/monthly/{year}-{month:02d}'
     else:
         output_dir = args.output
 
