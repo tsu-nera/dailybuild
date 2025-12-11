@@ -23,8 +23,8 @@ BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config/fitbit_creds.json'
 TOKEN_FILE = BASE_DIR / 'config/fitbit_token.json'
 GCP_CREDS_FILE = BASE_DIR / 'config/gcp_service_account.json'
-OUT_FILE = BASE_DIR / 'data/sleep_master.csv'
-OUT_LEVELS_FILE = BASE_DIR / 'data/sleep_levels.csv'
+OUT_FILE = BASE_DIR / 'data/fitbit/sleep.csv'
+OUT_LEVELS_FILE = BASE_DIR / 'data/fitbit/sleep_levels.csv'
 
 
 def get_fitbit_credentials():

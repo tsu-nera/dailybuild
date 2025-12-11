@@ -26,8 +26,8 @@ from lib import sleep
 
 # データファイルパス
 BASE_DIR = project_root
-MASTER_CSV = BASE_DIR / 'data/sleep_master.csv'
-LEVELS_CSV = BASE_DIR / 'data/sleep_levels.csv'
+MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
+LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
 
 
 def generate_markdown_report(output_dir, results):

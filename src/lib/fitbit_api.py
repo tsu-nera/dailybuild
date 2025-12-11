@@ -51,6 +51,71 @@ def create_client(creds_file, token_file):
 
 
 # =============================================================================
+# 汎用APIヘルパー
+# =============================================================================
+
+def _build_url(client, resource_path, api_version='1.2'):
+    """
+    Fitbit API URLを構築
+
+    Args:
+        client: Fitbitクライアント
+        resource_path: リソースパス（例: 'sleep/date/2025-01-01'）
+        api_version: APIバージョン（デフォルト: '1'）
+
+    Returns:
+        完全なAPI URL
+    """
+    return f"{client.API_ENDPOINT}/{api_version}/user/-/{resource_path}.json"
+
+
+def get_by_date(client, resource, date, api_version='1.2'):
+    """
+    日付指定でリソースを取得（汎用）
+
+    Args:
+        client: Fitbitクライアント
+        resource: リソース名（例: 'sleep', 'activities'）
+        date: 日付（datetime.date）
+        api_version: APIバージョン（デフォルト: '1'）
+
+    Returns:
+        APIレスポンス（dict）
+
+    Example:
+        get_by_date(client, 'sleep', date, '1.2')
+        -> GET /1.2/user/-/sleep/date/2025-01-01.json
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = _build_url(client, f"{resource}/date/{date_str}", api_version)
+    return client.make_request(url)
+
+
+def get_by_date_range(client, resource, start_date, end_date, api_version='1.2'):
+    """
+    期間指定でリソースを取得（汎用）
+
+    Args:
+        client: Fitbitクライアント
+        resource: リソース名（例: 'sleep', 'activities/tracker/steps'）
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+        api_version: APIバージョン（デフォルト: '1'）
+
+    Returns:
+        APIレスポンス（dict）
+
+    Example:
+        get_by_date_range(client, 'sleep', start, end, '1.2')
+        -> GET /1.2/user/-/sleep/date/2025-01-01/2025-01-07.json
+    """
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    url = _build_url(client, f"{resource}/date/{start_str}/{end_str}", api_version)
+    return client.make_request(url)
+
+
+# =============================================================================
 # Sleep API v1.2
 # https://dev.fitbit.com/build/reference/web-api/sleep/
 # =============================================================================
@@ -68,9 +133,7 @@ def get_sleep_log_by_date(client, date):
 
     https://dev.fitbit.com/build/reference/web-api/sleep/get-sleep-log-by-date/
     """
-    date_str = date.strftime('%Y-%m-%d')
-    url = f"{client.API_ENDPOINT}/1.2/user/-/sleep/date/{date_str}.json"
-    return client.make_request(url)
+    return get_by_date(client, 'sleep', date)
 
 
 def get_sleep_log_by_date_range(client, start_date, end_date):
@@ -90,10 +153,7 @@ def get_sleep_log_by_date_range(client, start_date, end_date):
 
     https://dev.fitbit.com/build/reference/web-api/sleep/get-sleep-log-by-date-range/
     """
-    start_str = start_date.strftime('%Y-%m-%d')
-    end_str = end_date.strftime('%Y-%m-%d')
-    url = f"{client.API_ENDPOINT}/1.2/user/-/sleep/date/{start_str}/{end_str}.json"
-    return client.make_request(url)
+    return get_by_date_range(client, 'sleep', start_date, end_date)
 
 
 def parse_sleep(data):
@@ -393,9 +453,7 @@ def get_daily_activity_summary(client, date):
 
     https://dev.fitbit.com/build/reference/web-api/activity/get-daily-activity-summary/
     """
-    date_str = date.strftime('%Y-%m-%d')
-    url = f"{client.API_ENDPOINT}/1/user/-/activities/date/{date_str}.json"
-    return client.make_request(url)
+    return get_by_date(client, 'activities', date, api_version='1')
 
 
 def parse_activity_log(data):
@@ -439,6 +497,98 @@ def parse_activity_log(data):
     return results
 
 
+def get_activity_time_series_by_date_range(client, resource_path, start_date, end_date):
+    """
+    期間指定でアクティビティTime Seriesデータを取得
+
+    Args:
+        client: Fitbitクライアント
+        resource_path: リソースパス（例: 'calories', 'steps', 'distance'）
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: activities-{resource} 配列
+
+    Available resource_path:
+        - calories: 総消費カロリー
+        - caloriesBMR: 基礎代謝カロリー
+        - activityCalories: アクティビティ消費カロリー
+        - steps: 歩数
+        - distance: 距離
+        - floors: 階段
+        - elevation: 標高
+        - minutesSedentary: 座位時間
+        - minutesLightlyActive: 軽い活動時間
+        - minutesFairlyActive: やや活発時間
+        - minutesVeryActive: とても活発時間
+
+    https://dev.fitbit.com/build/reference/web-api/activity-timeseries/get-activity-timeseries-by-date-range/
+    """
+    return get_by_date_range(client, f'activities/tracker/{resource_path}', start_date, end_date, api_version='1')
+
+
+def get_activity_summary_by_date_range(client, start_date, end_date):
+    """
+    期間指定で主要なアクティビティデータをまとめて取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        pandas.DataFrame: 日別のアクティビティデータ
+    """
+    import pandas as pd
+
+    resources = [
+        'calories',
+        'activityCalories',
+        'steps',
+        'distance',
+        'minutesSedentary',
+        'minutesLightlyActive',
+        'minutesFairlyActive',
+        'minutesVeryActive',
+    ]
+
+    # 各リソースを取得
+    data_dict = {}
+    for resource in resources:
+        response = get_activity_time_series_by_date_range(client, resource, start_date, end_date)
+        key = f'activities-tracker-{resource}'
+        if key in response:
+            for item in response[key]:
+                date = item['dateTime']
+                if date not in data_dict:
+                    data_dict[date] = {'date': date}
+                # リソース名をカラム名に変換
+                col_name = resource
+                if resource.startswith('minutes'):
+                    col_name = resource.replace('minutes', '') + 'Minutes'
+                data_dict[date][col_name] = float(item['value']) if item['value'] else 0
+
+    # DataFrameに変換
+    records = list(data_dict.values())
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+
+    # カラム名を統一
+    rename_map = {
+        'calories': 'caloriesOut',
+        'SedentaryMinutes': 'sedentaryMinutes',
+        'LightlyActiveMinutes': 'lightlyActiveMinutes',
+        'FairlyActiveMinutes': 'fairlyActiveMinutes',
+        'VeryActiveMinutes': 'veryActiveMinutes',
+    }
+    df.rename(columns=rename_map, inplace=True)
+
+    return df
+
+
 # Activity Type IDs
 ACTIVITY_TYPE_MEDITATING = 7075
 
@@ -463,3 +613,136 @@ def get_meditation_logs(client, before_date=None, after_date=None, limit=100):
     data = get_activity_log_list(client, before_date, after_date, limit=limit)
     activities = parse_activity_log(data)
     return [act for act in activities if act['activityTypeId'] == ACTIVITY_TYPE_MEDITATING]
+
+
+# =============================================================================
+# HRV (Heart Rate Variability) API
+# https://dev.fitbit.com/build/reference/web-api/heartrate-variability/
+# =============================================================================
+
+def get_hrv_by_date(client, date):
+    """
+    指定日のHRV（心拍変動）データを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: hrv配列
+
+    Endpoint: /1/user/-/hrv/date/{date}.json
+    https://dev.fitbit.com/build/reference/web-api/heartrate-variability/get-hrv-by-date/
+    """
+    return get_by_date(client, 'hrv', date, api_version='1')
+
+
+def get_hrv_by_date_range(client, start_date, end_date):
+    """
+    期間指定でHRV（心拍変動）データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: hrv配列
+
+    Note:
+        最大30日間まで一括取得可能
+
+    Endpoint: /1/user/-/hrv/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/heartrate-variability/get-hrv-by-date-range/
+    """
+    return get_by_date_range(client, 'hrv', start_date, end_date, api_version='1')
+
+
+def parse_hrv(data):
+    """
+    HRVデータをリストに変換
+
+    Args:
+        data: get_hrv_by_dateまたはget_hrv_by_date_rangeの戻り値
+
+    Returns:
+        HRVエントリのリスト
+
+    HRVデータ構造:
+        - dateTime: 日付
+        - value.dailyRmssd: 日次RMSSD（Root Mean Square of Successive Differences）
+        - value.deepRmssd: 深い睡眠中のRMSSD
+    """
+    if not data.get('hrv'):
+        return []
+
+    results = []
+    for entry in data['hrv']:
+        value = entry.get('value', {})
+        row = {
+            'date': entry.get('dateTime'),
+            'daily_rmssd': value.get('dailyRmssd'),
+            'deep_rmssd': value.get('deepRmssd'),
+        }
+        results.append(row)
+
+    return results
+
+
+# =============================================================================
+# Heart Rate API
+# https://dev.fitbit.com/build/reference/web-api/heartrate-timeseries/
+# =============================================================================
+
+def get_heart_rate_by_date_range(client, start_date, end_date):
+    """
+    期間指定で心拍数データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: activities-heart配列
+
+    Note:
+        最大30日間まで一括取得可能
+        安静時心拍数（restingHeartRate）が含まれる
+
+    Endpoint: /1/user/-/activities/heart/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/heartrate-timeseries/get-heartrate-timeseries-by-date-range/
+    """
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/activities/heart/date/{start_str}/{end_str}.json"
+    return client.make_request(url)
+
+
+def parse_heart_rate(data):
+    """
+    心拍数データをリストに変換
+
+    Args:
+        data: get_heart_rate_by_date_rangeの戻り値
+
+    Returns:
+        心拍数エントリのリスト
+
+    データ構造:
+        - dateTime: 日付
+        - value.restingHeartRate: 安静時心拍数（RHR）
+    """
+    if not data.get('activities-heart'):
+        return []
+
+    results = []
+    for entry in data['activities-heart']:
+        value = entry.get('value', {})
+        row = {
+            'date': entry.get('dateTime'),
+            'resting_heart_rate': value.get('restingHeartRate'),
+        }
+        results.append(row)
+
+    return results

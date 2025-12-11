@@ -20,11 +20,14 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import sleep
+from lib import sleep, hrv
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
-SLEEP_MASTER_CSV = BASE_DIR / 'data/sleep_master.csv'
+SLEEP_MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
+ACTIVITY_MASTER_CSV = BASE_DIR / 'data/fitbit/activity.csv'
+HRV_MASTER_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
+HEART_RATE_MASTER_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
 
 
 def calc_stats(df):
@@ -117,6 +120,97 @@ def calc_sleep_stats_for_period(start_date, end_date):
     return sleep.calc_recovery_score(df_period)
 
 
+def calc_activity_stats_for_period(start_date, end_date):
+    """
+    指定期間のアクティビティ統計を計算
+
+    Parameters
+    ----------
+    start_date : str
+        開始日（YYYY-MM-DD）
+    end_date : str
+        終了日（YYYY-MM-DD）
+
+    Returns
+    -------
+    dict or None
+        アクティビティ統計。データがない場合はNone
+    """
+    if not ACTIVITY_MASTER_CSV.exists():
+        return None
+
+    df_activity = pd.read_csv(ACTIVITY_MASTER_CSV)
+    df_activity['date'] = pd.to_datetime(df_activity['date'])
+
+    # 期間でフィルタ
+    mask = (df_activity['date'] >= start_date) & (df_activity['date'] <= end_date)
+    df_period = df_activity[mask]
+
+    if len(df_period) == 0:
+        return None
+
+    # 統計を計算
+    return {
+        'days': len(df_period),
+        'avg_calories_out': df_period['caloriesOut'].mean(),
+        'total_calories_out': df_period['caloriesOut'].sum(),
+        'avg_activity_calories': df_period['activityCalories'].mean(),
+        'avg_steps': df_period['steps'].mean(),
+        'total_steps': df_period['steps'].sum(),
+        'avg_very_active': df_period['veryActiveMinutes'].mean(),
+        'avg_fairly_active': df_period['fairlyActiveMinutes'].mean(),
+        'avg_lightly_active': df_period['lightlyActiveMinutes'].mean(),
+        'avg_sedentary': df_period['sedentaryMinutes'].mean(),
+        # 日別データ
+        'daily': df_period[['date', 'caloriesOut', 'activityCalories', 'steps', 
+                            'veryActiveMinutes', 'fairlyActiveMinutes']].to_dict('records'),
+    }
+
+
+def calc_hrv_stats_for_period(start_date, end_date):
+    """
+    指定期間のHRV統計を計算（心拍数データも統合）
+
+    Parameters
+    ----------
+    start_date : str
+        開始日（YYYY-MM-DD）
+    end_date : str
+        終了日（YYYY-MM-DD）
+
+    Returns
+    -------
+    dict or None
+        HRV統計。データがない場合はNone
+    """
+    if not HRV_MASTER_CSV.exists():
+        return None
+
+    df_hrv = pd.read_csv(HRV_MASTER_CSV)
+    df_hrv['date'] = pd.to_datetime(df_hrv['date'])
+    df_hrv.set_index('date', inplace=True)
+
+    # 期間でフィルタ
+    mask = (df_hrv.index >= start_date) & (df_hrv.index <= end_date)
+    df_hrv_period = df_hrv[mask]
+
+    if len(df_hrv_period) == 0:
+        return None
+
+    # 心拍数データも読み込み（あれば）
+    df_rhr_period = None
+    if HEART_RATE_MASTER_CSV.exists():
+        df_rhr = pd.read_csv(HEART_RATE_MASTER_CSV)
+        df_rhr['date'] = pd.to_datetime(df_rhr['date'])
+        df_rhr.set_index('date', inplace=True)
+
+        mask = (df_rhr.index >= start_date) & (df_rhr.index <= end_date)
+        df_rhr_period = df_rhr[mask]
+
+    # ライブラリの関数を使用してHRV統計を計算
+    return hrv.calc_hrv_stats_for_period(df_hrv_period, df_rhr_period)
+
+
 def format_change(val, unit='', positive_is_good=True):
     """変化量をフォーマット（良い/悪いの色付きマーク）"""
     if val == 0:
@@ -125,7 +219,7 @@ def format_change(val, unit='', positive_is_good=True):
     return f"{sign}{val:.2f}{unit}"
 
 
-def generate_report(output_dir, df, stats, sleep_stats=None):
+def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None):
     """マークダウンレポートを生成"""
     report_path = output_dir / 'REPORT.md'
 
@@ -148,28 +242,13 @@ def generate_report(output_dir, df, stats, sleep_stats=None):
         )
     daily_table = '\n'.join(daily_rows)
 
-    # 睡眠セクション
+    # 睡眠セクション（回復の一部）
     sleep_section = ""
     if sleep_stats:
-        # 回復スコアの評価
-        score = sleep_stats['recovery_score']
-        if score >= 90:
-            score_eval = "優秀"
-        elif score >= 75:
-            score_eval = "良好"
-        elif score >= 60:
-            score_eval = "普通"
-        else:
-            score_eval = "要改善"
-
         sleep_section = f"""
----
-
-## 睡眠と回復
+### 睡眠
 
 > 筋肉の回復には質の良い睡眠が不可欠。深い睡眠中に成長ホルモンが分泌される。
-
-### 回復スコア: **{score:.0f}/100** ({score_eval})
 
 | 指標 | 値 | 推奨 |
 |------|-----|------|
@@ -177,9 +256,119 @@ def generate_report(output_dir, df, stats, sleep_stats=None):
 | 平均効率 | {sleep_stats['avg_efficiency']:.0f}% | 85%以上 |
 | 深い睡眠 | {sleep_stats['avg_deep_minutes']:.0f}分 ({sleep_stats.get('deep_pct', 0):.0f}%) | 13-23% |
 | レム睡眠 | {sleep_stats['avg_rem_minutes']:.0f}分 ({sleep_stats.get('rem_pct', 0):.0f}%) | 20-25% |
-
-> 回復スコア = 深い睡眠(40%) + 効率(30%) + 時間(30%)
 """
+
+    # HRVセクション（回復の一部）
+    hrv_condition_section = ""
+    if hrv_stats:
+        # 心拍数データがあれば表示
+        if 'avg_rhr' in hrv_stats:
+            hrv_condition_section = f"""
+### HRVとコンディション
+
+> HRVは自律神経のバランスを反映。心拍数と組み合わせて回復状態を評価。
+
+| 指標 | 値 | 変化 |
+|------|-----|------|
+| 平均RMSSD | {hrv_stats['avg_rmssd']:.1f}ms | {format_change(hrv_stats.get('change_rmssd', 0), 'ms')} |
+| 平均安静時心拍数 | {hrv_stats['avg_rhr']:.1f}bpm | {format_change(hrv_stats.get('change_rhr', 0), 'bpm')} |
+
+> HRV上昇 & 心拍数低下 = 回復良好、HRV低下 & 心拍数上昇 = 疲労
+"""
+        else:
+            hrv_condition_section = f"""
+### HRVとコンディション
+
+> HRVは自律神経のバランスを反映。
+
+| 指標 | 値 |
+|------|-----|
+| 平均RMSSD | {hrv_stats['avg_rmssd']:.1f}ms |
+| 変動幅 | {hrv_stats['std_rmssd']:.1f}ms |
+"""
+
+    # トレーニング負荷セクション
+    training_load_section = ""
+    if hrv_stats:
+        training_load_section = f"""
+### トレーニング負荷
+
+> HRVの変動パターンから負荷を推定。
+
+| 指標 | 値 |
+|------|-----|
+| HRV変動幅 | {hrv_stats['std_rmssd']:.1f}ms |
+| 回復サイクル | {hrv_stats.get('cycles', 0)}回 |
+| 平均乖離率 | {hrv_stats.get('avg_deviation', 0):.1f}% |
+
+> 変動幅が大きい = 負荷がかかっている、サイクル数が多い = 回復できている
+"""
+
+    # アクティビティセクション（トレーニングの一部）
+    activity_section = ""
+    if activity_stats:
+        # 日別テーブル
+        activity_rows = []
+        for row in activity_stats['daily']:
+            date_str = pd.to_datetime(row['date']).strftime('%m-%d')
+            activity_rows.append(
+                f"| {date_str} | {row['caloriesOut']:,.0f} | {row['activityCalories']:,.0f} | "
+                f"{row['steps']:,.0f} | {row['veryActiveMinutes']:.0f} | {row['fairlyActiveMinutes']:.0f} |"
+            )
+        activity_table = '\n'.join(activity_rows)
+
+        activity_section = f"""
+### アクティビティ
+
+> 消費カロリーと活動量の記録。体重管理の参考に。
+
+**サマリー**
+
+| 指標 | 平均 | 合計 |
+|------|------|------|
+| 総消費カロリー | {activity_stats['avg_calories_out']:,.0f} kcal | {activity_stats['total_calories_out']:,.0f} kcal |
+| 活動カロリー | {activity_stats['avg_activity_calories']:,.0f} kcal | - |
+| 歩数 | {activity_stats['avg_steps']:,.0f} 歩 | {activity_stats['total_steps']:,.0f} 歩 |
+
+**活動時間（平均）**
+
+| 強度 | 分/日 |
+|------|-------|
+| とても活発 | {activity_stats['avg_very_active']:.0f} 分 |
+| やや活発 | {activity_stats['avg_fairly_active']:.0f} 分 |
+| 軽い活動 | {activity_stats['avg_lightly_active']:.0f} 分 |
+| 座位 | {activity_stats['avg_sedentary']:.0f} 分 |
+
+**日別データ**
+
+| 日付 | 総消費 | 活動 | 歩数 | とても活発 | やや活発 |
+|------|--------|------|------|------------|----------|
+{activity_table}
+"""
+
+    # 回復セクション
+    recovery_section = ""
+    if sleep_section or hrv_condition_section:
+        recovery_section = f"""
+---
+
+## 回復
+{sleep_section}{hrv_condition_section}
+"""
+
+    # トレーニングセクション
+    training_section = ""
+    if training_load_section or activity_section:
+        training_section = f"""
+---
+
+## トレーニング
+{training_load_section}{activity_section}
+"""
+
+    # 栄養セクション（将来追加予定）
+    nutrition_section = ""
+    # 将来、栄養データが利用可能になったらここに追加
 
     report = f"""# 体組成レポート
 
@@ -197,16 +386,16 @@ def generate_report(output_dir, df, stats, sleep_stats=None):
 | 除脂肪体重 | {stats['lbm']['first']:.2f}kg | {stats['lbm']['last']:.2f}kg | **{format_change(stats['lbm']['change'], 'kg')}** |
 
 > 除脂肪体重 = 体重 − 体脂肪量
-{sleep_section}
+{recovery_section}{training_section}{nutrition_section}
 ---
 
-## 推移
+## 詳細データ
+
+### 推移
 
 ![Body Composition](img/trend.png)
 
----
-
-## 日別データ
+### 日別データ
 
 | 日付 | 体重 | 筋肉量 | 体脂肪率 | 体脂肪量 | 除脂肪 | 内臓脂肪 | 基礎代謝 | 骨量 | 体内年齢 | 体水分率 | 筋質点数 |
 |------|------|--------|----------|----------|--------|----------|----------|------|----------|----------|----------|
@@ -295,11 +484,21 @@ def main():
     if sleep_stats:
         print(f'Sleep data: {sleep_stats["days"]} days')
 
+    # Calculate activity stats for the same period
+    activity_stats = calc_activity_stats_for_period(start_date, end_date)
+    if activity_stats:
+        print(f'Activity data: {activity_stats["days"]} days')
+
+    # Calculate HRV stats for the same period
+    hrv_stats = calc_hrv_stats_for_period(start_date, end_date)
+    if hrv_stats:
+        print(f'HRV data: {hrv_stats["days"]} days')
+
     # Generate chart
     plot_main_chart(df, img_dir / 'trend.png')
 
     # Generate report
-    generate_report(output_dir, df, stats, sleep_stats)
+    generate_report(output_dir, df, stats, sleep_stats, activity_stats, hrv_stats)
 
     return 0
 

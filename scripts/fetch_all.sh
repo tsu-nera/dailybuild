@@ -3,8 +3,8 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-echo "=== Fitbit睡眠データ取得 ==="
-python scripts/fetch_sleep.py "$@"
+echo "=== Fitbitデータ取得 ==="
+python scripts/fetch_fitbit.py --all "$@"
 
 echo ""
 echo "=== HealthPlanet体組成計データ取得 ==="
