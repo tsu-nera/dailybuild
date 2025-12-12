@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import sleep
+from lib.analytics import sleep
 
 # データファイルパス
 BASE_DIR = project_root

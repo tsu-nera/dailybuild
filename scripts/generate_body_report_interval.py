@@ -16,6 +16,8 @@ import numpy as np
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
+from lib.analytics import body
+
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
 
@@ -53,7 +55,10 @@ def main():
         return 1
 
     df = pd.read_csv(DATA_CSV, index_col='date', parse_dates=True)
-    
+
+    # 計算カラムを追加（LBM, FFMI）
+    df = body.prepare_body_df(df)
+
     # ISO週番号でグルーピング（月曜始まり〜日曜終わり）
     # isocalendar() returns (year, week, day)
     df['iso_year'] = df.index.isocalendar().year
@@ -65,17 +70,21 @@ def main():
         'weight': 'mean',
         'muscle_mass': 'mean',
         'body_fat_rate': 'mean',
+        'lbm': 'mean',
+        'ffmi': 'mean',
         'visceral_fat_level': 'mean',
         'iso_year': 'count' # 日数カウント用
     }
-    
+
     weekly = df.groupby(['iso_year', 'iso_week']).agg(agg_funcs)
     weekly = weekly.rename(columns={'iso_year': 'days_count'})
-    
+
     # 指標ごとの前週差分（Delta）を計算
     weekly['weight_diff'] = weekly['weight'].diff()
     weekly['muscle_diff'] = weekly['muscle_mass'].diff()
     weekly['fat_rate_diff'] = weekly['body_fat_rate'].diff()
+    weekly['lbm_diff'] = weekly['lbm'].diff()
+    weekly['ffmi_diff'] = weekly['ffmi'].diff()
     
     # 直近N週間に絞る
     weekly = weekly.tail(args.weeks)
@@ -86,8 +95,8 @@ def main():
     report_lines.append("")
     report_lines.append("7日間平均値の推移。前週比でトレンドを確認。")
     report_lines.append("")
-    report_lines.append("| 週 (No.) | 日数 | 平均体重 (前週差) | 平均筋肉量 (前週差) | 平均体脂肪率 (前週差) | 内臓脂肪 |")
-    report_lines.append("|---|---|---|---|---|---|")
+    report_lines.append("| 週 (No.) | 日数 | 平均体重 (前週差) | 平均筋肉量 (前週差) | 平均体脂肪率 (前週差) | 平均LBM (前週差) | 平均FFMI (前週差) | 内臓脂肪 |")
+    report_lines.append("|---|---|---|---|---|---|---|---|")
     
     # Sort descending for display? No, keep chronological usually, 
     # but for "latest first" logs, descending is better. Let's do descending (newest top).
@@ -111,11 +120,13 @@ def main():
         weight_str = f"{row['weight']:.2f} ({format_change(row['weight_diff'], '', inverse=True)})"
         muscle_str = f"{row['muscle_mass']:.2f} ({format_change(row['muscle_diff'], '')})"
         fat_str = f"{row['body_fat_rate']:.1f}% ({format_change(row['fat_rate_diff'], '%', inverse=True)})"
-        
+        lbm_str = f"{row['lbm']:.2f} ({format_change(row['lbm_diff'], '')})"
+        ffmi_str = f"{row['ffmi']:.1f} ({format_change(row['ffmi_diff'], '')})"
+
         report_lines.append(
             f"| **{year}-W{week:02d}** | {row['days_count']}日 | "
             f"{weight_str} | {muscle_str} | {fat_str} | "
-            f"{row['visceral_fat_level']:.1f} |"
+            f"{lbm_str} | {ffmi_str} | {row['visceral_fat_level']:.1f} |"
         )
 
     output_path = args.output

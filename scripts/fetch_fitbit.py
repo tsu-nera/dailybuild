@@ -17,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import argparse
 
-from lib import fitbit_api, fitbit_fetcher
+from lib.clients import fitbit_api
+from lib import fitbit_fetcher
 
 BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config/fitbit_creds.json'

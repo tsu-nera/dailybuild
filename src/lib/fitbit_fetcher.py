@@ -11,7 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import fitbit_api, csv_utils
+from .clients import fitbit_api
+from .utils import csv_utils
 
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / 'data' / 'fitbit'

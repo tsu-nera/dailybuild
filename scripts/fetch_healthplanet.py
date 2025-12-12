@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import argparse
 import json
 import pandas as pd
-from lib import healthplanet_unofficial as hp, csv_utils
+from lib.clients import healthplanet_unofficial as hp
+from lib.utils import csv_utils
 
 BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config/healthplanet_creds.json'

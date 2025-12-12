@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import sleep, hrv
+from lib.analytics import sleep, hrv, body
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
@@ -28,25 +28,6 @@ SLEEP_MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
 ACTIVITY_MASTER_CSV = BASE_DIR / 'data/fitbit/activity.csv'
 HRV_MASTER_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 HEART_RATE_MASTER_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
-
-
-def calc_stats(df):
-    """主要指標の統計を計算"""
-    df = df.copy()
-    df['lbm'] = df['weight'] - df['body_fat_mass']
-
-    stats = {}
-    for col in ['weight', 'muscle_mass', 'body_fat_rate', 'lbm']:
-        if col in df.columns:
-            vals = df[col].dropna()
-            if len(vals) >= 1:
-                stats[col] = {
-                    'first': vals.iloc[0],
-                    'last': vals.iloc[-1],
-                    'change': vals.iloc[-1] - vals.iloc[0] if len(vals) > 1 else 0,
-                    'mean': vals.mean(),
-                }
-    return stats
 
 
 def plot_main_chart(df, save_path):
@@ -211,14 +192,6 @@ def calc_hrv_stats_for_period(start_date, end_date):
     return hrv.calc_hrv_stats_for_period(df_hrv_period, df_rhr_period)
 
 
-def format_change(val, unit='', positive_is_good=True):
-    """変化量をフォーマット（良い/悪いの色付きマーク）"""
-    if val == 0:
-        return f"±0{unit}"
-    sign = '+' if val > 0 else ''
-    return f"{sign}{val:.2f}{unit}"
-
-
 def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None):
     """マークダウンレポートを生成"""
     report_path = output_dir / 'REPORT.md'
@@ -228,19 +201,8 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
     start = dates.min().strftime('%Y-%m-%d')
     end = dates.max().strftime('%Y-%m-%d')
 
-    # 日別テーブル
-    daily_rows = []
-    for _, row in df.iterrows():
-        date_str = pd.to_datetime(row['date']).strftime('%m-%d')
-        lbm = row['weight'] - row['body_fat_mass']
-        daily_rows.append(
-            f"| {date_str} | {row['weight']:.1f} | {row['muscle_mass']:.1f} | "
-            f"{row['body_fat_rate']:.1f} | {row['body_fat_mass']:.2f} | {lbm:.1f} | "
-            f"{row['visceral_fat_level']:.1f} | {row['basal_metabolic_rate']:.0f} | "
-            f"{row['bone_mass']:.1f} | {row['body_age']:.0f} | "
-            f"{row['body_water_rate']:.1f} | {row['muscle_quality_score']:.0f} |"
-        )
-    daily_table = '\n'.join(daily_rows)
+    # 日別テーブル（body.format_daily_table()で生成）
+    daily_table = body.format_daily_table(df)
 
     # 睡眠セクション（回復の一部）
     sleep_section = ""
@@ -270,8 +232,8 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 
 | 指標 | 値 | 変化 |
 |------|-----|------|
-| 平均RMSSD | {hrv_stats['avg_rmssd']:.1f}ms | {format_change(hrv_stats.get('change_rmssd', 0), 'ms')} |
-| 平均安静時心拍数 | {hrv_stats['avg_rhr']:.1f}bpm | {format_change(hrv_stats.get('change_rhr', 0), 'bpm')} |
+| 平均RMSSD | {hrv_stats['avg_rmssd']:.1f}ms | {body.format_change(hrv_stats.get('change_rmssd', 0), 'ms')} |
+| 平均安静時心拍数 | {hrv_stats['avg_rhr']:.1f}bpm | {body.format_change(hrv_stats.get('change_rhr', 0), 'bpm')} |
 
 > HRV上昇 & 心拍数低下 = 回復良好、HRV低下 & 心拍数上昇 = 疲労
 """
@@ -380,10 +342,11 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 
 | 指標 | 開始 | 終了 | 変化 |
 |------|------|------|------|
-| 体重 | {stats['weight']['first']:.2f}kg | {stats['weight']['last']:.2f}kg | **{format_change(stats['weight']['change'], 'kg')}** |
-| 筋肉量 | {stats['muscle_mass']['first']:.2f}kg | {stats['muscle_mass']['last']:.2f}kg | **{format_change(stats['muscle_mass']['change'], 'kg')}** |
-| 体脂肪率 | {stats['body_fat_rate']['first']:.1f}% | {stats['body_fat_rate']['last']:.1f}% | **{format_change(stats['body_fat_rate']['change'], '%')}** |
-| 除脂肪体重 | {stats['lbm']['first']:.2f}kg | {stats['lbm']['last']:.2f}kg | **{format_change(stats['lbm']['change'], 'kg')}** |
+| 体重 | {stats['weight']['first']:.2f}kg | {stats['weight']['last']:.2f}kg | **{body.format_change(stats['weight']['change'], 'kg')}** |
+| 筋肉量 | {stats['muscle_mass']['first']:.2f}kg | {stats['muscle_mass']['last']:.2f}kg | **{body.format_change(stats['muscle_mass']['change'], 'kg')}** |
+| 体脂肪率 | {stats['body_fat_rate']['first']:.1f}% | {stats['body_fat_rate']['last']:.1f}% | **{body.format_change(stats['body_fat_rate']['change'], '%')}** |
+| 除脂肪体重 | {stats['lbm']['first']:.2f}kg | {stats['lbm']['last']:.2f}kg | **{body.format_change(stats['lbm']['change'], 'kg')}** |
+| FFMI | {stats['ffmi']['first']:.1f} | {stats['ffmi']['last']:.1f} | **{body.format_change(stats['ffmi']['change'], '')}** |
 
 > 除脂肪体重 = 体重 − 体脂肪量
 {recovery_section}{training_section}{nutrition_section}
@@ -397,8 +360,6 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 
 ### 日別データ
 
-| 日付 | 体重 | 筋肉量 | 体脂肪率 | 体脂肪量 | 除脂肪 | 内臓脂肪 | 基礎代謝 | 骨量 | 体内年齢 | 体水分率 | 筋質点数 |
-|------|------|--------|----------|----------|--------|----------|----------|------|----------|----------|----------|
 {daily_table}
 """
 
@@ -462,6 +423,9 @@ def main():
     df = df.reset_index()
     print(f'Data: {len(df)} days')
 
+    # 計算カラムを追加（LBM, FFMI）
+    df = body.prepare_body_df(df)
+
     # Output directory
     if week:
         output_dir = BASE_DIR / f'reports/body/weekly/{year}-W{week:02d}'
@@ -474,7 +438,7 @@ def main():
     img_dir.mkdir(parents=True, exist_ok=True)
 
     # Calculate stats
-    stats = calc_stats(df)
+    stats = body.calc_body_stats(df)
 
     # Calculate sleep stats for the same period
     dates = pd.to_datetime(df['date'])
