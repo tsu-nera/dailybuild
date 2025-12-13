@@ -7,3 +7,4 @@
 from . import body
 from . import hrv
 from . import sleep
+from . import workout

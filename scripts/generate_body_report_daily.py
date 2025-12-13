@@ -325,6 +325,9 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 ---
 
 ## トレーニング
+
+> トレーニングログは [Hevy](https://hevy.com/profile) を参照
+
 {training_load_section}{activity_section}
 """
 
