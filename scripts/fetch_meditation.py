@@ -219,41 +219,43 @@ def main():
     print("Fitbitクライアントを作成中...")
     client, updated_token = create_fitbit_client()
 
-    # 期間設定
-    today = dt.date.today()
-    before_date = today + dt.timedelta(days=1)  # 今日を含めるため+1
+    try:
+        # 期間設定
+        today = dt.date.today()
+        before_date = today + dt.timedelta(days=1)  # 今日を含めるため+1
 
-    print(f"瞑想データを取得中... (過去{args.days}日)")
-    meditation_logs = fitbit_api.get_meditation_logs(
-        client,
-        before_date=before_date,
-        limit=100
-    )
+        print(f"瞑想データを取得中... (過去{args.days}日)")
+        meditation_logs = fitbit_api.get_meditation_logs(
+            client,
+            before_date=before_date,
+            limit=100
+        )
 
-    # 指定日数でフィルタ
-    cutoff_date = today - dt.timedelta(days=args.days)
-    filtered_logs = []
-    for log in meditation_logs:
-        log_date = pd.to_datetime(log['startTime']).date()
-        if log_date >= cutoff_date:
-            filtered_logs.append(log)
+        # 指定日数でフィルタ
+        cutoff_date = today - dt.timedelta(days=args.days)
+        filtered_logs = []
+        for log in meditation_logs:
+            log_date = pd.to_datetime(log['startTime']).date()
+            if log_date >= cutoff_date:
+                filtered_logs.append(log)
 
-    print(f"取得件数: {len(filtered_logs)}件")
+        print(f"取得件数: {len(filtered_logs)}件")
 
-    # DataFrameに変換
-    df = logs_to_dataframe(filtered_logs)
+        # DataFrameに変換
+        df = logs_to_dataframe(filtered_logs)
 
-    # Spreadsheetに保存（永続化）
-    if not args.csv_only:
-        print("Google Spreadsheetに保存中...")
-        save_to_sheets(df, spreadsheet_id)
+        # Spreadsheetに保存（永続化）
+        if not args.csv_only:
+            print("Google Spreadsheetに保存中...")
+            save_to_sheets(df, spreadsheet_id)
 
-    # CSVに保存
-    save_to_csv(df)
+        # CSVに保存
+        save_to_csv(df)
 
-    output_github_actions_token(updated_token)
-
-    print("完了")
+        print("完了")
+    finally:
+        # エラーが発生してもトークンが更新されていればGitHub Actionsに出力
+        output_github_actions_token(updated_token)
 
 
 if __name__ == '__main__':

@@ -49,7 +49,15 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         return df_new
 
     df_old = pd.read_csv(csv_path, parse_dates=parse_dates or [])
-    df_merged = pd.concat([df_old, df_new])
+
+    # df_newもparse_datesで指定された列をdatetime型に変換して型を統一
+    df_new_copy = df_new.copy()
+    if parse_dates:
+        for col in parse_dates:
+            if col in df_new_copy.columns:
+                df_new_copy[col] = pd.to_datetime(df_new_copy[col])
+
+    df_merged = pd.concat([df_old, df_new_copy])
     df_merged = df_merged.drop_duplicates(subset=key_columns, keep='last')
 
     if sort_by:

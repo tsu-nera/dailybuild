@@ -49,6 +49,7 @@ jobs:
 
       - name: Fetch Fitbit meditation logs and save to Spreadsheet
         id: fetch_meditation
+        continue-on-error: true
         env:
           FITBIT_CREDS: ${{ secrets.FITBIT_CREDS }}
           FITBIT_TOKEN: ${{ secrets.FITBIT_TOKEN }}
@@ -58,7 +59,7 @@ jobs:
           python scripts/fetch_meditation.py --days 14
 
       - name: Update Fitbit token if refreshed
-        if: steps.fetch_meditation.outputs.fitbit_token != ''
+        if: always() && steps.fetch_meditation.outputs.fitbit_token != ''
         uses: hmanzur/actions-set-secret@v2.0.0
         with:
           name: 'FITBIT_TOKEN'
