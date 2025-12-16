@@ -32,6 +32,8 @@ COLUMN_CONFIG = {
     'neat': ('NEAT', '.0f'),
     'tef': ('TEF', '.0f'),
     'activity_calories': ('活動C', '.0f'),
+    'protein': ('プロテイン', '.1f'),
+    'sleep_hours': ('睡眠', '.1f'),
 }
 
 # デフォルト表示カラム（日別データ用）
@@ -44,7 +46,8 @@ DAILY_COLUMNS = [
 # 体組成テーブル用カラム
 DAILY_BODY_COLUMNS = [
     'weight', 'muscle_mass', 'body_fat_rate',
-    'visceral_fat_level', 'body_water_rate'
+    'calorie_balance', 'protein', 'sleep_hours',
+    'body_water_rate'
 ]
 
 # カロリー収支テーブル用カラム
@@ -56,6 +59,11 @@ DAILY_CALORIE_COLUMNS = [
 DAILY_CALORIE_ANALYSIS_COLUMNS = [
     'weight', 'calorie_balance', 'calories_in', 'calories_out',
     'basal_metabolic_rate', 'neat', 'tef', 'eat'
+]
+
+# 統合テーブル用カラム（本質的な指標のみ）
+DAILY_ESSENTIAL_COLUMNS = [
+    'weight', 'muscle_mass', 'body_fat_rate', 'calorie_balance', 'protein'
 ]
 
 # サマリー用カラム
@@ -159,7 +167,7 @@ def calc_body_stats(df, columns=None):
     return stats
 
 
-def format_daily_table(df, columns=None, date_format='%m-%d'):
+def format_daily_table(df, columns=None, date_format='%m-%d', custom_labels=None):
     """
     体組成データをMarkdownテーブル形式でフォーマット
 
@@ -171,6 +179,8 @@ def format_daily_table(df, columns=None, date_format='%m-%d'):
         表示するカラムのリスト（Noneの場合はDAILY_COLUMNS）
     date_format : str
         日付のフォーマット
+    custom_labels : dict, optional
+        カラム名の表示ラベルを上書きする辞書 {column: label}
 
     Returns
     -------
@@ -179,12 +189,16 @@ def format_daily_table(df, columns=None, date_format='%m-%d'):
     """
     if columns is None:
         columns = DAILY_COLUMNS
+    if custom_labels is None:
+        custom_labels = {}
 
     # 有効なカラムのみ
     valid_columns = [c for c in columns if c in COLUMN_CONFIG and c in df.columns]
 
-    # ヘッダー生成
-    headers = ['日付'] + [COLUMN_CONFIG[col][0] for col in valid_columns]
+    # ヘッダー生成（カスタムラベルがあれば上書き）
+    headers = ['日付'] + [
+        custom_labels.get(col, COLUMN_CONFIG[col][0]) for col in valid_columns
+    ]
     header_row = '| ' + ' | '.join(headers) + ' |'
     separator_row = '|' + '|'.join(['------'] * len(headers)) + '|'
 
@@ -206,9 +220,9 @@ def format_daily_table(df, columns=None, date_format='%m-%d'):
     return '\n'.join([header_row, separator_row] + data_rows)
 
 
-def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None):
+def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None, sleep_df=None):
     """
-    体組成データに栄養・アクティビティデータをマージ
+    体組成データに栄養・アクティビティ・睡眠データをマージ
 
     Parameters
     ----------
@@ -218,20 +232,27 @@ def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None):
         栄養統計データ（daily配列を含む）
     activity_stats : dict, optional
         アクティビティ統計データ（daily配列を含む）
+    sleep_df : DataFrame, optional
+        睡眠データ（dateOfSleep, minutesAsleepカラムを含む）
 
     Returns
     -------
     DataFrame
-        マージされた日別データ（calories_in, calories_out, calorie_balanceカラムを含む）
+        マージされた日別データ（calories_in, calories_out, calorie_balance, sleep_hoursカラムを含む）
     """
     df = df_body.copy()
 
-    # 栄養データをマージ（摂取カロリー）
+    # 栄養データをマージ（摂取カロリー、プロテイン）
     if nutrition_stats and 'daily' in nutrition_stats:
         df_nutrition_daily = pd.DataFrame(nutrition_stats['daily'])
         df_nutrition_daily['date'] = pd.to_datetime(df_nutrition_daily['date'])
-        df_nutrition_daily = df_nutrition_daily[['date', 'calories']].rename(
-            columns={'calories': 'calories_in'}
+        # カロリーとプロテインを取得
+        columns_to_merge = ['date', 'calories']
+        rename_map = {'calories': 'calories_in'}
+        if 'protein' in df_nutrition_daily.columns:
+            columns_to_merge.append('protein')
+        df_nutrition_daily = df_nutrition_daily[columns_to_merge].rename(
+            columns=rename_map
         )
         df = df.merge(df_nutrition_daily, on='date', how='left')
 
@@ -253,6 +274,15 @@ def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None):
     # カロリー収支を計算（摂取 - 消費）
     if 'calories_in' in df.columns and 'calories_out' in df.columns:
         df['calorie_balance'] = df['calories_in'] - df['calories_out']
+
+    # 睡眠データをマージ（睡眠時間）
+    if sleep_df is not None:
+        df_sleep = sleep_df.copy()
+        df_sleep['date'] = pd.to_datetime(df_sleep['dateOfSleep'])
+        # 分を時間に変換
+        df_sleep['sleep_hours'] = df_sleep['minutesAsleep'] / 60
+        df_sleep_daily = df_sleep[['date', 'sleep_hours']]
+        df = df.merge(df_sleep_daily, on='date', how='left')
 
     return df
 

@@ -268,9 +268,19 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
     dates = pd.to_datetime(df['date'])
     start = dates.min().strftime('%Y-%m-%d')
     end = dates.max().strftime('%Y-%m-%d')
+    start_date = dates.min()
+    end_date = dates.max()
 
-    # 日別データに栄養・アクティビティデータをマージ
-    df_daily = body.merge_daily_data(df, nutrition_stats, activity_stats)
+    # 睡眠DataFrameを読み込んで期間でフィルタ
+    df_sleep_filtered = None
+    if SLEEP_MASTER_CSV.exists():
+        df_sleep_all = pd.read_csv(SLEEP_MASTER_CSV)
+        df_sleep_all['dateOfSleep'] = pd.to_datetime(df_sleep_all['dateOfSleep'])
+        mask = (df_sleep_all['dateOfSleep'] >= start_date) & (df_sleep_all['dateOfSleep'] <= end_date)
+        df_sleep_filtered = df_sleep_all[mask]
+
+    # 日別データに栄養・アクティビティ・睡眠データをマージ
+    df_daily = body.merge_daily_data(df, nutrition_stats, activity_stats, df_sleep_filtered)
 
     # EATデータをマージ
     if eat_stats:
@@ -474,7 +484,10 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 """
 
     # 詳細データセクションの体組成テーブル
-    body_composition_table = body.format_daily_table(df_daily, body.DAILY_BODY_COLUMNS)
+    body_composition_table = body.format_daily_table(
+        df_daily, body.DAILY_BODY_COLUMNS,
+        custom_labels={'calorie_balance': 'カロリー収支'}
+    )
 
     report = f"""# 体組成レポート
 
