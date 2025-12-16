@@ -16,6 +16,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import argparse
+import json
+import os
 
 from lib.clients import fitbit_api
 from lib import fitbit_fetcher
@@ -24,6 +26,15 @@ BASE_DIR = Path(__file__).parent.parent
 # 開発用（ローカル実行時）
 CREDS_FILE = BASE_DIR / 'config/fitbit_creds_dev.json'
 TOKEN_FILE = BASE_DIR / 'config/fitbit_token_dev.json'
+
+
+def output_github_actions_token(updated_token):
+    """GitHub Actions用にトークンを出力"""
+    if updated_token['value'] and os.environ.get('GITHUB_OUTPUT'):
+        token_json = json.dumps(updated_token['value'])
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            f.write(f"fitbit_token={token_json}\n")
+        print("Fitbitトークンが更新されました（GitHub Actionsに出力）")
 
 
 def main():
@@ -75,18 +86,31 @@ def main():
         parser.error("--endpoint または --all を指定してください")
 
     print("Fitbitクライアントを作成中...")
-    client = fitbit_api.create_client(str(CREDS_FILE), str(TOKEN_FILE))
+    client, updated_token = fitbit_api.create_client_with_env(
+        creds_file=str(CREDS_FILE) if CREDS_FILE.exists() else None,
+        token_file=str(TOKEN_FILE) if TOKEN_FILE.exists() else None
+    )
 
-    if args.all:
-        results = fitbit_fetcher.fetch_all(client, args.days, args.overwrite)
-        print("\n=== 完了 ===")
-        total = sum(r['records'] for r in results.values())
-        print(f"総レコード数: {total}")
+    # 環境変数またはファイルの判定メッセージ
+    if os.environ.get('FITBIT_CREDS'):
+        print("環境変数から認証情報を取得")
     else:
-        result = fitbit_fetcher.fetch_endpoint(
-            client, args.endpoint, args.days, args.overwrite
-        )
-        print(f"\n完了: {result['records']}件")
+        print("ファイルから認証情報を取得")
+
+    try:
+        if args.all:
+            results = fitbit_fetcher.fetch_all(client, args.days, args.overwrite)
+            print("\n=== 完了 ===")
+            total = sum(r['records'] for r in results.values())
+            print(f"総レコード数: {total}")
+        else:
+            result = fitbit_fetcher.fetch_endpoint(
+                client, args.endpoint, args.days, args.overwrite
+            )
+            print(f"\n完了: {result['records']}件")
+    finally:
+        # エラーが発生してもトークンが更新されていればGitHub Actionsに出力
+        output_github_actions_token(updated_token)
 
 
 if __name__ == '__main__':

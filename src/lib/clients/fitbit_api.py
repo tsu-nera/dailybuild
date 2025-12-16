@@ -8,6 +8,7 @@ APIコールはv1.2エンドポイントを直接呼び出す。
 """
 
 import json
+import os
 import fitbit
 
 
@@ -48,6 +49,76 @@ def create_client(creds_file, token_file):
     )
 
     return client
+
+
+def create_client_with_env(creds_file=None, token_file=None):
+    """
+    環境変数またはファイルからFitbitクライアントを作成
+
+    Args:
+        creds_file: 認証情報ファイルパス（環境変数がない場合に使用）
+        token_file: トークンファイルパス（環境変数がない場合に使用）
+
+    Returns:
+        (client, updated_token_holder): クライアントと更新トークン格納用dict
+
+    Note:
+        環境変数 FITBIT_CREDS/FITBIT_TOKEN を優先的に使用
+        ファイルが指定されている場合、トークン更新時にファイルに保存
+    """
+    fitbit_creds_env = os.environ.get('FITBIT_CREDS')
+    fitbit_token_env = os.environ.get('FITBIT_TOKEN')
+
+    updated_token = {'value': None}
+
+    if fitbit_creds_env and fitbit_token_env:
+        # 環境変数から読み込み
+        creds = json.loads(fitbit_creds_env)
+        token_data = json.loads(fitbit_token_env)
+
+        def update_token(token):
+            updated_token['value'] = token
+            if token_file:
+                save_token(token_file, token)
+
+        client = fitbit.Fitbit(
+            creds['client_id'],
+            creds['client_secret'],
+            oauth2=True,
+            access_token=token_data['access_token'],
+            refresh_token=token_data['refresh_token'],
+            refresh_cb=update_token
+        )
+
+        return client, updated_token
+
+    # ファイルから読み込み
+    if not creds_file or not token_file:
+        raise FileNotFoundError(
+            "認証情報が見つかりません。\n"
+            "環境変数 FITBIT_CREDS/FITBIT_TOKEN を設定するか、\n"
+            "creds_file/token_file を指定してください。"
+        )
+
+    with open(creds_file, 'r') as f:
+        creds = json.load(f)
+
+    token_data = load_token(token_file)
+
+    def update_token(token):
+        updated_token['value'] = token
+        save_token(token_file, token)
+
+    client = fitbit.Fitbit(
+        creds['client_id'],
+        creds['client_secret'],
+        oauth2=True,
+        access_token=token_data['access_token'],
+        refresh_token=token_data['refresh_token'],
+        refresh_cb=update_token
+    )
+
+    return client, updated_token
 
 
 # =============================================================================

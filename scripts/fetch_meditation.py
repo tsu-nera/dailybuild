@@ -18,7 +18,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import argparse
 import datetime as dt
 
-import fitbit
 import pandas as pd
 
 from lib.clients import fitbit_api, gsheets_client
@@ -33,32 +32,6 @@ OUT_FILE = BASE_DIR / 'data/meditation_fitbit.csv'
 SHEET_NAME = 'fitbit_meditation'
 
 
-def get_fitbit_credentials():
-    """Fitbit認証情報を取得（環境変数優先）"""
-    fitbit_creds_env = os.environ.get('FITBIT_CREDS')
-    fitbit_token_env = os.environ.get('FITBIT_TOKEN')
-
-    if fitbit_creds_env and fitbit_token_env:
-        print("環境変数から認証情報を取得")
-        creds = json.loads(fitbit_creds_env)
-        token = json.loads(fitbit_token_env)
-        return creds, token, None
-
-    print("ファイルから認証情報を取得")
-    if not CREDS_FILE.exists():
-        raise FileNotFoundError(
-            f"認証情報が見つかりません。\n"
-            f"環境変数 FITBIT_CREDS/FITBIT_TOKEN を設定するか、\n"
-            f"{CREDS_FILE} を配置してください。"
-        )
-
-    with open(CREDS_FILE) as f:
-        creds = json.load(f)
-    with open(TOKEN_FILE) as f:
-        token = json.load(f)
-    return creds, token, TOKEN_FILE
-
-
 def create_fitbit_client():
     """
     トークン更新時のコールバック付きFitbitクライアント作成
@@ -66,23 +39,18 @@ def create_fitbit_client():
     Returns:
         (client, updated_token_holder): クライアントと更新トークン格納用dict
     """
-    creds, token_data, token_file = get_fitbit_credentials()
-
-    updated_token = {'value': None}
-
-    def update_token(token):
-        updated_token['value'] = token
-        if token_file:
-            fitbit_api.save_token(str(token_file), token)
-
-    client = fitbit.Fitbit(
-        creds['client_id'],
-        creds['client_secret'],
-        oauth2=True,
-        access_token=token_data['access_token'],
-        refresh_token=token_data['refresh_token'],
-        refresh_cb=update_token
+    # fitbit_api.create_client_with_env() を使用
+    # 環境変数を優先し、なければファイルから読み込む
+    client, updated_token = fitbit_api.create_client_with_env(
+        creds_file=str(CREDS_FILE) if CREDS_FILE.exists() else None,
+        token_file=str(TOKEN_FILE) if TOKEN_FILE.exists() else None
     )
+
+    # 環境変数またはファイルの判定メッセージ
+    if os.environ.get('FITBIT_CREDS'):
+        print("環境変数から認証情報を取得")
+    else:
+        print("ファイルから認証情報を取得")
 
     return client, updated_token
 
