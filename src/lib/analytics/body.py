@@ -25,13 +25,27 @@ COLUMN_CONFIG = {
     'body_age': ('体内年齢', '.0f'),
     'body_water_rate': ('体水分率', '.1f'),
     'muscle_quality_score': ('筋質点数', '.0f'),
+    'calories_in': ('摂取', '.0f'),
+    'calories_out': ('消費', '.0f'),
+    'calorie_balance': ('収支', '.0f'),
 }
 
 # デフォルト表示カラム（日別データ用）
 DAILY_COLUMNS = [
     'weight', 'muscle_mass', 'body_fat_rate', 'body_fat_mass',
     'lbm', 'ffmi', 'visceral_fat_level', 'basal_metabolic_rate',
-    'bone_mass', 'body_age', 'body_water_rate', 'muscle_quality_score'
+    'body_age', 'body_water_rate', 'calories_in', 'calories_out'
+]
+
+# 体組成テーブル用カラム
+DAILY_BODY_COLUMNS = [
+    'weight', 'muscle_mass', 'body_fat_rate',
+    'visceral_fat_level', 'body_water_rate'
+]
+
+# カロリー収支テーブル用カラム
+DAILY_CALORIE_COLUMNS = [
+    'weight', 'basal_metabolic_rate', 'calories_in', 'calories_out', 'calorie_balance'
 ]
 
 # サマリー用カラム
@@ -170,11 +184,61 @@ def format_daily_table(df, columns=None, date_format='%m-%d'):
         date_str = pd.to_datetime(row['date']).strftime(date_format)
         values = [date_str]
         for col in valid_columns:
-            fmt = COLUMN_CONFIG[col][1]
-            values.append(f"{row[col]:{fmt}}")
+            val = row[col]
+            # NaNや欠損値は「-」で表示
+            if pd.isna(val):
+                values.append('-')
+            else:
+                fmt = COLUMN_CONFIG[col][1]
+                values.append(f"{val:{fmt}}")
         data_rows.append('| ' + ' | '.join(values) + ' |')
 
     return '\n'.join([header_row, separator_row] + data_rows)
+
+
+def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None):
+    """
+    体組成データに栄養・アクティビティデータをマージ
+
+    Parameters
+    ----------
+    df_body : DataFrame
+        体組成データ（date列必須）
+    nutrition_stats : dict, optional
+        栄養統計データ（daily配列を含む）
+    activity_stats : dict, optional
+        アクティビティ統計データ（daily配列を含む）
+
+    Returns
+    -------
+    DataFrame
+        マージされた日別データ（calories_in, calories_out, calorie_balanceカラムを含む）
+    """
+    df = df_body.copy()
+
+    # 栄養データをマージ（摂取カロリー）
+    if nutrition_stats and 'daily' in nutrition_stats:
+        df_nutrition_daily = pd.DataFrame(nutrition_stats['daily'])
+        df_nutrition_daily['date'] = pd.to_datetime(df_nutrition_daily['date'])
+        df_nutrition_daily = df_nutrition_daily[['date', 'calories']].rename(
+            columns={'calories': 'calories_in'}
+        )
+        df = df.merge(df_nutrition_daily, on='date', how='left')
+
+    # アクティビティデータをマージ（消費カロリー）
+    if activity_stats and 'daily' in activity_stats:
+        df_activity_daily = pd.DataFrame(activity_stats['daily'])
+        df_activity_daily['date'] = pd.to_datetime(df_activity_daily['date'])
+        df_activity_daily = df_activity_daily[['date', 'caloriesOut']].rename(
+            columns={'caloriesOut': 'calories_out'}
+        )
+        df = df.merge(df_activity_daily, on='date', how='left')
+
+    # カロリー収支を計算（摂取 - 消費）
+    if 'calories_in' in df.columns and 'calories_out' in df.columns:
+        df['calorie_balance'] = df['calories_in'] - df['calories_out']
+
+    return df
 
 
 def format_change(val, unit='', positive_is_good=True):

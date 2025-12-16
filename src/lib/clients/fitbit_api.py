@@ -381,6 +381,74 @@ def delete_meal(client, meal_id):
     return client.make_request(url, method='DELETE')
 
 
+def get_food_log_by_date_range(client, start_date, end_date):
+    """
+    期間指定で食事ログを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        dict: 各日付の食事ログデータの辞書
+
+    Note:
+        Nutrition APIには期間指定エンドポイントがないため、
+        日付ごとにループして取得する
+    """
+    import datetime as dt
+
+    current = start_date
+    results = {}
+
+    while current <= end_date:
+        data = get_food_log(client, current)
+        results[current.strftime('%Y-%m-%d')] = data
+        current += dt.timedelta(days=1)
+
+    return results
+
+
+def parse_food_log(data):
+    """
+    食事ログの栄養サマリーをリストに変換
+
+    Args:
+        data: get_food_log_by_date_rangeの戻り値
+
+    Returns:
+        栄養サマリーのリスト（日別の栄養素合計）
+
+    栄養素:
+        - calories: カロリー
+        - carbs: 炭水化物
+        - fat: 脂質
+        - fiber: 食物繊維
+        - protein: タンパク質
+        - sodium: ナトリウム
+        - water: 水分
+    """
+    results = []
+
+    for date_str, day_data in data.items():
+        summary = day_data.get('summary', {})
+
+        row = {
+            'date': date_str,
+            'calories': summary.get('calories'),
+            'carbs': summary.get('carbs'),
+            'fat': summary.get('fat'),
+            'fiber': summary.get('fiber'),
+            'protein': summary.get('protein'),
+            'sodium': summary.get('sodium'),
+            'water': summary.get('water'),
+        }
+        results.append(row)
+
+    return results
+
+
 # =============================================================================
 # Activity API
 # https://dev.fitbit.com/build/reference/web-api/activity/
@@ -616,6 +684,71 @@ def get_meditation_logs(client, before_date=None, after_date=None, limit=100):
 
 
 # =============================================================================
+# Active Zone Minutes API
+# https://dev.fitbit.com/build/reference/web-api/active-zone-minutes-timeseries/
+# =============================================================================
+
+def get_active_zone_minutes_by_date_range(client, start_date, end_date):
+    """
+    期間指定でActive Zone Minutes（アクティブゾーン分数）を取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: activities-active-zone-minutes配列
+
+    Note:
+        最大1,095日間（約3年）まで一括取得可能
+        心拍数ベースのアクティビティ強度を測定
+
+    Endpoint: /1/user/-/activities/active-zone-minutes/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/active-zone-minutes-timeseries/get-azm-timeseries-by-interval/
+    """
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/activities/active-zone-minutes/date/{start_str}/{end_str}.json"
+    return client.make_request(url)
+
+
+def parse_active_zone_minutes(data):
+    """
+    Active Zone Minutesデータをリストに変換
+
+    Args:
+        data: get_active_zone_minutes_by_date_rangeの戻り値
+
+    Returns:
+        Active Zone Minutesエントリのリスト
+
+    データ構造:
+        - dateTime: 日付
+        - activeZoneMinutes: 総アクティブゾーン分数
+        - fatBurnActiveZoneMinutes: 脂肪燃焼ゾーン（1分=1AZM）
+        - cardioActiveZoneMinutes: 有酸素運動ゾーン（1分=2AZM）
+        - peakActiveZoneMinutes: ピークゾーン（1分=2AZM）
+    """
+    if not data.get('activities-active-zone-minutes'):
+        return []
+
+    results = []
+    for entry in data['activities-active-zone-minutes']:
+        value = entry.get('value', {})
+        row = {
+            'date': entry.get('dateTime'),
+            'activeZoneMinutes': value.get('activeZoneMinutes'),
+            'fatBurnActiveZoneMinutes': value.get('fatBurnActiveZoneMinutes'),
+            'cardioActiveZoneMinutes': value.get('cardioActiveZoneMinutes'),
+            'peakActiveZoneMinutes': value.get('peakActiveZoneMinutes'),
+        }
+        results.append(row)
+
+    return results
+
+
+# =============================================================================
 # HRV (Heart Rate Variability) API
 # https://dev.fitbit.com/build/reference/web-api/heartrate-variability/
 # =============================================================================
@@ -742,6 +875,328 @@ def parse_heart_rate(data):
         row = {
             'date': entry.get('dateTime'),
             'resting_heart_rate': value.get('restingHeartRate'),
+        }
+        results.append(row)
+
+    return results
+
+
+# =============================================================================
+# Breathing Rate API
+# https://dev.fitbit.com/build/reference/web-api/breathing-rate/
+# =============================================================================
+
+def get_breathing_rate_by_date_range(client, start_date, end_date):
+    """
+    期間指定で呼吸数データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: br配列
+
+    Note:
+        最大30日間まで一括取得可能
+        睡眠中の平均呼吸数を返す
+
+    Endpoint: /1/user/-/br/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/breathing-rate/get-br-summary-by-interval/
+    """
+    return get_by_date_range(client, 'br', start_date, end_date, api_version='1')
+
+
+def parse_breathing_rate(data):
+    """
+    呼吸数データをリストに変換
+
+    Args:
+        data: get_breathing_rate_by_date_rangeの戻り値
+
+    Returns:
+        呼吸数エントリのリスト
+
+    データ構造:
+        - dateTime: 日付
+        - value.breathingRate: 平均呼吸数（回/分）
+    """
+    if not data.get('br'):
+        return []
+
+    results = []
+    for entry in data['br']:
+        value = entry.get('value', {})
+        row = {
+            'date': entry.get('dateTime'),
+            'breathing_rate': value.get('breathingRate'),
+        }
+        results.append(row)
+
+    return results
+
+
+# =============================================================================
+# SpO2 (Oxygen Saturation) API
+# https://dev.fitbit.com/build/reference/web-api/spo2/
+# =============================================================================
+
+def get_spo2_by_date_range(client, start_date, end_date):
+    """
+    期間指定でSpO2（血中酸素濃度）データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（list）: SpO2データの配列
+
+    Note:
+        最大30日間まで一括取得可能
+        睡眠中の血中酸素濃度を返す
+
+    Endpoint: /1/user/-/spo2/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/spo2/get-spo2-summary-by-interval/
+    """
+    return get_by_date_range(client, 'spo2', start_date, end_date, api_version='1')
+
+
+def parse_spo2(data):
+    """
+    SpO2データをリストに変換
+
+    Args:
+        data: get_spo2_by_date_rangeの戻り値
+
+    Returns:
+        SpO2エントリのリスト
+
+    データ構造:
+        - dateTime: 日付
+        - value.avg: 平均SpO2（%）
+        - value.min: 最小SpO2（%）
+        - value.max: 最大SpO2（%）
+    """
+    # SpO2 APIはリストを直接返す場合がある
+    entries = data if isinstance(data, list) else data.get('spo2', [])
+
+    if not entries:
+        return []
+
+    results = []
+    for entry in entries:
+        value = entry.get('value', {})
+        row = {
+            'date': entry.get('dateTime'),
+            'avg_spo2': value.get('avg'),
+            'min_spo2': value.get('min'),
+            'max_spo2': value.get('max'),
+        }
+        results.append(row)
+
+    return results
+
+
+# =============================================================================
+# Temperature API
+# https://dev.fitbit.com/build/reference/web-api/temperature/
+# =============================================================================
+
+def get_temperature_skin_by_date_range(client, start_date, end_date):
+    """
+    期間指定で皮膚温データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: tempSkin配列
+
+    Note:
+        最大30日間まで一括取得可能
+        睡眠中（最も長い睡眠期間）の皮膚温を返す
+
+    Endpoint: /1/user/-/temp/skin/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/temperature/get-temperature-skin-summary-by-interval/
+    """
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/temp/skin/date/{start_str}/{end_str}.json"
+    return client.make_request(url)
+
+
+def get_temperature_core_by_date_range(client, start_date, end_date):
+    """
+    期間指定で体温データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: tempCore配列
+
+    Note:
+        最大30日間まで一括取得可能
+        ユーザーが手動で記録した体温データ
+
+    Endpoint: /1/user/-/temp/core/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/temperature/get-temperature-core-summary-by-interval/
+    """
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/temp/core/date/{start_str}/{end_str}.json"
+    return client.make_request(url)
+
+
+def parse_temperature_skin(data):
+    """
+    皮膚温データをリストに変換
+
+    Args:
+        data: get_temperature_skin_by_date_rangeの戻り値
+
+    Returns:
+        皮膚温エントリのリスト
+
+    データ構造:
+        - dateTime: 日付
+        - value.nightlyRelative: 基礎体温からの差分（°C）
+        - logType: センサータイプ（dedicated_temp_sensor / other_sensors）
+    """
+    if not data.get('tempSkin'):
+        return []
+
+    results = []
+    for entry in data['tempSkin']:
+        value = entry.get('value', {})
+        row = {
+            'date': entry.get('dateTime'),
+            'nightly_relative': value.get('nightlyRelative'),
+            'log_type': entry.get('logType'),
+        }
+        results.append(row)
+
+    return results
+
+
+def parse_temperature_core(data):
+    """
+    体温データをリストに変換
+
+    Args:
+        data: get_temperature_core_by_date_rangeの戻り値
+
+    Returns:
+        体温エントリのリスト
+
+    データ構造:
+        - dateTime: 日付時刻
+        - value: 体温（°C または °F）
+    """
+    if not data.get('tempCore'):
+        return []
+
+    results = []
+    for entry in data['tempCore']:
+        row = {
+            'date_time': entry.get('dateTime'),
+            'temperature': entry.get('value'),
+        }
+        results.append(row)
+
+    return results
+
+
+# =============================================================================
+# Cardio Fitness Score (VO2 Max) API
+# https://dev.fitbit.com/build/reference/web-api/cardio-fitness-score/
+# =============================================================================
+
+def get_cardio_score_by_date_range(client, start_date, end_date):
+    """
+    期間指定で心肺スコア（VO2 Max）データを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: cardioScore配列
+
+    Note:
+        最大30日間まで一括取得可能
+        VO2 Maxの推定値を返す
+
+    Endpoint: /1/user/-/cardioscore/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/cardio-fitness-score/get-vo2max-summary-by-interval/
+    """
+    return get_by_date_range(client, 'cardioscore', start_date, end_date, api_version='1')
+
+
+def parse_cardio_score(data):
+    """
+    心肺スコアデータをリストに変換
+
+    Args:
+        data: get_cardio_score_by_date_rangeの戻り値
+
+    Returns:
+        心肺スコアエントリのリスト
+
+    データ構造:
+        - dateTime: 日付
+        - value.vo2Max: VO2 Max推定値（ml/kg/min）
+            GPS使用時: "45" (単一数値)
+            GPS未使用時: "44-48" (範囲形式)
+    """
+    if not data.get('cardioScore'):
+        return []
+
+    def parse_vo2_max(vo2_str):
+        """
+        VO2 Max文字列を数値に変換
+
+        Args:
+            vo2_str: "45" または "44-48" 形式の文字列
+
+        Returns:
+            float: 数値または範囲の中央値
+        """
+        if not vo2_str:
+            return None
+
+        if '-' in vo2_str:
+            # 範囲形式: 中央値を計算
+            parts = vo2_str.split('-')
+            try:
+                min_val = float(parts[0])
+                max_val = float(parts[1])
+                return (min_val + max_val) / 2
+            except (ValueError, IndexError):
+                return None
+        else:
+            # 単一数値
+            try:
+                return float(vo2_str)
+            except ValueError:
+                return None
+
+    results = []
+    for entry in data['cardioScore']:
+        value = entry.get('value', {})
+        vo2_raw = value.get('vo2Max')
+        row = {
+            'date': entry.get('dateTime'),
+            'vo2_max': parse_vo2_max(vo2_raw),
+            'vo2_max_raw': vo2_raw,  # 元の文字列も保存
         }
         results.append(row)
 

@@ -21,8 +21,9 @@ from lib.clients import fitbit_api, gsheets_client
 from lib.utils import csv_utils
 
 BASE_DIR = Path(__file__).parent.parent
-CREDS_FILE = BASE_DIR / 'config/fitbit_creds.json'
-TOKEN_FILE = BASE_DIR / 'config/fitbit_token.json'
+# 開発用（ローカル実行時）
+CREDS_FILE = BASE_DIR / 'config/fitbit_creds_dev.json'
+TOKEN_FILE = BASE_DIR / 'config/fitbit_token_dev.json'
 GCP_CREDS_FILE = BASE_DIR / 'config/gcp_service_account.json'
 OUT_FILE = BASE_DIR / 'data/fitbit/sleep.csv'
 OUT_LEVELS_FILE = BASE_DIR / 'data/fitbit/sleep_levels.csv'

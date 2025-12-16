@@ -6,5 +6,7 @@
 
 from . import body
 from . import hrv
+from . import mind
+from . import nutrition
 from . import sleep
 from . import workout

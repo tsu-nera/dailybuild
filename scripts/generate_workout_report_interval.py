@@ -197,7 +197,7 @@ def generate_weekly_table(weekly_volume, recent_weeks):
         Markdown行のリスト
     """
     lines = []
-    lines.append("## 週次サマリー")
+    lines.append("## トレーニングボリューム")
     lines.append("")
 
     # 全エクササイズを五十音順で取得

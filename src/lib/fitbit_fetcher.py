@@ -14,6 +14,52 @@ import pandas as pd
 from .clients import fitbit_api
 from .utils import csv_utils
 
+
+def _patch_fitbit_exceptions():
+    """
+    fitbitライブラリのexceptions.pyのバグを回避するパッチ
+
+    Retry-Afterヘッダーがない場合のKeyErrorを防ぐ
+    """
+    import fitbit.exceptions
+
+    original_detect = fitbit.exceptions.detect_and_raise_error
+
+    def patched_detect_and_raise_error(response):
+        """Retry-Afterヘッダーのチェックを安全に行う"""
+        if response.status_code >= 400:
+            # エラーレスポンスの詳細を保存
+            error_data = {
+                'status_code': response.status_code,
+                'headers': dict(response.headers),
+                'body': response.text[:1000],  # 最初の1000文字
+            }
+
+            # Retry-Afterヘッダーを安全に取得
+            retry_after = response.headers.get('Retry-After')
+
+            try:
+                # 元の関数を呼び出し
+                return original_detect(response)
+            except KeyError as e:
+                if 'retry-after' in str(e).lower():
+                    # KeyErrorの場合は、より詳細な例外を投げる
+                    exc = fitbit.exceptions.HTTPException(response)
+                    exc.status = response.status_code
+                    exc.error_data = error_data
+                    if retry_after:
+                        exc.retry_after_secs = int(retry_after)
+                    raise exc
+                else:
+                    raise
+        return response
+
+    fitbit.exceptions.detect_and_raise_error = patched_detect_and_raise_error
+
+
+# fitbitライブラリのエラーハンドリングのバグを回避するためのパッチを適用
+_patch_fitbit_exceptions()
+
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / 'data' / 'fitbit'
 
@@ -48,6 +94,55 @@ ENDPOINTS = {
         'date_column': 'date',
         'max_days': None,
     },
+    'active_zone_minutes': {
+        'description': 'アクティブゾーン分数',
+        'fetch_fn': 'get_active_zone_minutes_by_date_range',
+        'parse_fn': 'parse_active_zone_minutes',
+        'date_column': 'date',
+        'max_days': None,  # 最大1095日間
+    },
+    'nutrition': {
+        'description': '栄養データ（食事ログサマリー）',
+        'fetch_fn': 'get_food_log_by_date_range',
+        'parse_fn': 'parse_food_log',
+        'date_column': 'date',
+        'max_days': None,
+    },
+    'breathing_rate': {
+        'description': '呼吸数',
+        'fetch_fn': 'get_breathing_rate_by_date_range',
+        'parse_fn': 'parse_breathing_rate',
+        'date_column': 'date',
+        'max_days': 30,
+    },
+    'spo2': {
+        'description': '血中酸素濃度（SpO2）',
+        'fetch_fn': 'get_spo2_by_date_range',
+        'parse_fn': 'parse_spo2',
+        'date_column': 'date',
+        'max_days': 30,
+    },
+    'cardio_score': {
+        'description': '心肺スコア（VO2 Max）',
+        'fetch_fn': 'get_cardio_score_by_date_range',
+        'parse_fn': 'parse_cardio_score',
+        'date_column': 'date',
+        'max_days': 30,
+    },
+    'temperature_skin': {
+        'description': '皮膚温（睡眠中）',
+        'fetch_fn': 'get_temperature_skin_by_date_range',
+        'parse_fn': 'parse_temperature_skin',
+        'date_column': 'date',
+        'max_days': 30,
+    },
+    'temperature_core': {
+        'description': '体温（手動記録）',
+        'fetch_fn': 'get_temperature_core_by_date_range',
+        'parse_fn': 'parse_temperature_core',
+        'date_column': 'date_time',
+        'max_days': 30,
+    },
 }
 
 
@@ -61,6 +156,58 @@ def get_levels_output_path() -> Path:
     return DATA_DIR / 'sleep_levels.csv'
 
 
+def _format_api_error(exception: Exception) -> str:
+    """
+    APIエラーを読みやすい形式にフォーマット
+
+    Args:
+        exception: 発生した例外
+
+    Returns:
+        フォーマットされたエラーメッセージ
+    """
+    import fitbit.exceptions
+
+    # fitbitライブラリの例外の場合
+    if isinstance(exception, fitbit.exceptions.HTTPException):
+        # HTTPレスポンスから詳細を取得
+        status = getattr(exception, 'status', getattr(exception, 'status_code', 'Unknown'))
+
+        # パッチで追加したerror_data属性から詳細を取得
+        if hasattr(exception, 'error_data'):
+            error_data = exception.error_data
+            status_code = error_data.get('status_code', status)
+            body = error_data.get('body', '')
+
+            # HTTPステータスコードに応じたメッセージ
+            if status_code == 429:
+                return f"HTTP 429: レート制限に達しました。しばらく待ってから再試行してください。"
+            elif status_code == 403:
+                return f"HTTP 403: アクセス権限がありません（デバイスがこの機能をサポートしていない可能性）"
+            elif status_code == 404:
+                return f"HTTP 404: データが見つかりません"
+            elif status_code >= 500:
+                return f"HTTP {status_code}: Fitbitサーバーエラー"
+            else:
+                # レスポンス本文から詳細を取得
+                msg = body[:200] if body else str(exception)
+                return f"HTTP {status_code}: {msg}"
+
+        # 通常の例外メッセージ
+        msg = exception.message if hasattr(exception, 'message') else str(exception)
+        return f"HTTP {status}: {msg}"
+
+    # KeyError: 'retry-after' の場合（パッチが適用される前にエラーが発生した場合）
+    if isinstance(exception, KeyError) and 'retry-after' in str(exception).lower():
+        return "APIエラー（詳細不明、fitbitライブラリのバグによりエラー情報が失われました）"
+
+    # 一般的な例外
+    error_type = type(exception).__name__
+    error_msg = str(exception)
+
+    return f"{error_type}: {error_msg}"
+
+
 def fetch_endpoint(client, endpoint: str, days: int = 14, overwrite: bool = False) -> dict:
     """
     指定エンドポイントのデータを取得・保存
@@ -72,7 +219,7 @@ def fetch_endpoint(client, endpoint: str, days: int = 14, overwrite: bool = Fals
         overwrite: 上書きモード
 
     Returns:
-        結果情報の辞書（records: レコード数, path: 保存パス）
+        結果情報の辞書（records: レコード数, path: 保存パス, error: エラーメッセージ）
     """
     if endpoint not in ENDPOINTS:
         raise ValueError(f"Unknown endpoint: {endpoint}. Available: {list(ENDPOINTS.keys())}")
@@ -89,9 +236,14 @@ def fetch_endpoint(client, endpoint: str, days: int = 14, overwrite: bool = Fals
 
     print(f"{config['description']}を取得中... ({start_date} ~ {end_date})")
 
-    # API呼び出し
-    fetch_fn = getattr(fitbit_api, config['fetch_fn'])
-    response = fetch_fn(client, start_date, end_date)
+    try:
+        # API呼び出し
+        fetch_fn = getattr(fitbit_api, config['fetch_fn'])
+        response = fetch_fn(client, start_date, end_date)
+    except Exception as e:
+        error_msg = _format_api_error(e)
+        print(f"  エラー: {error_msg}")
+        return {'records': 0, 'path': None, 'error': error_msg}
 
     # パース
     if config['parse_fn']:
@@ -171,11 +323,25 @@ def fetch_all(client, days: int = 14, overwrite: bool = False) -> dict:
 
     Returns:
         各エンドポイントの結果辞書
+        各結果: {records: int, path: Path, error: str (optional)}
     """
     results = {}
+    errors = []
+
     for endpoint in ENDPOINTS:
         print(f"\n=== {ENDPOINTS[endpoint]['description']} ===")
-        results[endpoint] = fetch_endpoint(client, endpoint, days, overwrite)
+        result = fetch_endpoint(client, endpoint, days, overwrite)
+        results[endpoint] = result
+
+        if result.get('error'):
+            errors.append(f"{endpoint}: {result['error']}")
+
+    # エラーサマリーを表示
+    if errors:
+        print(f"\n⚠️  {len(errors)}件のエンドポイントでエラーが発生:")
+        for error in errors:
+            print(f"  - {error}")
+
     return results
 
 

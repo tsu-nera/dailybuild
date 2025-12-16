@@ -20,8 +20,10 @@ from urllib.parse import urlparse, parse_qs
 import fitbit
 
 BASE_DIR = Path(__file__).parent.parent
-CREDS_FILE = BASE_DIR / 'config/fitbit_creds.json'
-TOKEN_FILE = BASE_DIR / 'config/fitbit_token.json'
+CREDS_FILE_DEV = BASE_DIR / 'config/fitbit_creds_dev.json'
+TOKEN_FILE_DEV = BASE_DIR / 'config/fitbit_token_dev.json'
+CREDS_FILE_PROD = BASE_DIR / 'config/fitbit_creds.json'
+TOKEN_FILE_PROD = BASE_DIR / 'config/fitbit_token.json'
 REDIRECT_URI = 'http://127.0.0.1:8080/'
 
 
@@ -48,35 +50,52 @@ class OAuthHandler(BaseHTTPRequestHandler):
         pass  # ログを抑制
 
 
-def create_creds_template():
+def create_creds_template(creds_file):
     """認証情報テンプレートを作成"""
-    CREDS_FILE.parent.mkdir(exist_ok=True)
+    creds_file.parent.mkdir(exist_ok=True)
     template = {
         "client_id": "YOUR_CLIENT_ID",
         "client_secret": "YOUR_CLIENT_SECRET"
     }
-    with open(CREDS_FILE, 'w') as f:
+    with open(creds_file, 'w') as f:
         json.dump(template, f, indent=2)
-    print(f"テンプレートを作成しました: {CREDS_FILE}")
+    print(f"テンプレートを作成しました: {creds_file}")
     print("client_id と client_secret を設定してから再実行してください。")
 
 
 def main():
-    print("=" * 50)
-    print("Fitbit OAuth2 認証")
-    print("=" * 50)
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Fitbit OAuth2認証')
+    parser.add_argument('--env', choices=['dev', 'prod'], default='dev',
+                       help='環境選択: dev (開発用) または prod (GitHub Actions用)')
+    args = parser.parse_args()
+
+    # 環境に応じたファイルを選択
+    if args.env == 'prod':
+        creds_file = CREDS_FILE_PROD
+        token_file = TOKEN_FILE_PROD
+        env_name = "本番（GitHub Actions用）"
+    else:
+        creds_file = CREDS_FILE_DEV
+        token_file = TOKEN_FILE_DEV
+        env_name = "開発（ローカル用）"
+
+    print("=" * 60)
+    print(f"Fitbit OAuth2 認証 - {env_name}")
+    print("=" * 60)
 
     # 認証情報の確認
-    if not CREDS_FILE.exists():
-        print(f"\n認証情報ファイルが見つかりません: {CREDS_FILE}")
-        create_creds_template()
+    if not creds_file.exists():
+        print(f"\n認証情報ファイルが見つかりません: {creds_file}")
+        create_creds_template(creds_file)
         sys.exit(1)
 
-    with open(CREDS_FILE, 'r') as f:
+    with open(creds_file, 'r') as f:
         creds = json.load(f)
 
     if creds.get('client_id') == 'YOUR_CLIENT_ID':
-        print(f"\n{CREDS_FILE} に正しい認証情報を設定してください。")
+        print(f"\n{creds_file} に正しい認証情報を設定してください。")
         print("\nFitbit Developer Portal (https://dev.fitbit.com/) で:")
         print("  1. アプリを登録")
         print("  2. OAuth 2.0 Client ID と Client Secret を取得")
@@ -91,9 +110,27 @@ def main():
         timeout=10
     )
 
-    # 認証URL生成
-    url, _ = server.client.authorize_token_url()
+    # 認証URL生成（必要な全スコープを指定）
+    scopes = [
+        'activity',
+        'cardio_fitness',                    # VO2 Max
+        'electrocardiogram',                 # ECG（心電図）※ Charge 6対応
+        'heartrate',
+        'irregular_rhythm_notifications',    # 不整脈通知 ※ Charge 6対応
+        'location',
+        'nutrition',
+        'oxygen_saturation',                 # SpO2（血中酸素濃度）
+        'profile',
+        'respiratory_rate',                  # 呼吸数
+        'settings',
+        'sleep',
+        'social',
+        'temperature',                       # 体温データ
+        'weight',
+    ]
+    url, _ = server.client.authorize_token_url(scope=scopes)
     print(f"\nブラウザで認証ページを開きます...")
+    print(f"スコープ: {', '.join(scopes)}")
     print(f"URL: {url}\n")
     webbrowser.open(url)
 
@@ -121,13 +158,20 @@ def main():
         sys.exit(1)
 
     # トークン保存
-    with open(TOKEN_FILE, 'w') as f:
+    with open(token_file, 'w') as f:
         json.dump(token, f, indent=2)
 
     print(f"\n認証完了!")
-    print(f"トークンを保存しました: {TOKEN_FILE}")
-    print("\n以下のコマンドで睡眠データを取得できます:")
-    print("  python scripts/fetch_sleep.py")
+    print(f"トークンを保存しました: {token_file}")
+
+    if args.env == 'prod':
+        print("\n次のステップ:")
+        print("  1. 以下のトークン内容をコピー:")
+        print(f"     cat {token_file}")
+        print("  2. GitHub → Settings → Secrets → FITBIT_TOKEN を更新")
+    else:
+        print("\n以下のコマンドでデータを取得できます:")
+        print("  python scripts/fetch_fitbit.py --all")
 
 
 if __name__ == '__main__':
