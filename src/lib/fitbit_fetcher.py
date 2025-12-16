@@ -143,6 +143,14 @@ ENDPOINTS = {
         'date_column': 'date_time',
         'max_days': 30,
     },
+    'activity_logs': {
+        'description': '個別アクティビティログ（運動記録）',
+        'fetch_fn': 'get_activity_logs_by_date_range',
+        'parse_fn': None,  # DataFrameを直接返す
+        'date_column': 'startTime',
+        'max_days': None,
+        'is_paginated': True,  # ページング方式のAPI
+    },
 }
 
 
@@ -254,7 +262,7 @@ def fetch_endpoint(client, endpoint: str, days: int = 14, overwrite: bool = Fals
             return {'records': 0, 'path': None}
         df = pd.DataFrame(records)
     else:
-        # activityはDataFrameを直接返す
+        # activity, activity_logsはDataFrameを直接返す
         df = response
         if df.empty:
             print(f"  データがありません")

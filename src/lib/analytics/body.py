@@ -20,14 +20,18 @@ COLUMN_CONFIG = {
     'lbm': ('除脂肪', '.1f'),
     'ffmi': ('FFMI', '.1f'),
     'visceral_fat_level': ('内臓脂肪', '.1f'),
-    'basal_metabolic_rate': ('基礎代謝', '.0f'),
+    'basal_metabolic_rate': ('BMR', '.0f'),
     'bone_mass': ('骨量', '.1f'),
     'body_age': ('体内年齢', '.0f'),
     'body_water_rate': ('体水分率', '.1f'),
     'muscle_quality_score': ('筋質点数', '.0f'),
-    'calories_in': ('摂取', '.0f'),
-    'calories_out': ('消費', '.0f'),
-    'calorie_balance': ('収支', '.0f'),
+    'calories_in': ('In', '.0f'),
+    'calories_out': ('Out', '.0f'),
+    'calorie_balance': ('Balance', '.0f'),
+    'eat': ('EAT', '.0f'),
+    'neat': ('NEAT', '.0f'),
+    'tef': ('TEF', '.0f'),
+    'activity_calories': ('活動C', '.0f'),
 }
 
 # デフォルト表示カラム（日別データ用）
@@ -46,6 +50,12 @@ DAILY_BODY_COLUMNS = [
 # カロリー収支テーブル用カラム
 DAILY_CALORIE_COLUMNS = [
     'weight', 'basal_metabolic_rate', 'calories_in', 'calories_out', 'calorie_balance'
+]
+
+# カロリー分析テーブル用カラム（TDEE分解：BMR, NEAT, TEF, EAT）
+DAILY_CALORIE_ANALYSIS_COLUMNS = [
+    'weight', 'calorie_balance', 'calories_in', 'calories_out',
+    'basal_metabolic_rate', 'neat', 'tef', 'eat'
 ]
 
 # サマリー用カラム
@@ -229,8 +239,14 @@ def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None):
     if activity_stats and 'daily' in activity_stats:
         df_activity_daily = pd.DataFrame(activity_stats['daily'])
         df_activity_daily['date'] = pd.to_datetime(df_activity_daily['date'])
-        df_activity_daily = df_activity_daily[['date', 'caloriesOut']].rename(
-            columns={'caloriesOut': 'calories_out'}
+        # caloriesOutとactivityCaloriesをマージ
+        columns_to_merge = ['date', 'caloriesOut']
+        rename_map = {'caloriesOut': 'calories_out'}
+        if 'activityCalories' in df_activity_daily.columns:
+            columns_to_merge.append('activityCalories')
+            rename_map['activityCalories'] = 'activity_calories'
+        df_activity_daily = df_activity_daily[columns_to_merge].rename(
+            columns=rename_map
         )
         df = df.merge(df_activity_daily, on='date', how='left')
 

@@ -683,6 +683,64 @@ def get_meditation_logs(client, before_date=None, after_date=None, limit=100):
     return [act for act in activities if act['activityTypeId'] == ACTIVITY_TYPE_MEDITATING]
 
 
+def get_activity_logs_by_date_range(client, start_date, end_date):
+    """
+    期間指定で全アクティビティログを取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        pandas.DataFrame: 個別アクティビティログのデータ
+
+    Note:
+        Activity Logs APIはページング方式のため、
+        期間内の全ログを取得するまでループする
+    """
+    import pandas as pd
+    import datetime as dt
+
+    all_activities = []
+    before_date = end_date + dt.timedelta(days=1)  # 終了日を含めるため+1
+
+    # ページングで全件取得
+    while True:
+        data = get_activity_log_list(client, before_date=before_date, limit=100)
+        activities = parse_activity_log(data)
+
+        if not activities:
+            break
+
+        # 期間内のログのみ追加
+        for act in activities:
+            act_date = pd.to_datetime(act['startTime']).date()
+            if act_date < start_date:
+                # 開始日より前のログに到達したら終了
+                break
+            if start_date <= act_date <= end_date:
+                all_activities.append(act)
+
+        # 次のページがあるかチェック
+        pagination = data.get('pagination', {})
+        if not pagination.get('next'):
+            break
+
+        # 最後のアクティビティの日付を次のbefore_dateにセット
+        if activities:
+            last_date = pd.to_datetime(activities[-1]['startTime']).date()
+            if last_date < start_date:
+                break
+            before_date = last_date
+
+    if not all_activities:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(all_activities)
+    return df
+
+
 # =============================================================================
 # Active Zone Minutes API
 # https://dev.fitbit.com/build/reference/web-api/active-zone-minutes-timeseries/

@@ -20,12 +20,13 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib.analytics import sleep, hrv, body, nutrition
+from lib.analytics import sleep, hrv, body, nutrition, activity
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
 SLEEP_MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
 ACTIVITY_MASTER_CSV = BASE_DIR / 'data/fitbit/activity.csv'
+ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 HRV_MASTER_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 HEART_RATE_MASTER_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
 NUTRITION_MASTER_CSV = BASE_DIR / 'data/fitbit/nutrition.csv'
@@ -226,7 +227,40 @@ def calc_nutrition_stats_for_period(start_date, end_date):
     return nutrition.calc_nutrition_stats_for_period(df_period)
 
 
-def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None, nutrition_stats=None):
+def calc_eat_stats_for_period(start_date, end_date):
+    """
+    指定期間のEAT（運動活動熱産生）統計を計算
+
+    Parameters
+    ----------
+    start_date : str
+        開始日（YYYY-MM-DD）
+    end_date : str
+        終了日（YYYY-MM-DD）
+
+    Returns
+    -------
+    dict or None
+        EAT統計。データがない場合はNone
+    """
+    if not ACTIVITY_LOGS_CSV.exists():
+        return None
+
+    df_activity_logs = pd.read_csv(ACTIVITY_LOGS_CSV)
+    df_activity_logs['startTime'] = pd.to_datetime(df_activity_logs['startTime'], format='ISO8601')
+
+    # 期間でフィルタ
+    mask = (df_activity_logs['startTime'] >= start_date) & (df_activity_logs['startTime'] <= end_date)
+    df_period = df_activity_logs[mask]
+
+    if len(df_period) == 0:
+        return None
+
+    # ライブラリの関数を使用してEAT統計を計算
+    return activity.calc_eat_stats_for_period(df_period)
+
+
+def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None, nutrition_stats=None, eat_stats=None):
     """マークダウンレポートを生成"""
     report_path = output_dir / 'REPORT.md'
 
@@ -237,6 +271,16 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 
     # 日別データに栄養・アクティビティデータをマージ
     df_daily = body.merge_daily_data(df, nutrition_stats, activity_stats)
+
+    # EATデータをマージ
+    if eat_stats:
+        df_daily = activity.merge_eat_to_daily(df_daily, eat_stats)
+
+    # NEATを計算（activity_calories - EAT）
+    df_daily = activity.calc_neat(df_daily)
+
+    # TEFを計算（摂取カロリー × 0.1）
+    df_daily = activity.calc_tef(df_daily)
 
     # 日別テーブル（body.format_daily_table()で生成）
     daily_table = body.format_daily_table(df_daily)
@@ -305,35 +349,48 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 
     # 有酸素運動セクション
     aerobic_section = ""
-    if activity_stats:
+    if activity_stats or eat_stats:
+        # サマリー部分
+        summary_rows = []
+        if activity_stats:
+            summary_rows.append(f"| 歩数 | {activity_stats['avg_steps']:,.0f} 歩 | {activity_stats['total_steps']:,.0f} 歩 |")
+            summary_rows.append(f"| とても活発 | {activity_stats['avg_very_active']:.0f} 分/日 | - |")
+            summary_rows.append(f"| やや活発 | {activity_stats['avg_fairly_active']:.0f} 分/日 | - |")
+        if eat_stats:
+            summary_rows.append(f"| **EAT (運動)** | **{eat_stats['avg_eat']:.0f} kcal/日** | **{eat_stats['total_eat']:.0f} kcal** |")
+
+        summary_table = '\n'.join(summary_rows)
+
         # 日別テーブル
-        activity_rows = []
-        for row in activity_stats['daily']:
-            date_str = pd.to_datetime(row['date']).strftime('%m-%d')
-            activity_rows.append(
-                f"| {date_str} | {row['steps']:,.0f} | {row['veryActiveMinutes']:.0f} | "
-                f"{row['fairlyActiveMinutes']:.0f} |"
-            )
-        activity_table = '\n'.join(activity_rows)
+        daily_rows = []
+        if activity_stats:
+            for row in activity_stats['daily']:
+                date_str = pd.to_datetime(row['date']).strftime('%m-%d')
+                daily_rows.append(
+                    f"| {date_str} | {row['steps']:,.0f} | {row['veryActiveMinutes']:.0f} | "
+                    f"{row['fairlyActiveMinutes']:.0f} |"
+                )
+        daily_table = '\n'.join(daily_rows) if daily_rows else ""
 
         aerobic_section = f"""
 #### 有酸素運動
 
-> 歩数と活動強度の記録。
+> 歩数と活動強度の記録。EAT（運動活動熱産生）は個別の運動による消費カロリー。
 
 **サマリー**
 
 | 指標 | 平均 | 合計 |
 |------|------|------|
-| 歩数 | {activity_stats['avg_steps']:,.0f} 歩 | {activity_stats['total_steps']:,.0f} 歩 |
-| とても活発 | {activity_stats['avg_very_active']:.0f} 分/日 | - |
-| やや活発 | {activity_stats['avg_fairly_active']:.0f} 分/日 | - |
+{summary_table}
+"""
 
+        if daily_table:
+            aerobic_section += f"""
 **日別データ**
 
 | 日付 | 歩数 | とても活発 | やや活発 |
 |------|------|------------|----------|
-{activity_table}
+{daily_table}
 """
 
     # 筋トレセクション
@@ -394,16 +451,24 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 {nutrition_table}
 """
 
-    # カロリー収支セクション
-    calorie_balance_section = ""
-    if nutrition_stats or activity_stats:
-        calorie_table = body.format_daily_table(df_daily, body.DAILY_CALORIE_COLUMNS)
-        calorie_balance_section = f"""
+    # カロリー分析セクション
+    calorie_analysis_section = ""
+    if nutrition_stats or activity_stats or eat_stats:
+        calorie_table = body.format_daily_table(df_daily, body.DAILY_CALORIE_ANALYSIS_COLUMNS)
+        calorie_analysis_section = f"""
 ---
 
-## カロリー収支
+## カロリー分析
 
-> 体重増減の主要因。収支 = 摂取 - 消費。
+> **TDEE（総消費エネルギー量）の内訳**: Out ≈ BMR + NEAT + TEF + EAT
+>
+> - **Balance**: カロリー収支（In - Out）
+> - **In**: 摂取カロリー
+> - **Out**: 消費カロリー（TDEE）
+> - **BMR**: 基礎代謝
+> - **NEAT**: 非運動性活動熱産生（日常活動による消費）
+> - **TEF**: 食事誘発性熱産生（消化による消費、摂取カロリーの約10%）
+> - **EAT**: 運動活動熱産生（意図的な運動による消費）
 
 {calorie_table}
 """
@@ -428,7 +493,7 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 | FFMI | {stats['ffmi']['first']:.1f} | {stats['ffmi']['last']:.1f} | **{body.format_change(stats['ffmi']['change'], '')}** |
 
 > 除脂肪体重 = 体重 − 体脂肪量
-{recovery_section}{training_section}{nutrition_section}{calorie_balance_section}
+{recovery_section}{training_section}{nutrition_section}{calorie_analysis_section}
 ---
 
 ## 詳細データ
@@ -542,11 +607,16 @@ def main():
     if nutrition_stats:
         print(f'Nutrition data: {nutrition_stats["recorded_days"]}/{nutrition_stats["days"]} days')
 
+    # Calculate EAT stats for the same period
+    eat_stats = calc_eat_stats_for_period(start_date, end_date)
+    if eat_stats:
+        print(f'EAT data: {eat_stats["days"]} days, avg {eat_stats["avg_eat"]:.0f} kcal/day')
+
     # Generate chart
     plot_main_chart(df, img_dir / 'trend.png')
 
     # Generate report
-    generate_report(output_dir, df, stats, sleep_stats, activity_stats, hrv_stats, nutrition_stats)
+    generate_report(output_dir, df, stats, sleep_stats, activity_stats, hrv_stats, nutrition_stats, eat_stats)
 
     return 0
 
