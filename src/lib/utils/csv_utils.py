@@ -22,9 +22,15 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
         return df_new
 
     df_old = pd.read_csv(csv_path, parse_dates=[index_col], index_col=index_col)
+
+    # インデックスの型を統一（datetimeに変換）
+    df_new = df_new.copy()
+    df_new.index = pd.to_datetime(df_new.index)
+    df_old.index = pd.to_datetime(df_old.index)
+
     df_merged = pd.concat([df_old, df_new])
     df_merged = df_merged[~df_merged.index.duplicated(keep='last')]
-    df_merged.sort_index(inplace=True)
+    df_merged = df_merged.sort_index()
     return df_merged
 
 

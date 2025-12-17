@@ -678,53 +678,47 @@ def get_activity_summary_by_date_range(client, start_date, end_date):
 
     Returns:
         pandas.DataFrame: 日別のアクティビティデータ
+
+    Note:
+        Daily Activity Summary APIを日付ごとに呼び出す
+        Time Series APIより効率的（1日1リクエスト vs 8リソース×1リクエスト）
     """
     import pandas as pd
+    import datetime as dt
 
-    resources = [
-        'calories',
-        'activityCalories',
-        'steps',
-        'distance',
-        'minutesSedentary',
-        'minutesLightlyActive',
-        'minutesFairlyActive',
-        'minutesVeryActive',
-    ]
+    current = start_date
+    results = []
 
-    # 各リソースを取得
-    data_dict = {}
-    for resource in resources:
-        response = get_activity_time_series_by_date_range(client, resource, start_date, end_date)
-        key = f'activities-tracker-{resource}'
-        if key in response:
-            for item in response[key]:
-                date = item['dateTime']
-                if date not in data_dict:
-                    data_dict[date] = {'date': date}
-                # リソース名をカラム名に変換
-                col_name = resource
-                if resource.startswith('minutes'):
-                    col_name = resource.replace('minutes', '') + 'Minutes'
-                data_dict[date][col_name] = float(item['value']) if item['value'] else 0
+    while current <= end_date:
+        data = get_daily_activity_summary(client, current)
+        summary = data.get('summary', {})
 
-    # DataFrameに変換
-    records = list(data_dict.values())
-    if not records:
+        # 距離の合計を計算（distances配列から）
+        total_distance = 0.0
+        distances = summary.get('distances', [])
+        for dist in distances:
+            if dist.get('activity') == 'total':
+                total_distance = float(dist.get('distance', 0))
+                break
+
+        row = {
+            'date': current.strftime('%Y-%m-%d'),
+            'caloriesOut': float(summary.get('caloriesOut', 0)),
+            'activityCalories': float(summary.get('activityCalories', 0)),
+            'steps': float(summary.get('steps', 0)),
+            'distance': total_distance,
+            'sedentaryMinutes': float(summary.get('sedentaryMinutes', 0)),
+            'lightlyActiveMinutes': float(summary.get('lightlyActiveMinutes', 0)),
+            'fairlyActiveMinutes': float(summary.get('fairlyActiveMinutes', 0)),
+            'veryActiveMinutes': float(summary.get('veryActiveMinutes', 0)),
+        }
+        results.append(row)
+        current += dt.timedelta(days=1)
+
+    if not results:
         return pd.DataFrame()
 
-    df = pd.DataFrame(records)
-
-    # カラム名を統一
-    rename_map = {
-        'calories': 'caloriesOut',
-        'SedentaryMinutes': 'sedentaryMinutes',
-        'LightlyActiveMinutes': 'lightlyActiveMinutes',
-        'FairlyActiveMinutes': 'fairlyActiveMinutes',
-        'VeryActiveMinutes': 'veryActiveMinutes',
-    }
-    df.rename(columns=rename_map, inplace=True)
-
+    df = pd.DataFrame(results)
     return df
 
 

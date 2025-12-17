@@ -72,6 +72,7 @@ ENDPOINTS = {
         'date_column': 'dateOfSleep',
         'max_days': 100,
         'has_levels': True,
+        'is_time_series_api': True,  # Time Series API（期間指定、1リクエスト）
     },
     'hrv': {
         'description': 'HRV（心拍変動）',
@@ -79,6 +80,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_hrv',
         'date_column': 'date',
         'max_days': 30,
+        'is_range_api': True,
     },
     'heart_rate': {
         'description': '安静時心拍数',
@@ -86,6 +88,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_heart_rate',
         'date_column': 'date',
         'max_days': 30,
+        'is_range_api': True,
     },
     'activity': {
         'description': 'アクティビティサマリー',
@@ -93,6 +96,7 @@ ENDPOINTS = {
         'parse_fn': None,  # DataFrameを直接返す
         'date_column': 'date',
         'max_days': None,
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
     },
     'active_zone_minutes': {
         'description': 'アクティブゾーン分数',
@@ -100,6 +104,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_active_zone_minutes',
         'date_column': 'date',
         'max_days': None,  # 最大1095日間
+        'is_range_api': True,
     },
     'nutrition': {
         'description': '栄養データ（食事ログサマリー）',
@@ -107,6 +112,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_food_log',
         'date_column': 'date',
         'max_days': None,
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
     },
     'breathing_rate': {
         'description': '呼吸数',
@@ -114,6 +120,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_breathing_rate',
         'date_column': 'date',
         'max_days': 30,
+        'is_range_api': True,
     },
     'spo2': {
         'description': '血中酸素濃度（SpO2）',
@@ -121,6 +128,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_spo2',
         'date_column': 'date',
         'max_days': 30,
+        'is_range_api': True,
     },
     'cardio_score': {
         'description': '心肺スコア（VO2 Max）',
@@ -128,6 +136,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_cardio_score',
         'date_column': 'date',
         'max_days': 30,
+        'is_range_api': True,
     },
     'temperature_skin': {
         'description': '皮膚温（睡眠中）',
@@ -135,13 +144,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_temperature_skin',
         'date_column': 'date',
         'max_days': 30,
-    },
-    'temperature_core': {
-        'description': '体温（手動記録）',
-        'fetch_fn': 'get_temperature_core_by_date_range',
-        'parse_fn': 'parse_temperature_core',
-        'date_column': 'date_time',
-        'max_days': 30,
+        'is_range_api': True,
     },
     'activity_logs': {
         'description': '個別アクティビティログ（運動記録）',
@@ -150,6 +153,7 @@ ENDPOINTS = {
         'date_column': 'startTime',
         'max_days': None,
         'is_paginated': True,  # ページング方式のAPI
+        'is_time_series_api': False,  # ページング（データ量次第）
     },
 }
 
@@ -320,7 +324,72 @@ def _save_sleep_levels(response: dict, overwrite: bool) -> dict:
     return {'records': len(df_levels), 'path': out_path}
 
 
-def fetch_all(client, days: int = 14, overwrite: bool = False) -> dict:
+def fetch_time_series_endpoints(client, days: int = 2, overwrite: bool = False) -> dict:
+    """
+    Time Series API（期間指定、1リクエスト）のエンドポイントを取得
+
+    Args:
+        client: Fitbitクライアント
+        days: 取得日数
+        overwrite: 上書きモード
+
+    Returns:
+        各エンドポイントの結果辞書
+
+    Note:
+        sleep, hrv, heart_rate, active_zone_minutes, breathing_rate,
+        spo2, cardio_score, temperature_skin
+    """
+    results = {}
+    errors = []
+
+    for endpoint, config in ENDPOINTS.items():
+        if not config.get('is_time_series_api', False):
+            continue
+
+        print(f"\n=== {config['description']} ===")
+        result = fetch_endpoint(client, endpoint, days, overwrite)
+        results[endpoint] = result
+
+        if result.get('error'):
+            errors.append(f"{endpoint}: {result['error']}")
+
+    return results, errors
+
+
+def fetch_daily_endpoints(client, days: int = 2, overwrite: bool = False) -> dict:
+    """
+    日付ごとループまたはページング方式のエンドポイントを取得
+
+    Args:
+        client: Fitbitクライアント
+        days: 取得日数
+        overwrite: 上書きモード
+
+    Returns:
+        各エンドポイントの結果辞書
+
+    Note:
+        activity（日付ごと）, nutrition（日付ごと）, activity_logs（ページング）
+    """
+    results = {}
+    errors = []
+
+    for endpoint, config in ENDPOINTS.items():
+        if config.get('is_time_series_api', False):
+            continue
+
+        print(f"\n=== {config['description']} ===")
+        result = fetch_endpoint(client, endpoint, days, overwrite)
+        results[endpoint] = result
+
+        if result.get('error'):
+            errors.append(f"{endpoint}: {result['error']}")
+
+    return results, errors
+
+
+def fetch_all(client, days: int = 2, overwrite: bool = False) -> dict:
     """
     全エンドポイントのデータを取得
 
@@ -332,17 +401,24 @@ def fetch_all(client, days: int = 14, overwrite: bool = False) -> dict:
     Returns:
         各エンドポイントの結果辞書
         各結果: {records: int, path: Path, error: str (optional)}
+
+    Note:
+        Time Series API（1リクエスト）と日付ごとAPI（N日間=Nリクエスト）を
+        分けて実行することで、リクエスト数を把握しやすくする
     """
-    results = {}
-    errors = []
+    print("=" * 60)
+    print("Time Series API（期間指定、1リクエスト）")
+    print("=" * 60)
+    time_series_results, time_series_errors = fetch_time_series_endpoints(client, days, overwrite)
 
-    for endpoint in ENDPOINTS:
-        print(f"\n=== {ENDPOINTS[endpoint]['description']} ===")
-        result = fetch_endpoint(client, endpoint, days, overwrite)
-        results[endpoint] = result
+    print("\n" + "=" * 60)
+    print("日付ごとAPI（N日間=Nリクエスト）")
+    print("=" * 60)
+    daily_results, daily_errors = fetch_daily_endpoints(client, days, overwrite)
 
-        if result.get('error'):
-            errors.append(f"{endpoint}: {result['error']}")
+    # 結果を統合
+    results = {**time_series_results, **daily_results}
+    errors = time_series_errors + daily_errors
 
     # エラーサマリーを表示
     if errors:

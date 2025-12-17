@@ -58,8 +58,8 @@ def main():
     parser.add_argument(
         '--days', '-d',
         type=int,
-        default=14,
-        help='取得日数（デフォルト: 14）'
+        default=2,
+        help='取得日数（デフォルト: 2）'
     )
     parser.add_argument(
         '--overwrite',
