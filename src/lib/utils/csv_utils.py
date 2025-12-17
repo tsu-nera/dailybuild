@@ -25,8 +25,8 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
 
     # インデックスの型を統一（datetimeに変換）
     df_new = df_new.copy()
-    df_new.index = pd.to_datetime(df_new.index)
-    df_old.index = pd.to_datetime(df_old.index)
+    df_new.index = pd.to_datetime(df_new.index, format='mixed')
+    df_old.index = pd.to_datetime(df_old.index, format='mixed')
 
     df_merged = pd.concat([df_old, df_new])
     df_merged = df_merged[~df_merged.index.duplicated(keep='last')]
