@@ -91,12 +91,12 @@ def main():
     
     # レポート生成
     report_lines = []
-    report_lines.append(f"# 週次推移レポート（直近{len(weekly)}週間）")
+    report_lines.append("# 💪 筋トレ週次レポート")
     report_lines.append("")
     report_lines.append("7日間平均値の推移。前週比でトレンドを確認。")
     report_lines.append("")
-    report_lines.append("| 週 (No.) | 日数 | 平均体重 (前週差) | 平均筋肉量 (前週差) | 平均体脂肪率 (前週差) | 平均LBM (前週差) | 平均FFMI (前週差) | 内臓脂肪 |")
-    report_lines.append("|---|---|---|---|---|---|---|---|")
+    report_lines.append("| 週 | 体重 | 筋肉量 | 体脂肪率 | FFMI |")
+    report_lines.append("|---|---|---|---|---|")
     
     # Sort descending for display? No, keep chronological usually, 
     # but for "latest first" logs, descending is better. Let's do descending (newest top).
@@ -124,9 +124,7 @@ def main():
         ffmi_str = f"{row['ffmi']:.1f} ({format_change(row['ffmi_diff'], '')})"
 
         report_lines.append(
-            f"| **{year}-W{week:02d}** | {row['days_count']}日 | "
-            f"{weight_str} | {muscle_str} | {fat_str} | "
-            f"{lbm_str} | {ffmi_str} | {row['visceral_fat_level']:.1f} |"
+            f"| **{year}-W{week:02d}** | {weight_str} | {muscle_str} | {fat_str} | {ffmi_str} |"
         )
 
     output_path = args.output

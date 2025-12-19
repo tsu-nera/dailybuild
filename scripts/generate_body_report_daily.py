@@ -30,6 +30,8 @@ ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 HRV_MASTER_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 HEART_RATE_MASTER_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
 NUTRITION_MASTER_CSV = BASE_DIR / 'data/fitbit/nutrition.csv'
+ACTIVE_ZONE_CSV = BASE_DIR / 'data/fitbit/active_zone_minutes.csv'
+CARDIO_SCORE_CSV = BASE_DIR / 'data/fitbit/cardio_score.csv'
 
 
 def plot_main_chart(df, save_path):
@@ -140,13 +142,8 @@ def calc_activity_stats_for_period(start_date, end_date):
         'avg_activity_calories': df_period['activityCalories'].mean(),
         'avg_steps': df_period['steps'].mean(),
         'total_steps': df_period['steps'].sum(),
-        'avg_very_active': df_period['veryActiveMinutes'].mean(),
-        'avg_fairly_active': df_period['fairlyActiveMinutes'].mean(),
-        'avg_lightly_active': df_period['lightlyActiveMinutes'].mean(),
-        'avg_sedentary': df_period['sedentaryMinutes'].mean(),
-        # 日別データ
-        'daily': df_period[['date', 'caloriesOut', 'activityCalories', 'steps', 
-                            'veryActiveMinutes', 'fairlyActiveMinutes']].to_dict('records'),
+        # 日別データ（歩数のみ）
+        'daily': df_period[['date', 'caloriesOut', 'activityCalories', 'steps']].to_dict('records'),
     }
 
 
@@ -295,140 +292,198 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
     # 日別テーブル（body.format_daily_table()で生成）
     daily_table = body.format_daily_table(df_daily)
 
-    # 睡眠セクション（回復の一部）
-    sleep_section = ""
-    if sleep_stats:
-        sleep_section = f"""
-### 睡眠
+    # 回復セクション（睡眠・HRV・心拍数の日別テーブル）
+    recovery_section = ""
+    if df_sleep_filtered is not None or HRV_MASTER_CSV.exists():
+        # HRVと心拍数データを事前に読み込み
+        df_hrv_all = None
+        if HRV_MASTER_CSV.exists():
+            df_hrv_all = pd.read_csv(HRV_MASTER_CSV)
+            df_hrv_all['date'] = pd.to_datetime(df_hrv_all['date'])
 
-> 筋肉の回復には質の良い睡眠が不可欠。深い睡眠中に成長ホルモンが分泌される。
+        df_hr_all = None
+        if HEART_RATE_MASTER_CSV.exists():
+            df_hr_all = pd.read_csv(HEART_RATE_MASTER_CSV)
+            df_hr_all['date'] = pd.to_datetime(df_hr_all['date'])
 
-| 指標 | 値 | 推奨 |
-|------|-----|------|
-| 平均睡眠時間 | {sleep_stats['avg_sleep_hours']:.1f}時間 | 7-9時間 |
-| 平均効率 | {sleep_stats['avg_efficiency']:.0f}% | 85%以上 |
-| 深い睡眠 | {sleep_stats['avg_deep_minutes']:.0f}分 ({sleep_stats.get('deep_pct', 0):.0f}%) | 13-23% |
-| レム睡眠 | {sleep_stats['avg_rem_minutes']:.0f}分 ({sleep_stats.get('rem_pct', 0):.0f}%) | 20-25% |
-"""
+        # 日別データの準備
+        recovery_data = []
 
-    # HRVセクション（回復の一部）
-    hrv_condition_section = ""
-    if hrv_stats:
-        # 心拍数データがあれば表示
-        if 'avg_rhr' in hrv_stats:
-            hrv_condition_section = f"""
-### HRVとコンディション
+        # 期間の全日付を取得
+        all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
 
-> HRVは自律神経のバランスを反映。心拍数と組み合わせて回復状態を評価。
+        for date in all_dates:
+            row = {'date': date.strftime('%m-%d')}
 
-| 指標 | 値 | 変化 |
-|------|-----|------|
-| 平均RMSSD | {hrv_stats['avg_rmssd']:.1f}ms | {body.format_change(hrv_stats.get('change_rmssd', 0), 'ms')} |
-| 平均安静時心拍数 | {hrv_stats['avg_rhr']:.1f}bpm | {body.format_change(hrv_stats.get('change_rhr', 0), 'bpm')} |
+            # 睡眠データ
+            if df_sleep_filtered is not None:
+                sleep_day = df_sleep_filtered[df_sleep_filtered['dateOfSleep'] == date]
+                if len(sleep_day) > 0:
+                    row['sleep_hours'] = sleep_day['minutesAsleep'].iloc[0] / 60
+                    row['deep_minutes'] = sleep_day['deepMinutes'].iloc[0] if 'deepMinutes' in sleep_day.columns else None
+                    row['rem_minutes'] = sleep_day['remMinutes'].iloc[0] if 'remMinutes' in sleep_day.columns else None
+                    row['efficiency'] = sleep_day['efficiency'].iloc[0] if 'efficiency' in sleep_day.columns else None
+                else:
+                    row['sleep_hours'] = None
+                    row['deep_minutes'] = None
+                    row['rem_minutes'] = None
+                    row['efficiency'] = None
+            else:
+                row['sleep_hours'] = None
+                row['deep_minutes'] = None
+                row['rem_minutes'] = None
+                row['efficiency'] = None
 
-> HRV上昇 & 心拍数低下 = 回復良好、HRV低下 & 心拍数上昇 = 疲労
-"""
-        else:
-            hrv_condition_section = f"""
-### HRVとコンディション
+            # HRVデータ
+            if df_hrv_all is not None:
+                hrv_day = df_hrv_all[df_hrv_all['date'] == date]
+                if len(hrv_day) > 0:
+                    row['hrv'] = hrv_day['daily_rmssd'].iloc[0]
+                else:
+                    row['hrv'] = None
+            else:
+                row['hrv'] = None
 
-> HRVは自律神経のバランスを反映。
+            # 心拍数データ
+            if df_hr_all is not None:
+                hr_day = df_hr_all[df_hr_all['date'] == date]
+                if len(hr_day) > 0:
+                    row['hr'] = hr_day['resting_heart_rate'].iloc[0]
+                else:
+                    row['hr'] = None
+            else:
+                row['hr'] = None
 
-| 指標 | 値 |
-|------|-----|
-| 平均RMSSD | {hrv_stats['avg_rmssd']:.1f}ms |
-| 変動幅 | {hrv_stats['std_rmssd']:.1f}ms |
-"""
+            recovery_data.append(row)
 
-    # トレーニング負荷セクション
-    training_load_section = ""
-    if hrv_stats:
-        training_load_section = f"""
-#### トレーニング負荷
+        # テーブル生成
+        recovery_rows = []
+        for row in recovery_data:
+            sleep_str = f"{row['sleep_hours']:.1f}" if row['sleep_hours'] is not None else "-"
+            deep_str = f"{row['deep_minutes']:.0f}" if row['deep_minutes'] is not None else "-"
+            hrv_str = f"{row['hrv']:.0f}" if row['hrv'] is not None else "-"
+            hr_str = f"{row['hr']:.0f}" if row['hr'] is not None else "-"
 
-> HRVの変動パターンから負荷を推定。
+            recovery_rows.append(
+                f"| {row['date']} | {sleep_str} | {deep_str} | {hrv_str} | {hr_str} |"
+            )
 
-| 指標 | 値 |
-|------|-----|
-| HRV変動幅 | {hrv_stats['std_rmssd']:.1f}ms |
-| 回復サイクル | {hrv_stats.get('cycles', 0)}回 |
-| 平均乖離率 | {hrv_stats.get('avg_deviation', 0):.1f}% |
+        recovery_table = '\n'.join(recovery_rows)
 
-> 変動幅が大きい = 負荷がかかっている、サイクル数が多い = 回復できている
+        recovery_section = f"""
+---
+
+## 🛌 回復
+
+> 睡眠とHRVで回復状態を評価。HRV上昇 & HR低下 = 回復良好
+
+| 日付 | 睡眠(h) | 深い(m) | HRV(ms) | HR(bpm) |
+|------|---------|---------|---------|---------|
+{recovery_table}
 """
 
     # 有酸素運動セクション
     aerobic_section = ""
-    if activity_stats or eat_stats:
-        # サマリー部分
-        summary_rows = []
-        if activity_stats:
-            summary_rows.append(f"| 歩数 | {activity_stats['avg_steps']:,.0f} 歩 | {activity_stats['total_steps']:,.0f} 歩 |")
-            summary_rows.append(f"| とても活発 | {activity_stats['avg_very_active']:.0f} 分/日 | - |")
-            summary_rows.append(f"| やや活発 | {activity_stats['avg_fairly_active']:.0f} 分/日 | - |")
-        if eat_stats:
-            summary_rows.append(f"| **EAT (運動)** | **{eat_stats['avg_eat']:.0f} kcal/日** | **{eat_stats['total_eat']:.0f} kcal** |")
+    if activity_stats:
+        # Active ZoneとVO2 Maxデータを事前に読み込み
+        df_active_zone = None
+        if ACTIVE_ZONE_CSV.exists():
+            df_active_zone = pd.read_csv(ACTIVE_ZONE_CSV)
+            df_active_zone['date'] = pd.to_datetime(df_active_zone['date'])
 
-        summary_table = '\n'.join(summary_rows)
+        df_vo2max = None
+        if CARDIO_SCORE_CSV.exists():
+            df_vo2max = pd.read_csv(CARDIO_SCORE_CSV)
+            df_vo2max['date'] = pd.to_datetime(df_vo2max['date'])
 
-        # 日別テーブル
-        daily_rows = []
-        if activity_stats:
-            for row in activity_stats['daily']:
-                date_str = pd.to_datetime(row['date']).strftime('%m-%d')
-                daily_rows.append(
-                    f"| {date_str} | {row['steps']:,.0f} | {row['veryActiveMinutes']:.0f} | "
-                    f"{row['fairlyActiveMinutes']:.0f} |"
-                )
-        daily_table = '\n'.join(daily_rows) if daily_rows else ""
+        # 日別データの準備
+        aerobic_data = []
+        all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
+
+        for date in all_dates:
+            row = {'date': date.strftime('%m-%d')}
+
+            # アクティビティデータ（歩数のみ）
+            activity_day = [d for d in activity_stats['daily'] if pd.to_datetime(d['date']) == date]
+            if activity_day:
+                row['steps'] = activity_day[0]['steps']
+            else:
+                row['steps'] = None
+
+            # Active Zoneデータ
+            if df_active_zone is not None:
+                zone_day = df_active_zone[df_active_zone['date'] == date]
+                if len(zone_day) > 0:
+                    row['active_zone'] = zone_day['activeZoneMinutes'].iloc[0]
+                    row['fat_burn'] = zone_day['fatBurnActiveZoneMinutes'].iloc[0] if pd.notna(zone_day['fatBurnActiveZoneMinutes'].iloc[0]) else None
+                    row['cardio'] = zone_day['cardioActiveZoneMinutes'].iloc[0] if pd.notna(zone_day['cardioActiveZoneMinutes'].iloc[0]) else None
+                    row['peak'] = zone_day['peakActiveZoneMinutes'].iloc[0] if pd.notna(zone_day['peakActiveZoneMinutes'].iloc[0]) else None
+                else:
+                    row['active_zone'] = None
+                    row['fat_burn'] = None
+                    row['cardio'] = None
+                    row['peak'] = None
+            else:
+                row['active_zone'] = None
+                row['fat_burn'] = None
+                row['cardio'] = None
+                row['peak'] = None
+
+            # VO2 Maxデータ
+            if df_vo2max is not None:
+                vo2max_day = df_vo2max[df_vo2max['date'] == date]
+                if len(vo2max_day) > 0:
+                    row['vo2max'] = vo2max_day['vo2_max'].iloc[0]
+                else:
+                    row['vo2max'] = None
+            else:
+                row['vo2max'] = None
+
+            aerobic_data.append(row)
+
+        # テーブル生成
+        aerobic_rows = []
+        for row in aerobic_data:
+            steps_str = f"{row['steps']:,.0f}" if row['steps'] is not None else "-"
+            zone_str = f"{row['active_zone']:.0f}" if row['active_zone'] is not None else "-"
+            fat_burn_str = f"{row['fat_burn']:.0f}" if row['fat_burn'] is not None else "-"
+            cardio_str = f"{row['cardio']:.0f}" if row['cardio'] is not None else "-"
+            peak_str = f"{row['peak']:.0f}" if row['peak'] is not None else "-"
+            vo2max_str = f"{row['vo2max']:.0f}" if row['vo2max'] is not None else "-"
+
+            aerobic_rows.append(
+                f"| {row['date']} | {steps_str} | {zone_str} | {fat_burn_str} | {cardio_str} | {peak_str} | {vo2max_str} |"
+            )
+
+        aerobic_table = '\n'.join(aerobic_rows)
 
         aerobic_section = f"""
-#### 有酸素運動
+#### 🏃 有酸素運動
 
-> 歩数と活動強度の記録。EAT（運動活動熱産生）は個別の運動による消費カロリー。
+> 歩数と活動強度の記録。Active Zoneは心拍数ベースの運動強度（週150分推奨）。
+> Zone内訳: 脂肪燃焼（中程度）、有酸素（激しい）、ピーク（最高強度）
 
-**サマリー**
-
-| 指標 | 平均 | 合計 |
-|------|------|------|
-{summary_table}
-"""
-
-        if daily_table:
-            aerobic_section += f"""
-**日別データ**
-
-| 日付 | 歩数 | とても活発 | やや活発 |
-|------|------|------------|----------|
-{daily_table}
+| 日付 | 歩数 | Zone合計 | 脂肪燃焼 | 有酸素 | ピーク | VO2 Max |
+|------|------|----------|----------|--------|--------|---------|
+{aerobic_table}
 """
 
     # 筋トレセクション
     strength_section = """
-#### 筋トレ
+#### 💪 筋トレ
 
 > トレーニングログは [Hevy](https://hevy.com/profile) を参照
 """
 
-    # 回復セクション
-    recovery_section = ""
-    if sleep_section or hrv_condition_section:
-        recovery_section = f"""
----
-
-## 回復
-{sleep_section}{hrv_condition_section}
-"""
-
     # トレーニングセクション
     training_section = ""
-    if training_load_section or aerobic_section:
+    if aerobic_section:
         training_section = f"""
 ---
 
-## トレーニング
+## 🏋️ トレーニング
 
-{training_load_section}{aerobic_section}{strength_section}
+{aerobic_section}{strength_section}
 """
 
     # 栄養セクション
@@ -452,7 +507,7 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
         nutrition_section = f"""
 ---
 
-## 栄養
+## 🍽️ 栄養
 
 > PFCバランスとマクロ栄養素の記録。
 
@@ -468,7 +523,7 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
         calorie_analysis_section = f"""
 ---
 
-## カロリー分析
+## 🔥 カロリー分析
 
 > **TDEE（総消費エネルギー量）の内訳**: Out ≈ BMR + NEAT + TEF + EAT
 >
@@ -489,33 +544,30 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
         custom_labels={'calorie_balance': 'カロリー収支'}
     )
 
-    report = f"""# 体組成レポート
+    report = f"""# 💪 筋トレデイリーレポート
 
 **期間**: {start} 〜 {end}（{len(df)}日間）
 
 ---
 
-## サマリー
+## 📊 サマリー
 
 | 指標 | 開始 | 終了 | 変化 |
 |------|------|------|------|
 | 体重 | {stats['weight']['first']:.2f}kg | {stats['weight']['last']:.2f}kg | **{body.format_change(stats['weight']['change'], 'kg')}** |
 | 筋肉量 | {stats['muscle_mass']['first']:.2f}kg | {stats['muscle_mass']['last']:.2f}kg | **{body.format_change(stats['muscle_mass']['change'], 'kg')}** |
 | 体脂肪率 | {stats['body_fat_rate']['first']:.1f}% | {stats['body_fat_rate']['last']:.1f}% | **{body.format_change(stats['body_fat_rate']['change'], '%')}** |
-| 除脂肪体重 | {stats['lbm']['first']:.2f}kg | {stats['lbm']['last']:.2f}kg | **{body.format_change(stats['lbm']['change'], 'kg')}** |
 | FFMI | {stats['ffmi']['first']:.1f} | {stats['ffmi']['last']:.1f} | **{body.format_change(stats['ffmi']['change'], '')}** |
-
-> 除脂肪体重 = 体重 − 体脂肪量
-{recovery_section}{training_section}{nutrition_section}{calorie_analysis_section}
+{training_section}{nutrition_section}{calorie_analysis_section}{recovery_section}
 ---
 
-## 詳細データ
+## 📈 詳細データ
 
-### 推移
+### 📉 推移
 
 ![Body Composition](img/trend.png)
 
-### 体組成データ
+### 📋 体組成データ
 
 {body_composition_table}
 """
