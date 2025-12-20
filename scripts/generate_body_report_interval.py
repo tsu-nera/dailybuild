@@ -21,6 +21,11 @@ from lib.analytics import body
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
 
+# 目標設定（パラメータ）
+TARGET_FFMI = 21.0  # 目標FFMI
+MONTHLY_WEIGHT_GAIN = 0.75  # 月間体重増加目標（kg）
+HEIGHT_CM = 170  # 身長（cm）
+
 def format_change(val, unit='', inverse=False):
     """変化量をフォーマット。inverse=Trueなら減少が良いこと（脂肪など）"""
     if pd.isna(val):
@@ -46,7 +51,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Body Composition Interval Report')
     parser.add_argument('--weeks', type=int, default=8, help='Number of weeks to show')
-    parser.add_argument('--output', type=Path, default=BASE_DIR / 'reports/body/INTERVAL.md')
+    parser.add_argument('--output', type=Path, default=BASE_DIR / 'reports/body/interval/REPORT.md')
     args = parser.parse_args()
 
     # Load data
@@ -88,12 +93,34 @@ def main():
     
     # 直近N週間に絞る
     weekly = weekly.tail(args.weeks)
-    
+
+    # 進捗グラフ生成
+    img_dir = args.output.parent / 'img'
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    progress_info = body.plot_progress_chart(
+        weekly,
+        save_path=img_dir / 'progress.png',
+        target_ffmi=TARGET_FFMI,
+        monthly_weight_gain=MONTHLY_WEIGHT_GAIN,
+        height_cm=HEIGHT_CM
+    )
+
     # レポート生成
     report_lines = []
     report_lines.append("# 💪 筋トレ週次レポート")
     report_lines.append("")
     report_lines.append("7日間平均値の推移。前週比でトレンドを確認。")
+    report_lines.append("")
+    report_lines.append("## 🎯 目標進捗")
+    report_lines.append("")
+    report_lines.append(f"**目標**: FFMI {TARGET_FFMI} (体重 {progress_info['target_weight']:.1f}kg)")
+    report_lines.append(f"**予測到達**: 約{progress_info['months_to_target']:.1f}ヶ月後 ({progress_info['weeks_to_target']}週後)")
+    report_lines.append(f"**増量ペース**: +{MONTHLY_WEIGHT_GAIN}kg/月")
+    report_lines.append("")
+    report_lines.append("![Progress](img/progress.png)")
+    report_lines.append("")
+    report_lines.append("## 📊 週次データ")
     report_lines.append("")
     report_lines.append("| 週 | 体重 | 筋肉量 | 体脂肪率 | FFMI |")
     report_lines.append("|---|---|---|---|---|")

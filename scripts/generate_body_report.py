@@ -4,7 +4,7 @@
 体組成レポート生成スクリプト（日次・週次・月次）
 
 Usage:
-    python generate_body_report_daily.py [--days <N>] [--week <N>] [--month <N>]
+    python generate_body_report.py [--days <N>] [--week <N>] [--month <N>]
 """
 
 import sys
