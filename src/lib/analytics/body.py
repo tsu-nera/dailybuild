@@ -50,8 +50,7 @@ DAILY_COLUMNS = [
 # 体組成テーブル用カラム
 DAILY_BODY_COLUMNS = [
     'weight', 'muscle_mass', 'body_fat_rate', 'ffmi',
-    'calorie_balance', 'protein', 'sleep_hours',
-    'body_water_rate'
+    'calorie_balance', 'protein', 'sleep_hours'
 ]
 
 # カロリー収支テーブル用カラム
@@ -313,6 +312,75 @@ def format_change(val, unit='', positive_is_good=True):
         return f"±0{unit}"
     sign = '+' if val > 0 else ''
     return f"{sign}{val:.2f}{unit}"
+
+
+def format_body_composition_section(df):
+    """
+    体組成セクションを生成（パターンA: 日別変化 + パターンB: 構成比）
+
+    Parameters
+    ----------
+    df : DataFrame
+        日別体組成データ（date, weight, muscle_mass, body_fat_mass, bone_mass列を含む）
+
+    Returns
+    -------
+    str
+        Markdown形式の体組成セクション
+    """
+    df = df.copy()
+
+    # 前日比の差分を計算
+    df['weight_diff'] = df['weight'].diff()
+    df['muscle_diff'] = df['muscle_mass'].diff()
+    df['fat_diff'] = df['body_fat_mass'].diff()
+    df['bone_diff'] = df['bone_mass'].diff()
+
+    # 筋肉割合の計算（体重増加分に占める筋肉の割合）
+    df['muscle_ratio'] = (df['muscle_diff'] / df['weight_diff'] * 100).where(df['weight_diff'] != 0)
+
+    # パターンA: 日別詳細テーブル
+    table_rows = []
+    table_rows.append("| 日付 | 体重 | 筋肉 | 脂肪 | 骨 | LBM | 体脂肪率 | 体水分率 |")
+    table_rows.append("|------|------|------|------|-----|-----|----------|----------|")
+
+    for _, row in df.iterrows():
+        date_str = pd.to_datetime(row['date']).strftime('%m-%d')
+
+        # 絶対量
+        weight = row['weight']
+        muscle = row['muscle_mass']
+        fat = row['body_fat_mass']
+        bone = row['bone_mass']
+        lbm = row['lbm']
+
+        # 比率（生データ）
+        fat_pct = row['body_fat_rate']
+        water_pct = row['body_water_rate']
+
+        # フォーマット
+        weight_str = f"{weight:.1f}"
+        muscle_str = f"{muscle:.1f}"
+        fat_str = f"{fat:.2f}"
+        bone_str = f"{bone:.1f}"
+        lbm_str = f"{lbm:.1f}"
+        fat_pct_str = f"{fat_pct:.1f}%"
+        water_pct_str = f"{water_pct:.1f}%" if pd.notna(water_pct) else "-"
+
+        table_rows.append(
+            f"| {date_str} | {weight_str} | {muscle_str} | {fat_str} | {bone_str} | {lbm_str} | {fat_pct_str} | {water_pct_str} |"
+        )
+
+    table_a = '\n'.join(table_rows)
+
+    # セクション全体
+    section = f"""## 🧬 体組成
+
+{table_a}
+
+"""
+
+    return section
 
 
 def plot_progress_chart(weekly_df, save_path, target_ffmi=21.0, monthly_weight_gain=0.75, current_weight=None, current_ffmi=None, height_cm=DEFAULT_HEIGHT_CM):

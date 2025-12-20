@@ -538,8 +538,11 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 {calorie_table}
 """
 
-    # 詳細データセクションの体組成テーブル
-    body_composition_table = body.format_daily_table(
+    # 体組成セクション（パターンA + B）
+    body_composition_section = body.format_body_composition_section(df)
+
+    # 詳細データセクションの総合テーブル（水分率削除）
+    detail_table = body.format_daily_table(
         df_daily, body.DAILY_BODY_COLUMNS,
         custom_labels={'calorie_balance': 'カロリー収支'}
     )
@@ -558,7 +561,10 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 | 筋肉量 | {stats['muscle_mass']['first']:.2f}kg | {stats['muscle_mass']['last']:.2f}kg | **{body.format_change(stats['muscle_mass']['change'], 'kg')}** |
 | 体脂肪率 | {stats['body_fat_rate']['first']:.1f}% | {stats['body_fat_rate']['last']:.1f}% | **{body.format_change(stats['body_fat_rate']['change'], '%')}** |
 | FFMI | {stats['ffmi']['first']:.1f} | {stats['ffmi']['last']:.1f} | **{body.format_change(stats['ffmi']['change'], '')}** |
-{training_section}{nutrition_section}{calorie_analysis_section}{recovery_section}
+
+---
+
+{body_composition_section}{training_section}{nutrition_section}{calorie_analysis_section}{recovery_section}
 ---
 
 ## 📈 詳細データ
@@ -567,9 +573,9 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 
 ![Body Composition](img/trend.png)
 
-### 📋 体組成データ
+### 📋 日別総合データ
 
-{body_composition_table}
+{detail_table}
 """
 
     with open(report_path, 'w', encoding='utf-8') as f:
