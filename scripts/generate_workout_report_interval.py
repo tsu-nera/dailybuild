@@ -21,7 +21,7 @@ from lib import hevy_csv
 from lib.analytics import workout
 
 BASE_DIR = project_root
-DATA_CSV = BASE_DIR / 'data/workouts.csv'
+DATA_CSV = BASE_DIR / 'data/hevy/workouts.csv'
 
 
 def format_volume(value, is_bodyweight):
@@ -100,6 +100,82 @@ def format_change(val, is_bodyweight):
         return formatted
 
 
+def format_value(value):
+    """
+    整数値をフォーマット（Reps/Sets用）
+
+    Parameters
+    ----------
+    value : float
+        値
+
+    Returns
+    -------
+    str
+        フォーマット済み文字列
+    """
+    if pd.isna(value):
+        return "-"
+    return str(int(value))
+
+
+def format_diff(val):
+    """
+    整数の差分をフォーマット（Reps/Sets前週比用）
+
+    Parameters
+    ----------
+    val : float
+        変化量
+
+    Returns
+    -------
+    str
+        フォーマット済み変化量（プラスの場合は太字）
+    """
+    if pd.isna(val):
+        return "-"
+    if val == 0:
+        return "±0"
+
+    sign = '+' if val > 0 else ''
+    formatted = f"{sign}{int(val)}"
+
+    # プラスの変化は太字で強調
+    if val > 0:
+        return f"**{formatted}**"
+    else:
+        return formatted
+
+
+def format_weights(min_weight, max_weight, is_bodyweight):
+    """
+    重量範囲をmin/max形式でフォーマット
+
+    Parameters
+    ----------
+    min_weight : float
+        最小重量
+    max_weight : float
+        最大重量
+    is_bodyweight : bool
+        自重エクササイズかどうか
+
+    Returns
+    -------
+    str
+        フォーマット済み文字列（例: "50/60 kg" or "-"）
+    """
+    if is_bodyweight or pd.isna(min_weight) or pd.isna(max_weight):
+        return "-"
+
+    # min == maxの場合は単一値表示
+    if min_weight == max_weight:
+        return f"{int(min_weight)} kg"
+    else:
+        return f"{int(min_weight)}/{int(max_weight)} kg"
+
+
 def calc_week_start_date(iso_year, iso_week):
     """
     ISO週番号から週の開始日（月曜日）を計算
@@ -126,19 +202,17 @@ def calc_week_start_date(iso_year, iso_week):
         return f"W{iso_week}"
 
 
-def generate_weekly_stats_table(weekly_stats, recent_weeks):
+def generate_weekly_stats_table(weekly_stats):
     """
     週次統計テーブルを生成（トレーニング全体のサマリー）
 
     行: 週（古い週→新しい週の順）
-    列: 日数、トレーニング（reps）、ボリューム、セット数
+    列: count, time, reps, sets, volumes
 
     Parameters
     ----------
     weekly_stats : DataFrame
-        週次統計結果
-    recent_weeks : DataFrame
-        対象週のリスト
+        週次統計CSV（iso_year, iso_week, training_days, duration_minutes, total_reps, total_sets, total_volume_kg）
 
     Returns
     -------
@@ -146,31 +220,21 @@ def generate_weekly_stats_table(weekly_stats, recent_weeks):
         Markdown行のリスト
     """
     lines = []
-    lines.append("## トレーニング統計")
+    lines.append("## 📊 トレーニング統計")
     lines.append("")
-    lines.append("| 週 | 日数 | トレーニング (reps) | ボリューム (kg) | セット数 |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| Week | Count | Time | Reps | Sets | Volumes |")
+    lines.append("|---|---|---|---|---|---|")
 
     # 週ごとの行（古い週→新しい週）
-    for (year, week) in recent_weeks.sort_values(['iso_year', 'iso_week']).values:
-        week_label = f"{year}-W{week:02d}"
+    for _, row in weekly_stats.sort_values(['iso_year', 'iso_week']).iterrows():
+        week_label = f"{row['iso_year']}-W{row['iso_week']:02d}"
+        count = int(row['training_days'])
+        time = int(row['duration_minutes'])
+        reps = int(row['total_reps'])
+        sets = int(row['total_sets'])
+        volumes = int(row['total_volume_kg'])
 
-        # その週のデータを取得
-        week_data = weekly_stats[
-            (weekly_stats['iso_year'] == year) &
-            (weekly_stats['iso_week'] == week)
-        ]
-
-        if len(week_data) > 0:
-            row = week_data.iloc[0]
-            days = int(row['training_days'])
-            reps = int(row['total_reps'])
-            volume = int(row['total_volume'])
-            sets = int(row['total_sets'])
-
-            lines.append(f"| {week_label} | {days} | {reps} | {volume} | {sets} |")
-        else:
-            lines.append(f"| {week_label} | - | - | - | - |")
+        lines.append(f"| {week_label} | {count} | {time} | {reps} | {sets} | {volumes} |")
 
     lines.append("")
     return lines
@@ -197,7 +261,7 @@ def generate_weekly_table(weekly_volume, recent_weeks):
         Markdown行のリスト
     """
     lines = []
-    lines.append("## トレーニングボリューム")
+    lines.append("## 📈 トレーニングボリューム")
     lines.append("")
 
     # 全エクササイズを五十音順で取得
@@ -235,12 +299,12 @@ def generate_weekly_table(weekly_volume, recent_weeks):
     return lines
 
 
-def generate_week_sections(weekly_volume, recent_weeks):
+def generate_exercise_sections(weekly_volume, recent_weeks):
     """
-    週ごとセクション形式（Week Section View）を生成
+    エクササイズごとセクション形式（Exercise Section View）を生成
 
-    週ごとにセクション分け（新しい週が上）
-    エクササイズをアルファベット順でソート
+    エクササイズごとにセクション分け（五十音順）
+    各エクササイズの週次推移を表示（古い週→新しい週）
 
     Parameters
     ----------
@@ -255,28 +319,33 @@ def generate_week_sections(weekly_volume, recent_weeks):
         Markdown行のリスト
     """
     lines = []
-    lines.append("## 週ごと詳細")
+    lines.append("## 🏋️ エクササイズ別詳細")
     lines.append("")
 
-    # 週ごとにセクション生成（新しい週が上）
-    for (year, week) in recent_weeks.sort_values(['iso_year', 'iso_week'], ascending=False).values:
-        lines.append(f"### {year}-W{week:02d}")
+    # 全エクササイズを五十音順で取得
+    all_exercises = sorted(weekly_volume['exercise_jp'].unique())
+
+    # エクササイズごとにセクション生成
+    for exercise in all_exercises:
+        lines.append(f"### {exercise}")
         lines.append("")
-        lines.append("| エクササイズ | Volume | 前週比 |")
-        lines.append("|---|---|---|")
+        lines.append("| 週 | Reps | Sets | Weights | Volume | 前週比 |")
+        lines.append("|---|---|---|---|---|---|")
 
-        # その週のデータを抽出（五十音順）
-        week_data = weekly_volume[
-            (weekly_volume['iso_year'] == year) &
-            (weekly_volume['iso_week'] == week)
-        ].sort_values('exercise_jp')
+        # そのエクササイズのデータを抽出（古い週→新しい週）
+        exercise_data = weekly_volume[
+            weekly_volume['exercise_jp'] == exercise
+        ].sort_values(['iso_year', 'iso_week'])
 
-        for _, row in week_data.iterrows():
-            exercise = row['exercise_jp']
+        for _, row in exercise_data.iterrows():
+            week_label = f"{row['iso_year']}-W{row['iso_week']:02d}"
+            reps_str = format_value(row['total_reps'])
+            sets_str = format_value(row['total_sets'])
+            weights_str = format_weights(row['min_weight'], row['max_weight'], row['is_bodyweight'])
             volume_str = format_volume(row['total_volume'], row['is_bodyweight'])
-            change_str = format_change(row['week_over_week_diff'], row['is_bodyweight'])
+            volume_change = format_change(row['week_over_week_diff'], row['is_bodyweight'])
 
-            lines.append(f"| {exercise} | {volume_str} | {change_str} |")
+            lines.append(f"| {week_label} | {reps_str} | {sets_str} | {weights_str} | {volume_str} | {volume_change} |")
 
         lines.append("")
 
@@ -303,7 +372,19 @@ def main():
     )
     args = parser.parse_args()
 
-    # データ読み込み
+    # 週次統計CSVを読み込み
+    weekly_stats_csv = BASE_DIR / 'data/hevy/workouts_weekly.csv'
+    if not weekly_stats_csv.exists():
+        print(f"Error: {weekly_stats_csv} not found")
+        print("Run 'python scripts/generate_workout_report_weekly.py' first")
+        return 1
+
+    weekly_stats = pd.read_csv(weekly_stats_csv)
+
+    # 直近N週間に絞る
+    weekly_stats = weekly_stats.sort_values(['iso_year', 'iso_week']).tail(args.weeks)
+
+    # 週次ボリューム（種目別詳細）を生成するため、生データも読み込む
     if not DATA_CSV.exists():
         print(f"Error: {DATA_CSV} not found")
         return 1
@@ -314,22 +395,12 @@ def main():
     # データ前処理
     df = workout.prepare_workout_df(df)
 
-    # 週次集計
+    # 週次ボリューム（種目別）を計算
     weekly_volume = workout.calc_weekly_volume(df)
-    weekly_stats = workout.calc_weekly_stats(df)
 
-    # 直近N週間に絞る
-    unique_weeks = weekly_volume[['iso_year', 'iso_week']].drop_duplicates()
-    unique_weeks = unique_weeks.sort_values(['iso_year', 'iso_week'])
-    recent_weeks = unique_weeks.tail(args.weeks)
-
-    # フィルタリング
+    # 直近N週間でフィルタリング
+    recent_weeks = weekly_stats[['iso_year', 'iso_week']].drop_duplicates()
     weekly_volume = weekly_volume.merge(
-        recent_weeks,
-        on=['iso_year', 'iso_week'],
-        how='inner'
-    )
-    weekly_stats = weekly_stats.merge(
         recent_weeks,
         on=['iso_year', 'iso_week'],
         how='inner'
@@ -337,7 +408,7 @@ def main():
 
     # レポート生成
     report_lines = []
-    report_lines.append("# チョコザップ週次レポート")
+    report_lines.append("# 💪 チョコザップ週次レポート")
     report_lines.append("")
     report_lines.append("週ごとのTraining Volume（重量×回数）の推移。")
     report_lines.append("")
@@ -347,7 +418,7 @@ def main():
     report_lines.append("")
 
     # トレーニング統計
-    report_lines.extend(generate_weekly_stats_table(weekly_stats, recent_weeks))
+    report_lines.extend(generate_weekly_stats_table(weekly_stats))
     report_lines.append("---")
     report_lines.append("")
 
@@ -356,8 +427,8 @@ def main():
     report_lines.append("---")
     report_lines.append("")
 
-    # 週ごと詳細
-    report_lines.extend(generate_week_sections(weekly_volume, recent_weeks))
+    # エクササイズ別詳細
+    report_lines.extend(generate_exercise_sections(weekly_volume, recent_weeks))
 
     # 出力
     output_path = args.output
