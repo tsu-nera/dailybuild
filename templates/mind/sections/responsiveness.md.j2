@@ -1,0 +1,17 @@
+## 🧘 反応性
+
+自律神経系の反応性と回復力を評価
+
+| 日付 | HRV Daily | HRV Deep | 安静時HR | 呼吸数 | SpO2 | 皮膚温変動 |
+|------|-----------|----------|----------|--------|------|-----------|
+{% for day in responsiveness_data %}
+| {{ day.date.strftime('%m-%d') }} | {{ day.hrv_daily|number_format(1) if day.hrv_daily else '-' }} | {{ day.hrv_deep|number_format(1) if day.hrv_deep else '-' }} | {{ day.rhr|number_format(0) if day.rhr else '-' }} | {{ day.breathing_rate|number_format(1) if day.breathing_rate else '-' }} | {% if day.spo2_min and day.spo2_avg %}{{ day.spo2_min|number_format(1) }}/{{ day.spo2_avg|number_format(1) }}{% else %}-{% endif %} | {{ day.temp_variation|number_format(2) if day.temp_variation else '-' }} |
+{% endfor %}
+
+**解釈**:
+- HRVが高く、安静時心拍数が低いほど、自律神経の回復が良好
+- Daily HRV: 日中全体のHRV、Deep HRV: 深睡眠時のHRV
+- 呼吸数は12-20回/分が正常範囲
+- SpO2は95%以上が正常範囲（min/ave表示）
+
+---

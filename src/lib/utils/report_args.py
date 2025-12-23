@@ -176,7 +176,9 @@ def filter_dataframe_by_period(
         else:
             df_temp = df.copy()
 
-        df_temp[date_column] = pd.to_datetime(df_temp[date_column])
+        # 既にdatetime型でない場合のみ変換
+        if not pd.api.types.is_datetime64_any_dtype(df_temp[date_column]):
+            df_temp[date_column] = pd.to_datetime(df_temp[date_column], format='ISO8601')
         df_temp['iso_week'] = df_temp[date_column].dt.isocalendar().week
         df_temp['iso_year'] = df_temp[date_column].dt.isocalendar().year
         df_temp = df_temp[(df_temp['iso_week'] == week) & (df_temp['iso_year'] == year)]
@@ -196,7 +198,9 @@ def filter_dataframe_by_period(
         else:
             df_temp = df.copy()
 
-        df_temp[date_column] = pd.to_datetime(df_temp[date_column])
+        # 既にdatetime型でない場合のみ変換
+        if not pd.api.types.is_datetime64_any_dtype(df_temp[date_column]):
+            df_temp[date_column] = pd.to_datetime(df_temp[date_column], format='ISO8601')
         df_temp = df_temp[
             (df_temp[date_column].dt.month == month) &
             (df_temp[date_column].dt.year == year)

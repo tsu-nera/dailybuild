@@ -1,0 +1,17 @@
+## 😴 睡眠パターン
+
+睡眠の量と質を評価
+
+| 日付 | 就寝時刻 | 起床時刻 | 睡眠時間 | 効率 | 中途覚醒回数 |
+|------|----------|----------|----------|------|--------------|
+{% for day in sleep_patterns_data %}
+| {{ day.date.strftime('%m-%d') }} | {{ day.bedtime if day.bedtime else '-' }} | {{ day.waketime if day.waketime else '-' }} | {{ day.sleep_hours|number_format(1) if day.sleep_hours else '-' }}h | {{ day.efficiency|number_format(1) if day.efficiency else '-' }}% | {{ day.wake_count|number_format(0) if day.wake_count else '-' }} |
+{% endfor %}
+
+**解釈**:
+- 7-9時間の睡眠が最適
+- 睡眠効率85%以上が良好
+- 中途覚醒回数が少ないほど睡眠の質が高い
+- 就寝・起床時刻の規則性も重要
+
+---

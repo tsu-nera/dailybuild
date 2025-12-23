@@ -1,0 +1,15 @@
+## 🏃 運動バランス
+
+身体活動レベルとバランスを評価
+
+| 日付 | 歩数 | AZM合計 |
+|------|------|---------|
+{% for day in exertion_balance_data %}
+| {{ day.date.strftime('%m-%d') }} | {{ day.steps|number_format(0) if day.steps else '-' }} | {{ day.active_zone_minutes|number_format(0) if day.active_zone_minutes else '-' }} |
+{% endfor %}
+
+**解釈**:
+- 週150分以上のアクティブゾーン分が推奨される
+- 1日8,000歩以上が健康的な目標
+
+---

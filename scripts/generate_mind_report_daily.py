@@ -32,6 +32,9 @@ BREATHING_RATE_CSV = BASE_DIR / 'data/fitbit/breathing_rate.csv'
 SPO2_CSV = BASE_DIR / 'data/fitbit/spo2.csv'
 CARDIO_SCORE_CSV = BASE_DIR / 'data/fitbit/cardio_score.csv'
 TEMPERATURE_SKIN_CSV = BASE_DIR / 'data/fitbit/temperature_skin.csv'
+ACTIVITY_CSV = BASE_DIR / 'data/fitbit/activity.csv'
+ACTIVE_ZONE_MINUTES_CSV = BASE_DIR / 'data/fitbit/active_zone_minutes.csv'
+ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 
 
 def load_data(days=None):
@@ -99,27 +102,49 @@ def load_data(days=None):
             df = df.tail(days)
         data['temperature_skin'] = df
 
+    # アクティビティ
+    if ACTIVITY_CSV.exists():
+        df = pd.read_csv(ACTIVITY_CSV, parse_dates=['date'], index_col='date')
+        if days:
+            df = df.tail(days)
+        data['activity'] = df
+
+    # アクティブゾーン分
+    if ACTIVE_ZONE_MINUTES_CSV.exists():
+        df = pd.read_csv(ACTIVE_ZONE_MINUTES_CSV, parse_dates=['date'], index_col='date')
+        if days:
+            df = df.tail(days)
+        data['active_zone_minutes'] = df
+
+    # アクティビティログ
+    if ACTIVITY_LOGS_CSV.exists():
+        df = pd.read_csv(ACTIVITY_LOGS_CSV)
+        df['startTime'] = pd.to_datetime(df['startTime'], format='ISO8601')
+        if days:
+            df = df.tail(days)
+        data['activity_logs'] = df
+
     return data
 
 
-def plot_hrv_chart(daily_data, save_path):
+def plot_hrv_chart(responsiveness_data, save_path):
     """
     HRV推移グラフを生成
 
     Args:
-        daily_data: 日別データリスト
+        responsiveness_data: 反応性の日別データリスト
         save_path: 保存パス
     """
-    if not daily_data:
+    if not responsiveness_data:
         return
 
-    dates = [d['date'] for d in daily_data]
+    dates = [d['date'] for d in responsiveness_data]
     date_labels = [pd.to_datetime(d).strftime('%m-%d') for d in dates]
 
     fig, ax = plt.subplots(figsize=(10, 5))
 
     # HRV
-    hrv_values = [d.get('daily_rmssd', np.nan) for d in daily_data]
+    hrv_values = [d.get('hrv_daily') if d.get('hrv_daily') is not None else np.nan for d in responsiveness_data]
     if any(not np.isnan(v) for v in hrv_values):
         ax.plot(range(len(dates)), hrv_values, 'o-', color='#3498DB',
                 label='HRV (RMSSD)', linewidth=2, markersize=6)
@@ -136,24 +161,24 @@ def plot_hrv_chart(daily_data, save_path):
     plt.close()
 
 
-def plot_hrv_rhr_chart(daily_data, save_path):
+def plot_hrv_rhr_chart(responsiveness_data, save_path):
     """
     HRV vs 心拍数の二軸グラフを生成
 
     Args:
-        daily_data: 日別データリスト
+        responsiveness_data: 反応性の日別データリスト
         save_path: 保存パス
     """
-    if not daily_data:
+    if not responsiveness_data:
         return
 
-    dates = [d['date'] for d in daily_data]
+    dates = [d['date'] for d in responsiveness_data]
     date_labels = [pd.to_datetime(d).strftime('%m-%d') for d in dates]
 
     fig, ax1 = plt.subplots(figsize=(10, 5))
 
     # HRV (左軸)
-    hrv_values = [d.get('daily_rmssd', np.nan) for d in daily_data]
+    hrv_values = [d.get('hrv_daily') if d.get('hrv_daily') is not None else np.nan for d in responsiveness_data]
     if any(not np.isnan(v) for v in hrv_values):
         ax1.plot(range(len(dates)), hrv_values, 'o-', color='#3498DB',
                  label='HRV (RMSSD)', linewidth=2, markersize=6)
@@ -162,7 +187,7 @@ def plot_hrv_rhr_chart(daily_data, save_path):
 
     # RHR (右軸)
     ax2 = ax1.twinx()
-    rhr_values = [d.get('resting_heart_rate', np.nan) for d in daily_data]
+    rhr_values = [d.get('rhr') if d.get('rhr') is not None else np.nan for d in responsiveness_data]
     if any(not np.isnan(v) for v in rhr_values):
         ax2.plot(range(len(dates)), rhr_values, 's-', color='#E74C3C',
                  label='RHR', linewidth=2, markersize=6)
@@ -184,178 +209,70 @@ def plot_hrv_rhr_chart(daily_data, save_path):
     plt.close()
 
 
-def prepare_mind_report_data(stats, daily_data, period_str):
+def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days):
     """
-    メンタルレポート用のコンテキストデータを準備
+    3軸メンタルレポート用のコンテキストデータを準備
 
     Parameters
     ----------
-    stats : dict
-        メンタル統計
-    daily_data : list
-        日別データ
+    responsiveness_daily : list
+        反応性の日別データリスト
+    exertion_balance_daily : list
+        運動バランスの日別データリスト
+    sleep_patterns_daily : list
+        睡眠パターンの日別データリスト
     period_str : str
         期間文字列
+    days : int
+        日数
 
     Returns
     -------
     dict
         テンプレートコンテキスト
     """
-    from lib.templates.filters import format_change
-
-    hrv_stats = stats.get('hrv_stats') or {}
-    sleep_stats = stats.get('sleep_stats') or {}
-    rhr_stats = stats.get('rhr_stats') or {}
-    br_stats = stats.get('br_stats')
-    spo2_stats = stats.get('spo2_stats')
-    cardio_stats = stats.get('cardio_stats')
-    temp_stats = stats.get('temp_stats')
-
-    # サマリーメトリクス構築
-    summary_metrics = []
-    if hrv_stats:
-        summary_metrics.append({
-            'label': 'HRV (RMSSD)',
-            'average': f"{hrv_stats.get('avg_rmssd', 0):.1f}ms",
-            'change': format_change(hrv_stats.get('change_rmssd', 0), 'ms'),
-            'trend': mind.format_trend(stats.get('hrv_trend', 'stable'))
-        })
-    if rhr_stats:
-        summary_metrics.append({
-            'label': '安静時心拍数',
-            'average': f"{rhr_stats.get('avg_rhr', 0):.1f}bpm",
-            'change': format_change(rhr_stats.get('change_rhr', 0), 'bpm', positive_is_good=False),
-            'trend': mind.format_trend(stats.get('rhr_trend', 'stable'))
-        })
-    if sleep_stats:
-        summary_metrics.append({
-            'label': '睡眠時間',
-            'average': f"{sleep_stats.get('avg_sleep_hours', 0):.1f}時間",
-            'change': '-',
-            'trend': '-'
-        })
-        summary_metrics.append({
-            'label': '睡眠効率',
-            'average': f"{sleep_stats.get('avg_efficiency', 0):.0f}%",
-            'change': '-',
-            'trend': '-'
-        })
-
-    # 自律神経セクション
-    autonomic = {}
-    if hrv_stats:
-        autonomic['hrv_stats'] = {
-            'avg_rmssd': f"{hrv_stats.get('avg_rmssd', 0):.1f}",
-            'std_rmssd': f"{hrv_stats.get('std_rmssd', 0):.1f}",
-            'min_rmssd': f"{hrv_stats.get('min_rmssd', 0):.1f}",
-            'max_rmssd': f"{hrv_stats.get('max_rmssd', 0):.1f}",
-            'first_rmssd': f"{hrv_stats.get('first_rmssd', 0):.1f}",
-            'last_rmssd': f"{hrv_stats.get('last_rmssd', 0):.1f}",
-            'change_rmssd': format_change(hrv_stats.get('change_rmssd', 0), 'ms')
-        }
-    if rhr_stats:
-        autonomic['rhr_stats'] = {
-            'avg_rhr': f"{rhr_stats.get('avg_rhr', 0):.1f}",
-            'min_rhr': f"{rhr_stats.get('min_rhr', 0):.0f}",
-            'max_rhr': f"{rhr_stats.get('max_rhr', 0):.0f}",
-            'first_rhr': f"{rhr_stats.get('first_rhr', 0):.0f}",
-            'last_rhr': f"{rhr_stats.get('last_rhr', 0):.0f}",
-            'change_rhr': format_change(rhr_stats.get('change_rhr', 0), 'bpm', positive_is_good=False)
-        }
-
-    # 睡眠セクション
-    sleep_section_data = None
-    if sleep_stats:
-        sleep_section_data = {
-            'avg_sleep_hours': f"{sleep_stats.get('avg_sleep_hours', 0):.1f}",
-            'avg_efficiency': f"{sleep_stats.get('avg_efficiency', 0):.0f}",
-            'avg_deep_minutes': f"{sleep_stats.get('avg_deep_minutes', 0):.0f}",
-            'deep_pct': f"{sleep_stats.get('deep_pct', 0):.0f}",
-            'avg_rem_minutes': f"{sleep_stats.get('avg_rem_minutes', 0):.0f}",
-            'rem_pct': f"{sleep_stats.get('rem_pct', 0):.0f}"
-        }
-
-    # 生理的指標セクション
-    physiology = {}
-    if br_stats:
-        physiology['br_stats'] = {
-            'avg_breathing_rate': f"{br_stats['avg_breathing_rate']:.1f}",
-            'min_breathing_rate': f"{br_stats['min_breathing_rate']:.1f}",
-            'max_breathing_rate': f"{br_stats['max_breathing_rate']:.1f}"
-        }
-    if spo2_stats:
-        physiology['spo2_stats'] = {
-            'avg_spo2': f"{spo2_stats['avg_spo2']:.1f}",
-            'min_spo2': f"{spo2_stats['min_spo2']:.1f}",
-            'max_spo2': f"{spo2_stats['max_spo2']:.1f}"
-        }
-    if cardio_stats:
-        physiology['cardio_stats'] = {
-            'last_vo2_max': f"{cardio_stats['last_vo2_max']:.1f}",
-            'avg_vo2_max': f"{cardio_stats['avg_vo2_max']:.1f}",
-            'min_vo2_max': f"{cardio_stats['min_vo2_max']:.1f}",
-            'max_vo2_max': f"{cardio_stats['max_vo2_max']:.1f}"
-        }
-    if temp_stats:
-        physiology['temp_stats'] = {
-            'avg_temp_variation': f"{temp_stats['avg_temp_variation']:.2f}",
-            'min_temp_variation': f"{temp_stats['min_temp_variation']:.2f}",
-            'max_temp_variation': f"{temp_stats['max_temp_variation']:.2f}",
-            'std_temp_variation': f"{temp_stats['std_temp_variation']:.2f}"
-        }
-
-    # 日別データ
-    daily_data_formatted = []
-    for d in daily_data:
-        date_str = pd.to_datetime(d['date']).strftime('%m-%d')
-        hrv_val = f"{d.get('daily_rmssd', 0):.1f}" if d.get('daily_rmssd') else "-"
-        rhr_val = f"{d.get('resting_heart_rate', 0):.0f}" if d.get('resting_heart_rate') else "-"
-        sleep_val = f"{d.get('sleep_hours', 0):.1f}h" if d.get('sleep_hours') else "-"
-        eff_val = f"{d.get('sleep_efficiency', 0):.0f}%" if d.get('sleep_efficiency') else "-"
-
-        daily_data_formatted.append({
-            'date': date_str,
-            'hrv': hrv_val,
-            'rhr': rhr_val,
-            'sleep_hours': sleep_val,
-            'efficiency': eff_val
-        })
-
     context = {
-        'report_title': 'メンタルコンディションレポート',
+        'report_title': '🧠 メンタルレポート',
         'period': {
             'period_str': period_str,
-            'days': stats['days']
+            'days': days
         },
-        'summary_metrics': summary_metrics,
-        'autonomic': autonomic,
-        'sleep_stats': sleep_section_data,
-        'physiology': physiology if physiology else None,
-        'daily_data': daily_data_formatted,
+
+        # 反応性の日別データ（そのまま渡す）
+        'responsiveness_data': responsiveness_daily,
+
+        # 運動バランスの日別データ（そのまま渡す）
+        'exertion_balance_data': exertion_balance_daily,
+
+        # 睡眠パターンの日別データ（そのまま渡す）
+        'sleep_patterns_data': sleep_patterns_daily,
+
+        # チャート
         'charts': {
             'hrv_rhr': 'img/hrv_rhr.png',
-            'hrv': 'img/hrv.png'
+            'hrv': 'img/hrv.png',
         }
     }
 
     return context
 
 
-def generate_report(output_dir, stats, daily_data, period_str):
+def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days):
     """
     マークダウンレポートを生成（Jinja2テンプレート版）
 
     Args:
         output_dir: 出力ディレクトリ
-        stats: メンタル統計
-        daily_data: 日別データ
+        responsiveness_daily: 反応性の日別データリスト
+        exertion_balance_daily: 運動バランスの日別データリスト
+        sleep_patterns_daily: 睡眠パターンの日別データリスト
         period_str: 期間文字列
+        days: 日数
     """
     from lib.templates.renderer import MindReportRenderer
 
     # コンテキストデータ準備
-    context = prepare_mind_report_data(stats, daily_data, period_str)
+    context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days)
 
     # テンプレートレンダリング
     renderer = MindReportRenderer()
@@ -402,7 +319,7 @@ def main():
     )
 
     # その他のデータ（indexが日付）
-    for key in ['heart_rate', 'breathing_rate', 'spo2', 'cardio_score', 'temperature_skin']:
+    for key in ['heart_rate', 'breathing_rate', 'spo2', 'cardio_score', 'temperature_skin', 'activity', 'active_zone_minutes']:
         if key in data:
             data[key] = filter_dataframe_by_period(
                 data[key], 'date', week, month, year, args.days, is_index=True
@@ -412,6 +329,12 @@ def main():
     if 'sleep' in data:
         data['sleep'] = filter_dataframe_by_period(
             data['sleep'], 'dateOfSleep', week, month, year, args.days, is_index=False
+        )
+
+    # アクティビティログ（startTime列）
+    if 'activity_logs' in data:
+        data['activity_logs'] = filter_dataframe_by_period(
+            data['activity_logs'], 'startTime', week, month, year, args.days, is_index=False
         )
 
     # フィルタリング結果を表示
@@ -440,49 +363,54 @@ def main():
     img_dir = output_dir / 'img'
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    # 統計計算
+    # 期間の取得
+    dates = data['hrv'].index
+    start_date = dates.min()
+    end_date = dates.max()
+
+    # 3軸それぞれの日別データを準備
     print()
-    print('統計計算中...')
-    stats = mind.calc_mind_stats_for_period(
+    print('日別データ準備中...')
+    responsiveness_daily = mind.prepare_responsiveness_daily_data(
+        start_date=start_date,
+        end_date=end_date,
         df_hrv=data.get('hrv'),
-        df_rhr=data.get('heart_rate'),
-        df_sleep=data.get('sleep'),
-        df_br=data.get('breathing_rate'),
-        df_spo2=data.get('spo2'),
-        df_cardio=data.get('cardio_score'),
+        df_heart_rate=data.get('heart_rate'),
+        df_breathing=data.get('breathing_rate'),
         df_temp=data.get('temperature_skin'),
+        df_spo2=data.get('spo2')
     )
 
-    hrv_stats = stats.get('hrv_stats') or {}
-    rhr_stats = stats.get('rhr_stats') or {}
-    print(f'  HRV平均: {hrv_stats.get("avg_rmssd", 0):.1f}ms')
-    print(f'  RHR平均: {rhr_stats.get("avg_rhr", 0):.1f}bpm')
-
-    # 日別データ構築
-    daily_data = mind.build_daily_data(
-        df_hrv=data.get('hrv'),
-        df_rhr=data.get('heart_rate'),
-        df_sleep=data.get('sleep'),
-        df_br=data.get('breathing_rate'),
-        df_spo2=data.get('spo2'),
+    exertion_balance_daily = mind.prepare_exertion_balance_daily_data(
+        start_date=start_date,
+        end_date=end_date,
+        df_activity=data.get('activity'),
+        df_azm=data.get('active_zone_minutes')
     )
+
+    sleep_patterns_daily = mind.prepare_sleep_patterns_daily_data(
+        start_date=start_date,
+        end_date=end_date,
+        df_sleep=data.get('sleep')
+    )
+
+    print(f'  反応性データ: {len(responsiveness_daily)}日分')
+    print(f'  運動バランスデータ: {len(exertion_balance_daily)}日分')
+    print(f'  睡眠パターンデータ: {len(sleep_patterns_daily)}日分')
 
     # 期間文字列
-    dates = data['hrv'].index
-    start = dates.min().strftime('%Y-%m-%d')
-    end = dates.max().strftime('%Y-%m-%d')
-    period_str = f'{start} 〜 {end}'
+    period_str = f'{start_date.strftime("%Y-%m-%d")} 〜 {end_date.strftime("%Y-%m-%d")}'
 
     # グラフ生成
     print()
     print('グラフ生成中...')
-    plot_hrv_chart(daily_data, img_dir / 'hrv.png')
-    plot_hrv_rhr_chart(daily_data, img_dir / 'hrv_rhr.png')
+    plot_hrv_chart(responsiveness_daily, img_dir / 'hrv.png')
+    plot_hrv_rhr_chart(responsiveness_daily, img_dir / 'hrv_rhr.png')
 
     # レポート生成
     print()
     print('レポート生成中...')
-    generate_report(output_dir, stats, daily_data, period_str)
+    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily))
 
     print()
     print('='*60)
