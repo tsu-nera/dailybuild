@@ -12,6 +12,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from lib.templates.filters import format_change
+
 # デフォルト身長 (cm)
 DEFAULT_HEIGHT_CM = 170
 
@@ -288,30 +290,6 @@ def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None, sleep_d
         df = df.merge(df_sleep_daily, on='date', how='left')
 
     return df
-
-
-def format_change(val, unit='', positive_is_good=True):
-    """
-    変化量をフォーマット
-
-    Parameters
-    ----------
-    val : float
-        変化量
-    unit : str
-        単位
-    positive_is_good : bool
-        プラスが良い変化かどうか（未使用、将来拡張用）
-
-    Returns
-    -------
-    str
-        フォーマットされた変化量
-    """
-    if val == 0:
-        return f"±0{unit}"
-    sign = '+' if val > 0 else ''
-    return f"{sign}{val:.2f}{unit}"
 
 
 def format_body_composition_section(df):

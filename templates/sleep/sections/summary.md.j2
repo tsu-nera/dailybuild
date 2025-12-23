@@ -1,0 +1,10 @@
+## サマリー
+
+| 指標 | 値 |
+|------|-----|
+| ベッド時間合計 | {{ summary.time_in_bed_hours }}時間 |
+| 睡眠時間合計 | {{ summary.hours_asleep }}時間 |
+| 睡眠負債 | **{{ summary.sleep_debt_text }}** |
+| 目標達成 | {{ summary.days_met_goal }}/{{ period.days }}日（{{ summary.recommended_hours }}時間以上） |
+
+> 睡眠負債は推奨{{ summary.recommended_hours }}時間との差の累積です。

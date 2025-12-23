@@ -1,0 +1,7 @@
+## 📊 週次データ
+
+| 週 | 体重 | 筋肉量 | 体脂肪率 | FFMI |
+|---|---|---|---|---|
+{% for week_data in weekly_data %}
+| **{{ week_data.week_label }}** | {{ week_data.weight }} ({{ week_data.weight_diff }}) | {{ week_data.muscle }} ({{ week_data.muscle_diff }}) | {{ week_data.fat_rate }} ({{ week_data.fat_diff }}) | {{ week_data.ffmi }} ({{ week_data.ffmi_diff }}) |
+{% endfor %}

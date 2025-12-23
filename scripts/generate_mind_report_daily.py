@@ -22,6 +22,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import mind
+from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 
 BASE_DIR = project_root
 HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
@@ -183,26 +184,25 @@ def plot_hrv_rhr_chart(daily_data, save_path):
     plt.close()
 
 
-def format_change(value, unit):
-    """変化量をフォーマット"""
-    if value is None or np.isnan(value):
-        return "-"
-    if value >= 0:
-        return f"+{value:.1f}{unit}"
-    return f"{value:.1f}{unit}"
-
-
-def generate_report(output_dir, stats, daily_data, period_str):
+def prepare_mind_report_data(stats, daily_data, period_str):
     """
-    マークダウンレポートを生成
+    メンタルレポート用のコンテキストデータを準備
 
-    Args:
-        output_dir: 出力ディレクトリ
-        stats: メンタル統計
-        daily_data: 日別データ
-        period_str: 期間文字列
+    Parameters
+    ----------
+    stats : dict
+        メンタル統計
+    daily_data : list
+        日別データ
+    period_str : str
+        期間文字列
+
+    Returns
+    -------
+    dict
+        テンプレートコンテキスト
     """
-    report_path = output_dir / 'REPORT.md'
+    from lib.templates.filters import format_change
 
     hrv_stats = stats.get('hrv_stats') or {}
     sleep_stats = stats.get('sleep_stats') or {}
@@ -212,176 +212,159 @@ def generate_report(output_dir, stats, daily_data, period_str):
     cardio_stats = stats.get('cardio_stats')
     temp_stats = stats.get('temp_stats')
 
-    # トレンド表示
-    hrv_trend_str = mind.format_trend(stats.get('hrv_trend', 'stable'))
-    rhr_trend_str = mind.format_trend(stats.get('rhr_trend', 'stable'))
-
-    # サマリーテーブル（主要指標の概要）
-    summary_rows = []
+    # サマリーメトリクス構築
+    summary_metrics = []
     if hrv_stats:
-        summary_rows.append(f"| HRV (RMSSD) | {hrv_stats.get('avg_rmssd', 0):.1f}ms | {format_change(hrv_stats.get('change_rmssd', 0), 'ms')} | {hrv_trend_str} |")
+        summary_metrics.append({
+            'label': 'HRV (RMSSD)',
+            'average': f"{hrv_stats.get('avg_rmssd', 0):.1f}ms",
+            'change': format_change(hrv_stats.get('change_rmssd', 0), 'ms'),
+            'trend': mind.format_trend(stats.get('hrv_trend', 'stable'))
+        })
     if rhr_stats:
-        summary_rows.append(f"| 安静時心拍数 | {rhr_stats.get('avg_rhr', 0):.1f}bpm | {format_change(rhr_stats.get('change_rhr', 0), 'bpm')} | {rhr_trend_str} |")
+        summary_metrics.append({
+            'label': '安静時心拍数',
+            'average': f"{rhr_stats.get('avg_rhr', 0):.1f}bpm",
+            'change': format_change(rhr_stats.get('change_rhr', 0), 'bpm', positive_is_good=False),
+            'trend': mind.format_trend(stats.get('rhr_trend', 'stable'))
+        })
     if sleep_stats:
-        summary_rows.append(f"| 睡眠時間 | {sleep_stats.get('avg_sleep_hours', 0):.1f}時間 | - | - |")
-        summary_rows.append(f"| 睡眠効率 | {sleep_stats.get('avg_efficiency', 0):.0f}% | - | - |")
+        summary_metrics.append({
+            'label': '睡眠時間',
+            'average': f"{sleep_stats.get('avg_sleep_hours', 0):.1f}時間",
+            'change': '-',
+            'trend': '-'
+        })
+        summary_metrics.append({
+            'label': '睡眠効率',
+            'average': f"{sleep_stats.get('avg_efficiency', 0):.0f}%",
+            'change': '-',
+            'trend': '-'
+        })
 
-    summary_table = '\n'.join(summary_rows)
-
-    # HRVセクション
-    hrv_section = ""
+    # 自律神経セクション
+    autonomic = {}
     if hrv_stats:
-        hrv_section = f"""
-### HRV (心拍変動)
-
-| 指標 | 値 |
-|------|-----|
-| 平均RMSSD | {hrv_stats.get('avg_rmssd', 0):.1f}ms |
-| 変動幅 (SD) | {hrv_stats.get('std_rmssd', 0):.1f}ms |
-| 範囲 | {hrv_stats.get('min_rmssd', 0):.1f} 〜 {hrv_stats.get('max_rmssd', 0):.1f}ms |
-| 開始→終了 | {hrv_stats.get('first_rmssd', 0):.1f} → {hrv_stats.get('last_rmssd', 0):.1f}ms ({format_change(hrv_stats.get('change_rmssd', 0), 'ms')}) |
-"""
-
-    # RHRセクション
-    rhr_section = ""
+        autonomic['hrv_stats'] = {
+            'avg_rmssd': f"{hrv_stats.get('avg_rmssd', 0):.1f}",
+            'std_rmssd': f"{hrv_stats.get('std_rmssd', 0):.1f}",
+            'min_rmssd': f"{hrv_stats.get('min_rmssd', 0):.1f}",
+            'max_rmssd': f"{hrv_stats.get('max_rmssd', 0):.1f}",
+            'first_rmssd': f"{hrv_stats.get('first_rmssd', 0):.1f}",
+            'last_rmssd': f"{hrv_stats.get('last_rmssd', 0):.1f}",
+            'change_rmssd': format_change(hrv_stats.get('change_rmssd', 0), 'ms')
+        }
     if rhr_stats:
-        rhr_section = f"""
-### 安静時心拍数
-
-| 指標 | 値 |
-|------|-----|
-| 平均RHR | {rhr_stats.get('avg_rhr', 0):.1f}bpm |
-| 範囲 | {rhr_stats.get('min_rhr', 0):.0f} 〜 {rhr_stats.get('max_rhr', 0):.0f}bpm |
-| 開始→終了 | {rhr_stats.get('first_rhr', 0):.0f} → {rhr_stats.get('last_rhr', 0):.0f}bpm ({format_change(rhr_stats.get('change_rhr', 0), 'bpm')}) |
-
-> HRV上昇 & RHR低下 = 回復良好、HRV低下 & RHR上昇 = ストレス/疲労
-"""
+        autonomic['rhr_stats'] = {
+            'avg_rhr': f"{rhr_stats.get('avg_rhr', 0):.1f}",
+            'min_rhr': f"{rhr_stats.get('min_rhr', 0):.0f}",
+            'max_rhr': f"{rhr_stats.get('max_rhr', 0):.0f}",
+            'first_rhr': f"{rhr_stats.get('first_rhr', 0):.0f}",
+            'last_rhr': f"{rhr_stats.get('last_rhr', 0):.0f}",
+            'change_rhr': format_change(rhr_stats.get('change_rhr', 0), 'bpm', positive_is_good=False)
+        }
 
     # 睡眠セクション
-    sleep_section = ""
+    sleep_section_data = None
     if sleep_stats:
-        sleep_section = f"""
----
-
-## 睡眠
-
-| 指標 | 値 | 推奨 |
-|------|-----|------|
-| 平均睡眠時間 | {sleep_stats.get('avg_sleep_hours', 0):.1f}時間 | 7-9時間 |
-| 平均効率 | {sleep_stats.get('avg_efficiency', 0):.0f}% | 85%以上 |
-| 深い睡眠 | {sleep_stats.get('avg_deep_minutes', 0):.0f}分 ({sleep_stats.get('deep_pct', 0):.0f}%) | 13-23% |
-| レム睡眠 | {sleep_stats.get('avg_rem_minutes', 0):.0f}分 ({sleep_stats.get('rem_pct', 0):.0f}%) | 20-25% |
-"""
+        sleep_section_data = {
+            'avg_sleep_hours': f"{sleep_stats.get('avg_sleep_hours', 0):.1f}",
+            'avg_efficiency': f"{sleep_stats.get('avg_efficiency', 0):.0f}",
+            'avg_deep_minutes': f"{sleep_stats.get('avg_deep_minutes', 0):.0f}",
+            'deep_pct': f"{sleep_stats.get('deep_pct', 0):.0f}",
+            'avg_rem_minutes': f"{sleep_stats.get('avg_rem_minutes', 0):.0f}",
+            'rem_pct': f"{sleep_stats.get('rem_pct', 0):.0f}"
+        }
 
     # 生理的指標セクション
-    physio_section = ""
-    physio_items = []
-
+    physiology = {}
     if br_stats:
-        physio_items.append(f"""
-### 呼吸数
-
-| 指標 | 値 | 正常範囲 |
-|------|-----|----------|
-| 平均 | {br_stats['avg_breathing_rate']:.1f}回/分 | 12-20回/分 |
-| 範囲 | {br_stats['min_breathing_rate']:.1f} 〜 {br_stats['max_breathing_rate']:.1f}回/分 | - |
-""")
-
+        physiology['br_stats'] = {
+            'avg_breathing_rate': f"{br_stats['avg_breathing_rate']:.1f}",
+            'min_breathing_rate': f"{br_stats['min_breathing_rate']:.1f}",
+            'max_breathing_rate': f"{br_stats['max_breathing_rate']:.1f}"
+        }
     if spo2_stats:
-        physio_items.append(f"""
-### 血中酸素濃度 (SpO2)
-
-| 指標 | 値 | 正常範囲 |
-|------|-----|----------|
-| 平均 | {spo2_stats['avg_spo2']:.1f}% | 95-100% |
-| 範囲 | {spo2_stats['min_spo2']:.1f} 〜 {spo2_stats['max_spo2']:.1f}% | - |
-""")
-
+        physiology['spo2_stats'] = {
+            'avg_spo2': f"{spo2_stats['avg_spo2']:.1f}",
+            'min_spo2': f"{spo2_stats['min_spo2']:.1f}",
+            'max_spo2': f"{spo2_stats['max_spo2']:.1f}"
+        }
     if cardio_stats:
-        physio_items.append(f"""
-### 心肺スコア (VO2 Max)
-
-| 指標 | 値 |
-|------|-----|
-| 最新 | {cardio_stats['last_vo2_max']:.1f} ml/kg/min |
-| 平均 | {cardio_stats['avg_vo2_max']:.1f} ml/kg/min |
-| 範囲 | {cardio_stats['min_vo2_max']:.1f} 〜 {cardio_stats['max_vo2_max']:.1f} ml/kg/min |
-""")
-
+        physiology['cardio_stats'] = {
+            'last_vo2_max': f"{cardio_stats['last_vo2_max']:.1f}",
+            'avg_vo2_max': f"{cardio_stats['avg_vo2_max']:.1f}",
+            'min_vo2_max': f"{cardio_stats['min_vo2_max']:.1f}",
+            'max_vo2_max': f"{cardio_stats['max_vo2_max']:.1f}"
+        }
     if temp_stats:
-        physio_items.append(f"""
-### 皮膚温変動（睡眠中）
+        physiology['temp_stats'] = {
+            'avg_temp_variation': f"{temp_stats['avg_temp_variation']:.2f}",
+            'min_temp_variation': f"{temp_stats['min_temp_variation']:.2f}",
+            'max_temp_variation': f"{temp_stats['max_temp_variation']:.2f}",
+            'std_temp_variation': f"{temp_stats['std_temp_variation']:.2f}"
+        }
 
-| 指標 | 値 |
-|------|-----|
-| 平均変動 | {temp_stats['avg_temp_variation']:.2f}°C |
-| 範囲 | {temp_stats['min_temp_variation']:.2f} 〜 {temp_stats['max_temp_variation']:.2f}°C |
-| 変動幅 (SD) | {temp_stats['std_temp_variation']:.2f}°C |
-
-> 基礎体温からの差分。一貫性が高い（変動幅が小さい）ほど安定した睡眠状態
-""")
-
-    if physio_items:
-        physio_section = f"""
----
-
-## 生理的指標
-{''.join(physio_items)}"""
-
-    # 日別データテーブル
-    daily_rows = []
+    # 日別データ
+    daily_data_formatted = []
     for d in daily_data:
         date_str = pd.to_datetime(d['date']).strftime('%m-%d')
         hrv_val = f"{d.get('daily_rmssd', 0):.1f}" if d.get('daily_rmssd') else "-"
         rhr_val = f"{d.get('resting_heart_rate', 0):.0f}" if d.get('resting_heart_rate') else "-"
         sleep_val = f"{d.get('sleep_hours', 0):.1f}h" if d.get('sleep_hours') else "-"
         eff_val = f"{d.get('sleep_efficiency', 0):.0f}%" if d.get('sleep_efficiency') else "-"
-        daily_rows.append(f"| {date_str} | {hrv_val} | {rhr_val} | {sleep_val} | {eff_val} |")
 
-    daily_table = '\n'.join(daily_rows)
+        daily_data_formatted.append({
+            'date': date_str,
+            'hrv': hrv_val,
+            'rhr': rhr_val,
+            'sleep_hours': sleep_val,
+            'efficiency': eff_val
+        })
 
-    report = f"""# メンタルコンディションレポート
+    context = {
+        'report_title': 'メンタルコンディションレポート',
+        'period': {
+            'period_str': period_str,
+            'days': stats['days']
+        },
+        'summary_metrics': summary_metrics,
+        'autonomic': autonomic,
+        'sleep_stats': sleep_section_data,
+        'physiology': physiology if physiology else None,
+        'daily_data': daily_data_formatted,
+        'charts': {
+            'hrv_rhr': 'img/hrv_rhr.png',
+            'hrv': 'img/hrv.png'
+        }
+    }
 
-**期間**: {period_str}（{stats['days']}日間）
+    return context
 
----
 
-## サマリー
+def generate_report(output_dir, stats, daily_data, period_str):
+    """
+    マークダウンレポートを生成（Jinja2テンプレート版）
 
-| 指標 | 平均 | 変化 | トレンド |
-|------|------|------|----------|
-{summary_table}
+    Args:
+        output_dir: 出力ディレクトリ
+        stats: メンタル統計
+        daily_data: 日別データ
+        period_str: 期間文字列
+    """
+    from lib.templates.renderer import MindReportRenderer
 
----
+    # コンテキストデータ準備
+    context = prepare_mind_report_data(stats, daily_data, period_str)
 
-## 自律神経バランス
+    # テンプレートレンダリング
+    renderer = MindReportRenderer()
+    report_content = renderer.render_daily_report(context)
 
-> HRVは副交感神経活動の指標。高いほどリラックス・回復状態。
-{hrv_section}{rhr_section}{sleep_section}{physio_section}
-
----
-
-## 日別データ
-
-| 日付 | HRV (ms) | RHR (bpm) | 睡眠 | 効率 |
-|------|----------|-----------|------|------|
-{daily_table}
-
----
-
-## 推移グラフ
-
-### HRV vs 心拍数
-
-![HRV-RHR](img/hrv_rhr.png)
-
-### HRV推移
-
-![HRV](img/hrv.png)
-"""
-
+    # レポート出力
+    report_path = output_dir / 'REPORT.md'
     with open(report_path, 'w', encoding='utf-8') as f:
-        f.write(report)
+        f.write(report_content)
 
     print(f'Report: {report_path}')
 
@@ -390,20 +373,54 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Mental Condition Report')
-    parser.add_argument('--output', type=Path, default=BASE_DIR / 'tmp/mind_report')
-    parser.add_argument('--days', type=int, default=7)
+    add_common_report_args(parser, default_output=BASE_DIR / 'tmp/mind_report', default_days=7)
     args = parser.parse_args()
+
+    # Parse period arguments
+    week, month, year = parse_period_args(args)
+
+    # 出力ディレクトリの決定
+    output_dir = determine_output_dir(BASE_DIR, 'mind', args.output, week, month, year)
 
     print('='*60)
     print('メンタルコンディションレポート生成')
     print('='*60)
     print()
 
-    # データ読み込み
-    data = load_data(args.days)
+    # データ読み込み（全データ）
+    data = load_data(days=None)
     if not data or 'hrv' not in data:
         print("エラー: HRVデータが必要です")
         return 1
+
+    # 共通フィルタリング関数を使用
+    from lib.utils.report_args import filter_dataframe_by_period
+
+    # HRV（必須）
+    data['hrv'] = filter_dataframe_by_period(
+        data['hrv'], 'date', week, month, year, args.days, is_index=True
+    )
+
+    # その他のデータ（indexが日付）
+    for key in ['heart_rate', 'breathing_rate', 'spo2', 'cardio_score', 'temperature_skin']:
+        if key in data:
+            data[key] = filter_dataframe_by_period(
+                data[key], 'date', week, month, year, args.days, is_index=True
+            )
+
+    # 睡眠データ（dateOfSleep列を使用、indexではない）
+    if 'sleep' in data:
+        data['sleep'] = filter_dataframe_by_period(
+            data['sleep'], 'dateOfSleep', week, month, year, args.days, is_index=False
+        )
+
+    # フィルタリング結果を表示
+    if week is not None:
+        print(f'{year}年 第{week}週に絞り込み')
+    elif month is not None:
+        print(f'{year}年 {month}月に絞り込み')
+    elif args.days is not None:
+        print(f'直近{args.days}日分に絞り込み')
 
     print(f'HRVデータ: {len(data["hrv"])}日分')
     if 'heart_rate' in data:
@@ -419,8 +436,7 @@ def main():
     if 'temperature_skin' in data:
         print(f'皮膚温データ: {len(data["temperature_skin"])}日分')
 
-    # 出力ディレクトリ
-    output_dir = args.output
+    # 出力ディレクトリ（既に設定済み）
     img_dir = output_dir / 'img'
     img_dir.mkdir(parents=True, exist_ok=True)
 

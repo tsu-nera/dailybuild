@@ -1,0 +1,20 @@
+{% if training_data %}
+## 🏋️ トレーニング
+
+{% if aerobic_data %}
+#### 🏃 有酸素運動
+
+> 歩数と活動強度の記録。Active Zoneは心拍数ベースの運動強度（週150分推奨）。
+> Zone内訳: 脂肪燃焼（中程度）、有酸素（激しい）、ピーク（最高強度）
+
+| 日付 | 歩数 | Zone合計 | 脂肪燃焼 | 有酸素 | ピーク | VO2 Max |
+|------|------|----------|----------|--------|--------|---------|
+{% for row in aerobic_data %}
+| {{ row.date | date_format }} | {{ row.steps | number_format(0) }} | {{ row.active_zone | number_format(0) }} | {{ row.fat_burn | number_format(0) }} | {{ row.cardio | number_format(0) }} | {{ row.peak | number_format(0) }} | {{ row.vo2max | number_format(0) }} |
+{% endfor %}
+{% endif %}
+
+#### 💪 筋トレ
+
+> トレーニングログは [Hevy](https://hevy.com/profile) を参照
+{% endif %}

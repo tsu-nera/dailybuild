@@ -1,0 +1,12 @@
+## 🏋️ エクササイズ別詳細
+
+{% for exercise in exercise_details %}
+### {{ exercise.name }}
+
+| 週 | Reps | Sets | Weights | Volume | 前週比 |
+|---|---|---|---|---|---|
+{% for week_data in exercise.weekly_data %}
+| {{ week_data.week_label }} | {{ week_data.reps }} | {{ week_data.sets }} | {{ week_data.weights }} | {{ week_data.volume }} | {{ week_data.volume_change }} |
+{% endfor %}
+
+{% endfor %}

@@ -1,0 +1,12 @@
+## 就寝・起床時刻
+
+> 睡眠リズムの規則性を分析。ばらつきが大きいと社会的時差ボケの原因に。
+
+| 指標 | 就寝 | 入眠 | 起床 | 離床 |
+|------|------|------|------|------|
+| 平均 | **{{ timing.bedtime_mean }}** | **{{ timing.fallasleep_mean }}** | **{{ timing.wakeup_mean }}** | **{{ timing.waketime_mean }}** |
+| 最早 | {{ timing.bedtime_earliest }} | {{ timing.fallasleep_earliest }} | {{ timing.wakeup_earliest }} | {{ timing.waketime_earliest }} |
+| 最遅 | {{ timing.bedtime_latest }} | {{ timing.fallasleep_latest }} | {{ timing.wakeup_latest }} | {{ timing.waketime_latest }} |
+| ばらつき | ±{{ timing.bedtime_std }}分 | ±{{ timing.fallasleep_std }}分 | ±{{ timing.wakeup_std }}分 | ±{{ timing.waketime_std }}分 |
+
+{{ timing.table }}

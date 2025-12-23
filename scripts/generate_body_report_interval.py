@@ -9,6 +9,7 @@ Usage:
 """
 
 import sys
+import datetime
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -26,25 +27,71 @@ TARGET_FFMI = 21.0  # 目標FFMI
 MONTHLY_WEIGHT_GAIN = 0.75  # 月間体重増加目標（kg）
 HEIGHT_CM = 170  # 身長（cm）
 
-def format_change(val, unit='', inverse=False):
-    """変化量をフォーマット。inverse=Trueなら減少が良いこと（脂肪など）"""
-    if pd.isna(val):
-        return "-"
-    if val == 0:
-        return f"±0{unit}"
-    
-    sign = '+' if val > 0 else ''
-    formatted = f"{sign}{val:.2f}{unit}"
-    
-    # 良い変化かどうかの判定（簡易的）
-    # 通常: プラスが良い（筋肉など）
-    # inverse: マイナスが良い（脂肪など）
-    is_good = (val > 0 and not inverse) or (val < 0 and inverse)
-    
-    if is_good:
-        return f"**{formatted}**" # Bold for good
-    else:
-        return formatted
+def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_weight_gain):
+    """
+    週次隔レポート用のコンテキストデータを準備
+
+    Parameters
+    ----------
+    weekly : DataFrame
+        週次集計データ（index: (iso_year, iso_week)）
+    progress_info : dict
+        進捗情報（target_weight, months_to_target, weeks_to_target）
+    target_ffmi : float
+        目標FFMI
+    monthly_weight_gain : float
+        月間体重増加目標
+
+    Returns
+    -------
+    dict
+        テンプレートコンテキスト
+    """
+    from lib.templates.filters import format_change
+    import datetime
+
+    # 週次データを降順でソート（最新が上）
+    weekly_desc = weekly.sort_index(ascending=False)
+
+    # 週次データリストを構築
+    weekly_data = []
+    for (year, week), row in weekly_desc.iterrows():
+        # 週の開始日（月曜）を計算
+        try:
+            d = str(year) + '-W' + str(week) + '-1'
+            start_date_obj = datetime.datetime.strptime(d, "%G-W%V-%u")
+            week_label = f"{year}-W{week:02d}"
+        except:
+            week_label = f"{year}-W{week:02d}"
+
+        weekly_data.append({
+            'week_label': week_label,
+            'weight': f"{row['weight']:.2f}",
+            'weight_diff': format_change(row['weight_diff'], '', positive_is_good=False),
+            'muscle': f"{row['muscle_mass']:.2f}",
+            'muscle_diff': format_change(row['muscle_diff'], ''),
+            'fat_rate': f"{row['body_fat_rate']:.1f}%",
+            'fat_diff': format_change(row['fat_rate_diff'], '%', positive_is_good=False),
+            'ffmi': f"{row['ffmi']:.1f}",
+            'ffmi_diff': format_change(row['ffmi_diff'], '')
+        })
+
+    context = {
+        'report_title': '💪 筋トレ週次レポート',
+        'description': '7日間平均値の推移。前週比でトレンドを確認。',
+        'progress': {
+            'target_ffmi': target_ffmi,
+            'target_weight': f"{progress_info['target_weight']:.1f}",
+            'months_to_target': f"{progress_info['months_to_target']:.1f}",
+            'weeks_to_target': progress_info['weeks_to_target'],
+            'monthly_weight_gain': monthly_weight_gain,
+            'progress_image': 'img/progress.png'
+        },
+        'weekly_data': weekly_data
+    }
+
+    return context
+
 
 def main():
     import argparse
@@ -106,67 +153,27 @@ def main():
         height_cm=HEIGHT_CM
     )
 
-    # レポート生成
-    report_lines = []
-    report_lines.append("# 💪 筋トレ週次レポート")
-    report_lines.append("")
-    report_lines.append("7日間平均値の推移。前週比でトレンドを確認。")
-    report_lines.append("")
-    report_lines.append("## 🎯 目標進捗")
-    report_lines.append("")
-    report_lines.append(f"**目標**: FFMI {TARGET_FFMI} (体重 {progress_info['target_weight']:.1f}kg)")
-    report_lines.append(f"**予測到達**: 約{progress_info['months_to_target']:.1f}ヶ月後 ({progress_info['weeks_to_target']}週後)")
-    report_lines.append(f"**増量ペース**: +{MONTHLY_WEIGHT_GAIN}kg/月")
-    report_lines.append("")
-    report_lines.append("![Progress](img/progress.png)")
-    report_lines.append("")
-    report_lines.append("## 📊 週次データ")
-    report_lines.append("")
-    report_lines.append("| 週 | 体重 | 筋肉量 | 体脂肪率 | FFMI |")
-    report_lines.append("|---|---|---|---|---|")
-    
-    # Sort descending for display? No, keep chronological usually, 
-    # but for "latest first" logs, descending is better. Let's do descending (newest top).
-    weekly_desc = weekly.sort_index(ascending=False)
-    
-    for (year, week), row in weekly_desc.iterrows():
-        # 週の開始日（月曜）を計算して表示用にする
-        # ISO週から日付への変換
-        # 1-st day (Monday) of the iso_year and iso_week
-        try:
-            d = str(year) + '-W' + str(week) + '-1'
-            start_date_obj = datetime.datetime.strptime(d, "%G-W%V-%u")
-            week_label = start_date_obj.strftime('%m/%d~')
-        except:
-            # フォールバック
-            import datetime
-            # Python < 3.8 or specific formatting issues
-            week_label = f"W{week}"
+    # コンテキストデータ準備
+    context = prepare_interval_report_data(
+        weekly=weekly,
+        progress_info=progress_info,
+        target_ffmi=TARGET_FFMI,
+        monthly_weight_gain=MONTHLY_WEIGHT_GAIN
+    )
 
-        
-        weight_str = f"{row['weight']:.2f} ({format_change(row['weight_diff'], '', inverse=True)})"
-        muscle_str = f"{row['muscle_mass']:.2f} ({format_change(row['muscle_diff'], '')})"
-        fat_str = f"{row['body_fat_rate']:.1f}% ({format_change(row['fat_rate_diff'], '%', inverse=True)})"
-        lbm_str = f"{row['lbm']:.2f} ({format_change(row['lbm_diff'], '')})"
-        ffmi_str = f"{row['ffmi']:.1f} ({format_change(row['ffmi_diff'], '')})"
+    # テンプレートレンダリング
+    from lib.templates.renderer import BodyReportRenderer
+    renderer = BodyReportRenderer()
+    report_content = renderer.render_interval_report(context)
 
-        report_lines.append(
-            f"| **{year}-W{week:02d}** | {weight_str} | {muscle_str} | {fat_str} | {ffmi_str} |"
-        )
-
+    # レポート出力
     output_path = args.output
-    # Ensure directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     with open(output_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(report_lines))
-        
+        f.write(report_content)
+
     print(f"Report generated: {output_path}")
-    
-    # プレビューのため標準出力にも一部表示
-    print("-" * 20)
-    print('\n'.join(report_lines[:15])) # header + first few rows
-    print("...")
 
 if __name__ == "__main__":
     main()

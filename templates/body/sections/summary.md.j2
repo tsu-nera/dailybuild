@@ -1,0 +1,7 @@
+## 📊 サマリー
+
+| 指標 | 開始 | 終了 | 変化 |
+|------|------|------|------|
+{% for metric in summary_metrics %}
+| {{ metric.label }} | {{ metric.first }} | {{ metric.last }} | **{{ metric.change }}** |
+{% endfor %}

@@ -3,3 +3,4 @@ gspread
 pandas
 requests
 requests-oauthlib
+jinja2>=3.1.0

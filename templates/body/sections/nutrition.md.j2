@@ -1,0 +1,11 @@
+{% if nutrition_data %}
+## 🍽️ 栄養
+
+> PFCバランスとマクロ栄養素の記録。
+
+| 日付 | カロリー | タンパク質 | 脂質 | 炭水化物 | 食物繊維 | P | F | C |
+|------|----------|------------|------|----------|----------|---|---|---|
+{% for row in nutrition_data.daily %}
+| {{ row.date | date_format }} | {% if row.p_pct is none %}- | - | - | - | - | - | - | -{% else %}{{ row.calories | number_format(0) }} | {{ row.protein | number_format(1) }} | {{ row.fat | number_format(1) }} | {{ row.carbs | number_format(1) }} | {{ row.fiber | number_format(1) }} | {{ row.p_pct | number_format(0) }} | {{ row.f_pct | number_format(0) }} | {{ row.c_pct | number_format(0) }}{% endif %} |
+{% endfor %}
+{% endif %}

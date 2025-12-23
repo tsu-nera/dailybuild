@@ -1,0 +1,28 @@
+{% if cycles %}
+---
+
+## 睡眠サイクル分析
+
+> 睡眠は約90分のサイクルで構成。深い睡眠は前半、REMは後半に集中するのが理想。
+
+### サイクル構造の質
+
+| 指標 | 平均値 | 正常範囲 |
+|------|--------|----------|
+| サイクル数 | {{ cycles.avg_cycle_count }}回 | 3-5回 |
+| サイクル長 | {{ cycles.avg_cycle_length }}分 | 90分前後 |
+| REM間隔 | {{ cycles.avg_rem_interval }}分 | 90分前後 |
+| 深い睡眠潜時 | {{ cycles.avg_deep_latency }}分 | 15-30分 |
+| REM潜時 | {{ cycles.avg_first_rem_latency }}分 | 60-90分 |
+| 前半の深い睡眠 | {{ cycles.avg_deep_in_first_half }}% | 70-80%以上 |
+
+### 日別サイクル
+
+{{ cycles.cycle_table }}
+
+### REM開始時刻（夢想起用）
+
+> 入眠からの経過時間。夢を覚えて起きたい場合、REM中に起床すると夢想起率が高い。
+
+{{ cycles.rem_table }}
+{% endif %}

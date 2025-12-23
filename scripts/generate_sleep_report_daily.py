@@ -23,6 +23,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import sleep
+from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 
 # データファイルパス
 BASE_DIR = project_root
@@ -30,9 +31,142 @@ MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
 LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
 
 
+def prepare_sleep_report_data(results):
+    """
+    睡眠レポート用のコンテキストデータを準備
+
+    Parameters
+    ----------
+    results : dict
+        分析結果を格納した辞書
+
+    Returns
+    -------
+    dict
+        テンプレートコンテキスト
+    """
+    stats = results['stats']
+    debt = stats['sleep_debt']
+    debt_hours = debt['total_hours']
+
+    # 睡眠負債テキスト
+    if debt_hours >= 0:
+        debt_text = f"+{debt_hours:.1f}時間（余裕あり）"
+    else:
+        debt_text = f"{debt_hours:.1f}時間（不足）"
+
+    # サイクル分析データ（条件付き）
+    cycles_data = None
+    if results.get('cycle_stats') and results.get('cycle_table') is not None:
+        cs = results['cycle_stats']
+        df_cycles = results['cycle_table']
+
+        # サイクルテーブル
+        cycle_display = df_cycles[['dateOfSleep', 'cycle_count', 'avg_cycle_length',
+                                    'avg_rem_interval', 'deep_latency', 'first_rem_latency', 'deep_in_first_half']].copy()
+        cycle_display.columns = ['日付', 'サイクル数', '平均長', 'REM間隔', '深い潜時', 'REM潜時', '前半深い(%)']
+        cycle_display['日付'] = pd.to_datetime(cycle_display['日付']).dt.strftime('%m/%d')
+        cycle_display = cycle_display.round(0)
+
+        # REM開始時刻テーブル
+        rem_display = pd.DataFrame()
+        rem_display['日付'] = pd.to_datetime(df_cycles['dateOfSleep']).dt.strftime('%m/%d')
+        for i in range(1, 5):
+            col = f'rem{i}_onset'
+            if col in df_cycles.columns:
+                rem_display[f'REM{i}'] = df_cycles[col].apply(
+                    lambda x: f'{int(x)}' if pd.notna(x) else '-'
+                )
+        if 'bedtime' in df_cycles.columns:
+            rem_display['就寝'] = df_cycles['bedtime']
+        for i in range(1, 5):
+            time_col = f'rem{i}_time'
+            if time_col in df_cycles.columns:
+                rem_display[f'REM{i}時'] = df_cycles[time_col].fillna('-')
+
+        cycles_data = {
+            'avg_cycle_count': f"{cs['avg_cycle_count']:.1f}",
+            'avg_cycle_length': f"{cs['avg_cycle_length']:.0f}",
+            'avg_rem_interval': f"{cs['avg_rem_interval']:.0f}",
+            'avg_deep_latency': f"{cs['avg_deep_latency']:.0f}",
+            'avg_first_rem_latency': f"{cs['avg_first_rem_latency']:.0f}",
+            'avg_deep_in_first_half': f"{cs['avg_deep_in_first_half']:.0f}",
+            'cycle_table': cycle_display.to_markdown(index=False),
+            'rem_table': rem_display.to_markdown(index=False)
+        }
+
+    context = {
+        'report_title': '日次睡眠レポート',
+        'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'period': {
+            'start': stats['period']['start'],
+            'end': stats['period']['end'],
+            'days': stats['period']['days']
+        },
+        'summary': {
+            'time_in_bed_hours': f"{stats['weekly_total']['time_in_bed_hours']:.1f}",
+            'hours_asleep': f"{stats['weekly_total']['hours_asleep']:.1f}",
+            'sleep_debt_text': debt_text,
+            'days_met_goal': debt['days_met_goal'],
+            'recommended_hours': f"{debt['recommended_hours']:.0f}"
+        },
+        'efficiency': {
+            'mean': f"{stats['efficiency']['mean']:.1f}",
+            'min': stats['efficiency']['min'],
+            'max': stats['efficiency']['max'],
+            'avg_fall_asleep': f"{stats.get('timing', {}).get('avg_fall_asleep', 0):.0f}",
+            'avg_after_wakeup': f"{stats.get('timing', {}).get('avg_after_wakeup', 0):.0f}",
+            'image': f"img/{results['time_in_bed_img']}",
+            'table': results['efficiency_table'].to_markdown(index=False)
+        },
+        'stages': {
+            'mean_hours': f"{stats['duration']['mean_hours']:.1f}",
+            'mean_minutes': f"{stats['duration']['mean_minutes']:.0f}",
+            'min_hours': f"{stats['duration']['min_hours']:.1f}",
+            'max_hours': f"{stats['duration']['max_hours']:.1f}",
+            'std_hours': f"{stats['duration']['std_hours']:.1f}",
+            'deep_minutes': f"{stats['stages']['deep_minutes']:.0f}",
+            'deep_pct': f"{stats['stages'].get('deep_pct', 0):.1f}",
+            'deep_count': f"{stats['stages']['deep_count']:.0f}",
+            'light_minutes': f"{stats['stages']['light_minutes']:.0f}",
+            'light_pct': f"{stats['stages'].get('light_pct', 0):.1f}",
+            'light_count': f"{stats['stages']['light_count']:.0f}",
+            'rem_minutes': f"{stats['stages']['rem_minutes']:.0f}",
+            'rem_pct': f"{stats['stages'].get('rem_pct', 0):.1f}",
+            'rem_count': f"{stats['stages']['rem_count']:.0f}",
+            'wake_minutes': f"{stats['stages']['wake_minutes']:.0f}",
+            'stacked_image': f"img/{results['stages_stacked_img']}",
+            'table': results['stages_table'].to_markdown(index=False),
+            'timeline_image': f"img/{results['timeline_img']}"
+        },
+        'timing': {
+            'bedtime_mean': stats['bedtime']['mean'],
+            'bedtime_earliest': stats['bedtime']['earliest'],
+            'bedtime_latest': stats['bedtime']['latest'],
+            'bedtime_std': f"{stats['bedtime']['std_minutes']:.0f}",
+            'fallasleep_mean': stats.get('fallasleep', {}).get('mean', '-'),
+            'fallasleep_earliest': stats.get('fallasleep', {}).get('earliest', '-'),
+            'fallasleep_latest': stats.get('fallasleep', {}).get('latest', '-'),
+            'fallasleep_std': f"{stats.get('fallasleep', {}).get('std_minutes', 0):.0f}",
+            'wakeup_mean': stats.get('wakeup', {}).get('mean', '-'),
+            'wakeup_earliest': stats.get('wakeup', {}).get('earliest', '-'),
+            'wakeup_latest': stats.get('wakeup', {}).get('latest', '-'),
+            'wakeup_std': f"{stats.get('wakeup', {}).get('std_minutes', 0):.0f}",
+            'waketime_mean': stats['waketime']['mean'],
+            'waketime_earliest': stats['waketime']['earliest'],
+            'waketime_latest': stats['waketime']['latest'],
+            'waketime_std': f"{stats['waketime']['std_minutes']:.0f}",
+            'table': results['timing_table'].to_markdown(index=False)
+        },
+        'cycles': cycles_data
+    }
+
+    return context
+
+
 def generate_markdown_report(output_dir, results):
     """
-    マークダウンレポートを生成
+    マークダウンレポートを生成（Jinja2テンプレート版）
 
     Parameters
     ----------
@@ -41,173 +175,25 @@ def generate_markdown_report(output_dir, results):
     results : dict
         分析結果を格納した辞書
     """
+    from lib.templates.renderer import SleepReportRenderer
+
+    # コンテキストデータ準備
+    context = prepare_sleep_report_data(results)
+
+    # テンプレートレンダリング
+    renderer = SleepReportRenderer()
+    report_content = renderer.render_daily_report(context)
+
+    # レポート出力
     report_path = output_dir / 'REPORT.md'
-    stats = results['stats']
-
-    # 睡眠負債の表示用テキスト
-    debt = stats['sleep_debt']
-    debt_hours = debt['total_hours']
-    if debt_hours >= 0:
-        debt_text = f"+{debt_hours:.1f}時間（余裕あり）"
-    else:
-        debt_text = f"{debt_hours:.1f}時間（不足）"
-
-    report = f"""# 日次睡眠レポート
-
-- **生成日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-- **対象期間**: {stats['period']['start']} ～ {stats['period']['end']}
-- **データ日数**: {stats['period']['days']}日分
-
----
-
-## サマリー
-
-| 指標 | 値 |
-|------|-----|
-| ベッド時間合計 | {stats['weekly_total']['time_in_bed_hours']:.1f}時間 |
-| 睡眠時間合計 | {stats['weekly_total']['hours_asleep']:.1f}時間 |
-| 睡眠負債 | **{debt_text}** |
-| 目標達成 | {debt['days_met_goal']}/{stats['period']['days']}日（{debt['recommended_hours']:.0f}時間以上） |
-
-> 睡眠負債は推奨{debt['recommended_hours']:.0f}時間との差の累積です。
-
----
-
-## Time in Bed分析
-
-> ベッド時間の使い方を分析。効率 = 睡眠 / ベッド × 100。85%以上が良好。
-
-| 指標 | 値 |
-|------|-----|
-| 平均効率 | **{stats['efficiency']['mean']:.1f}%** |
-| 最低〜最高 | {stats['efficiency']['min']}% 〜 {stats['efficiency']['max']}% |
-| 平均入眠 | {stats.get('timing', {}).get('avg_fall_asleep', 0):.0f}分 |
-| 平均起床後 | {stats.get('timing', {}).get('avg_after_wakeup', 0):.0f}分 |
-
-![Time in Bed](img/{results['time_in_bed_img']})
-
-{results['efficiency_table'].to_markdown(index=False)}
-
----
-
-## Total Sleep Time分析
-
-> 睡眠時間の質を分析。各ステージのバランスを確認。
-
-### 睡眠時間
-
-| 指標 | 値 |
-|------|-----|
-| 平均 | **{stats['duration']['mean_hours']:.1f}時間** ({stats['duration']['mean_minutes']:.0f}分) |
-| 最短〜最長 | {stats['duration']['min_hours']:.1f} 〜 {stats['duration']['max_hours']:.1f}時間 |
-| 標準偏差 | {stats['duration']['std_hours']:.1f}時間 |
-
-### 睡眠ステージ（平均）
-
-| ステージ | 時間 | 割合 | 回数 | 推奨範囲 |
-|----------|------|------|------|----------|
-| 深い睡眠 | {stats['stages']['deep_minutes']:.0f}分 | {stats['stages'].get('deep_pct', 0):.1f}% | {stats['stages']['deep_count']:.0f}回 | 13-23% |
-| 浅い睡眠 | {stats['stages']['light_minutes']:.0f}分 | {stats['stages'].get('light_pct', 0):.1f}% | {stats['stages']['light_count']:.0f}回 | 45-55% |
-| レム睡眠 | {stats['stages']['rem_minutes']:.0f}分 | {stats['stages'].get('rem_pct', 0):.1f}% | {stats['stages']['rem_count']:.0f}回 | 20-25% |
-| 覚醒 | {stats['stages']['wake_minutes']:.0f}分 | - | - | - |
-
-![睡眠時間・ステージ推移](img/{results['stages_stacked_img']})
-
-{results['stages_table'].to_markdown(index=False)}
-
-### 睡眠ステージ タイムライン
-
-![睡眠タイムライン](img/{results['timeline_img']})
-
-- 🟠 覚醒 / 🟣 レム / 🔵 浅い / 🔷 深い
-
----
-
-## 就寝・起床時刻
-
-> 睡眠リズムの規則性を分析。ばらつきが大きいと社会的時差ボケの原因に。
-
-| 指標 | 就寝 | 入眠 | 起床 | 離床 |
-|------|------|------|------|------|
-| 平均 | **{stats['bedtime']['mean']}** | **{stats.get('fallasleep', {}).get('mean', '-')}** | **{stats.get('wakeup', {}).get('mean', '-')}** | **{stats['waketime']['mean']}** |
-| 最早 | {stats['bedtime']['earliest']} | {stats.get('fallasleep', {}).get('earliest', '-')} | {stats.get('wakeup', {}).get('earliest', '-')} | {stats['waketime']['earliest']} |
-| 最遅 | {stats['bedtime']['latest']} | {stats.get('fallasleep', {}).get('latest', '-')} | {stats.get('wakeup', {}).get('latest', '-')} | {stats['waketime']['latest']} |
-| ばらつき | ±{stats['bedtime']['std_minutes']:.0f}分 | ±{stats.get('fallasleep', {}).get('std_minutes', 0):.0f}分 | ±{stats.get('wakeup', {}).get('std_minutes', 0):.0f}分 | ±{stats['waketime']['std_minutes']:.0f}分 |
-
-{results['timing_table'].to_markdown(index=False)}
-"""
-
-    # サイクル分析セクションを追加
-    if results.get('cycle_stats') and results.get('cycle_table') is not None:
-        cs = results['cycle_stats']
-        df_cycles = results['cycle_table']
-
-        # 表示用のサイクルテーブルを作成
-        cycle_display = df_cycles[['dateOfSleep', 'cycle_count', 'avg_cycle_length',
-                                    'avg_rem_interval', 'deep_latency', 'first_rem_latency', 'deep_in_first_half']].copy()
-        cycle_display.columns = ['日付', 'サイクル数', '平均長', 'REM間隔', '深い潜時', 'REM潜時', '前半深い(%)']
-        cycle_display['日付'] = pd.to_datetime(cycle_display['日付']).dt.strftime('%m/%d')
-        cycle_display = cycle_display.round(0)
-
-        # REM開始時刻テーブル（夢想起用）
-        rem_display = pd.DataFrame()
-        rem_display['日付'] = pd.to_datetime(df_cycles['dateOfSleep']).dt.strftime('%m/%d')
-
-        # REM1-4の開始時刻（入眠からの分数）
-        for i in range(1, 5):
-            col = f'rem{i}_onset'
-            if col in df_cycles.columns:
-                rem_display[f'REM{i}'] = df_cycles[col].apply(
-                    lambda x: f'{int(x)}' if pd.notna(x) else '-'
-                )
-
-        # 就寝時刻（ライブラリで計算済み）
-        if 'bedtime' in df_cycles.columns:
-            rem_display['就寝'] = df_cycles['bedtime']
-
-        # REM1-4の実時刻
-        for i in range(1, 5):
-            time_col = f'rem{i}_time'
-            if time_col in df_cycles.columns:
-                rem_display[f'REM{i}時'] = df_cycles[time_col].fillna('-')
-
-        report += f"""
----
-
-## 睡眠サイクル分析
-
-> 睡眠は約90分のサイクルで構成。深い睡眠は前半、REMは後半に集中するのが理想。
-
-### サイクル構造の質
-
-| 指標 | 平均値 | 正常範囲 |
-|------|--------|----------|
-| サイクル数 | {cs['avg_cycle_count']:.1f}回 | 3-5回 |
-| サイクル長 | {cs['avg_cycle_length']:.0f}分 | 90分前後 |
-| REM間隔 | {cs['avg_rem_interval']:.0f}分 | 90分前後 |
-| 深い睡眠潜時 | {cs['avg_deep_latency']:.0f}分 | 15-30分 |
-| REM潜時 | {cs['avg_first_rem_latency']:.0f}分 | 60-90分 |
-| 前半の深い睡眠 | {cs['avg_deep_in_first_half']:.0f}% | 70-80%以上 |
-
-### 日別サイクル
-
-{cycle_display.to_markdown(index=False)}
-
-### REM開始時刻（夢想起用）
-
-> 入眠からの経過時間。夢を覚えて起きたい場合、REM中に起床すると夢想起率が高い。
-
-{rem_display.to_markdown(index=False)}
-"""
-
     with open(report_path, 'w', encoding='utf-8') as f:
-        f.write(report)
+        f.write(report_content)
 
     print(f'✓ レポート生成完了: {report_path}')
     return report_path
 
 
-def run_analysis(output_dir, days=None, week=None, year=None):
+def run_analysis(output_dir, days=None, week=None, month=None, year=None):
     """
     睡眠データの分析を実行
 
@@ -219,8 +205,10 @@ def run_analysis(output_dir, days=None, week=None, year=None):
         分析対象の日数（Noneの場合は全データ）
     week : int, optional
         ISO週番号（指定時はその週のデータのみ）
+    month : int, optional
+        月番号（指定時はその月のデータのみ）
     year : int, optional
-        年（週番号指定時に使用、Noneの場合は現在の年）
+        年（週番号/月番号指定時に使用、Noneの場合は現在の年）
     """
     print('='*60)
     print('日次睡眠レポート生成')
@@ -237,20 +225,22 @@ def run_analysis(output_dir, days=None, week=None, year=None):
     print(f'Loading: {MASTER_CSV}')
     df_master = pd.read_csv(MASTER_CSV)
 
-    # 週番号でフィルタリング
+    # 共通フィルタリング関数を使用
+    from lib.utils.report_args import filter_dataframe_by_period
+    df_master = filter_dataframe_by_period(
+        df_master, 'dateOfSleep', week, month, year, days, is_index=False
+    )
+
+    # フィルタリング結果を表示
     if week is not None:
-        if year is None:
-            year = datetime.now().year
-        df_master['dateOfSleep'] = pd.to_datetime(df_master['dateOfSleep'])
-        df_master['iso_week'] = df_master['dateOfSleep'].dt.isocalendar().week
-        df_master['iso_year'] = df_master['dateOfSleep'].dt.isocalendar().year
-        df_master = df_master[(df_master['iso_week'] == week) & (df_master['iso_year'] == year)]
-        df_master['dateOfSleep'] = df_master['dateOfSleep'].dt.strftime('%Y-%m-%d')
-        df_master = df_master.drop(columns=['iso_week', 'iso_year'])
         print(f'{year}年 第{week}週に絞り込み')
+    elif month is not None:
+        print(f'{year}年 {month}月に絞り込み')
     elif days is not None:
-        df_master = df_master.tail(days)
         print(f'直近{days}日分に絞り込み')
+
+    # 日付を文字列に戻す（後続処理との互換性のため）
+    df_master['dateOfSleep'] = pd.to_datetime(df_master['dateOfSleep']).dt.strftime('%Y-%m-%d')
 
     print(f'データ件数: {len(df_master)}日分')
 
@@ -420,60 +410,18 @@ def main():
     """メイン処理"""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description='日次睡眠レポートの生成'
-    )
-    parser.add_argument(
-        '--output',
-        type=Path,
-        default=BASE_DIR / 'tmp/sleep_report',
-        help='出力ディレクトリ（デフォルト: tmp/sleep_report）'
-    )
-    parser.add_argument(
-        '--days',
-        type=int,
-        default=None,
-        help='分析対象の日数（デフォルト: 全データ）'
-    )
-    parser.add_argument(
-        '--week',
-        type=str,
-        default=None,
-        help='ISO週番号（例: 48）または "current" で今週を指定'
-    )
-    parser.add_argument(
-        '--year',
-        type=int,
-        default=None,
-        help='年（--week指定時に使用、デフォルト: 今年）'
-    )
-
+    parser = argparse.ArgumentParser(description='日次睡眠レポートの生成')
+    add_common_report_args(parser, default_output=BASE_DIR / 'tmp/sleep_report', default_days=None)
     args = parser.parse_args()
 
-    # 週番号の処理
-    week = None
-    year = args.year
-    if args.week is not None:
-        if args.week.lower() == 'current':
-            iso_cal = datetime.now().isocalendar()
-            week = iso_cal[1]
-            if year is None:
-                year = iso_cal[0]
-            print(f'今週（第{week}週）を指定')
-        else:
-            week = int(args.week)
-            if year is None:
-                year = datetime.now().year
+    # Parse period arguments
+    week, month, year = parse_period_args(args)
 
     # 出力ディレクトリの決定
-    if week is not None:
-        output_dir = BASE_DIR / f'reports/sleep/weekly/{year}-W{week:02d}'
-    else:
-        output_dir = args.output
-
+    output_dir = determine_output_dir(BASE_DIR, 'sleep', args.output, week, month, year)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    run_analysis(output_dir, days=args.days, week=week, year=year)
+    run_analysis(output_dir, days=args.days, week=week, month=month, year=year)
 
     return 0
 

@@ -1,0 +1,10 @@
+## 📈 トレーニングボリューム
+
+| 週 |{% for exercise in exercises %} {{ exercise }} |{% endfor %}
+
+|---|{% for exercise in exercises %}---|{% endfor %}
+
+{% for week in weekly_volume %}
+| {{ week.week_label }} |{% for vol in week.volumes %} {{ vol }} |{% endfor %}
+
+{% endfor %}

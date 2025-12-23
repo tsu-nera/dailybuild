@@ -1,0 +1,23 @@
+# {{ report_title }}
+
+- **生成日時**: {{ generated_at }}
+- **対象期間**: {{ period.start }} ～ {{ period.end }}
+- **データ日数**: {{ period.days }}日分
+
+---
+
+{% block summary %}{% endblock %}
+
+---
+
+{% block time_in_bed %}{% endblock %}
+
+---
+
+{% block sleep_stages %}{% endblock %}
+
+---
+
+{% block sleep_timing %}{% endblock %}
+
+{% block sleep_cycles %}{% endblock %}

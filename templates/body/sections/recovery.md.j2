@@ -1,0 +1,11 @@
+{% if recovery_data %}
+## 🛌 回復
+
+> 睡眠とHRVで回復状態を評価。HRV上昇 & HR低下 = 回復良好
+
+| 日付 | 睡眠(h) | 深い(m) | HRV(ms) | HR(bpm) |
+|------|---------|---------|---------|---------|
+{% for row in recovery_data %}
+| {{ row.date | date_format }} | {{ row.sleep_hours | number_format(1) }} | {{ row.deep_minutes | number_format(0) }} | {{ row.hrv | number_format(0) }} | {{ row.hr | number_format(0) }} |
+{% endfor %}
+{% endif %}

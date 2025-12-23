@@ -1,0 +1,12 @@
+{% if sleep_stats %}
+---
+
+## 睡眠
+
+| 指標 | 値 | 推奨 |
+|------|-----|------|
+| 平均睡眠時間 | {{ sleep_stats.avg_sleep_hours }}時間 | 7-9時間 |
+| 平均効率 | {{ sleep_stats.avg_efficiency }}% | 85%以上 |
+| 深い睡眠 | {{ sleep_stats.avg_deep_minutes }}分 ({{ sleep_stats.deep_pct }}%) | 13-23% |
+| レム睡眠 | {{ sleep_stats.avg_rem_minutes }}分 ({{ sleep_stats.rem_pct }}%) | 20-25% |
+{% endif %}

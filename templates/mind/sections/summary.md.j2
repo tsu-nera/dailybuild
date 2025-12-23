@@ -1,0 +1,7 @@
+## サマリー
+
+| 指標 | 平均 | 変化 | トレンド |
+|------|------|------|----------|
+{% for metric in summary_metrics %}
+| {{ metric.label }} | {{ metric.average }} | {{ metric.change }} | {{ metric.trend }} |
+{% endfor %}

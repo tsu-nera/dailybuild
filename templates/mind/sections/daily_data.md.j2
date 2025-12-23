@@ -1,0 +1,7 @@
+## 日別データ
+
+| 日付 | HRV (ms) | RHR (bpm) | 睡眠 | 効率 |
+|------|----------|-----------|------|------|
+{% for day in daily_data %}
+| {{ day.date }} | {{ day.hrv }} | {{ day.rhr }} | {{ day.sleep_hours }} | {{ day.efficiency }} |
+{% endfor %}

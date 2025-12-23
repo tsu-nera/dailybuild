@@ -1,0 +1,45 @@
+{% if physiology %}
+---
+
+## 生理的指標
+
+{% if physiology.br_stats %}
+### 呼吸数
+
+| 指標 | 値 | 正常範囲 |
+|------|-----|----------|
+| 平均 | {{ physiology.br_stats.avg_breathing_rate }}回/分 | 12-20回/分 |
+| 範囲 | {{ physiology.br_stats.min_breathing_rate }} 〜 {{ physiology.br_stats.max_breathing_rate }}回/分 | - |
+{% endif %}
+
+{% if physiology.spo2_stats %}
+### 血中酸素濃度 (SpO2)
+
+| 指標 | 値 | 正常範囲 |
+|------|-----|----------|
+| 平均 | {{ physiology.spo2_stats.avg_spo2 }}% | 95-100% |
+| 範囲 | {{ physiology.spo2_stats.min_spo2 }} 〜 {{ physiology.spo2_stats.max_spo2 }}% | - |
+{% endif %}
+
+{% if physiology.cardio_stats %}
+### 心肺スコア (VO2 Max)
+
+| 指標 | 値 |
+|------|-----|
+| 最新 | {{ physiology.cardio_stats.last_vo2_max }} ml/kg/min |
+| 平均 | {{ physiology.cardio_stats.avg_vo2_max }} ml/kg/min |
+| 範囲 | {{ physiology.cardio_stats.min_vo2_max }} 〜 {{ physiology.cardio_stats.max_vo2_max }} ml/kg/min |
+{% endif %}
+
+{% if physiology.temp_stats %}
+### 皮膚温変動（睡眠中）
+
+| 指標 | 値 |
+|------|-----|
+| 平均変動 | {{ physiology.temp_stats.avg_temp_variation }}°C |
+| 範囲 | {{ physiology.temp_stats.min_temp_variation }} 〜 {{ physiology.temp_stats.max_temp_variation }}°C |
+| 変動幅 (SD) | {{ physiology.temp_stats.std_temp_variation }}°C |
+
+> 基礎体温からの差分。一貫性が高い（変動幅が小さい）ほど安定した睡眠状態
+{% endif %}
+{% endif %}
