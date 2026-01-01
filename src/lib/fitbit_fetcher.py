@@ -146,6 +146,14 @@ ENDPOINTS = {
         'max_days': 30,
         'is_range_api': True,
     },
+    'temperature_core': {
+        'description': '体温（手動記録）',
+        'fetch_fn': 'get_temperature_core_by_date_range',
+        'parse_fn': 'parse_temperature_core',
+        'date_column': 'date_time',
+        'max_days': 30,
+        'is_range_api': True,
+    },
     'activity_logs': {
         'description': '個別アクティビティログ（運動記録）',
         'fetch_fn': 'get_activity_logs_by_date_range',
@@ -220,15 +228,18 @@ def _format_api_error(exception: Exception) -> str:
     return f"{error_type}: {error_msg}"
 
 
-def fetch_endpoint(client, endpoint: str, days: int = 14, overwrite: bool = False) -> dict:
+def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = False,
+                   start_date: dt.date = None, end_date: dt.date = None) -> dict:
     """
     指定エンドポイントのデータを取得・保存
 
     Args:
         client: Fitbitクライアント
         endpoint: エンドポイント名（sleep, hrv, heart_rate, activity）
-        days: 取得日数
+        days: 取得日数（start_dateが指定されていない場合のみ有効）
         overwrite: 上書きモード
+        start_date: 開始日（指定時はdaysを無視）
+        end_date: 終了日（start_date指定時のみ有効、未指定時は今日）
 
     Returns:
         結果情報の辞書（records: レコード数, path: 保存パス, error: エラーメッセージ）
@@ -238,13 +249,24 @@ def fetch_endpoint(client, endpoint: str, days: int = 14, overwrite: bool = Fals
 
     config = ENDPOINTS[endpoint]
 
-    # 最大日数制限
-    if config['max_days'] and days > config['max_days']:
-        print(f"警告: {endpoint} APIは最大{config['max_days']}日間まで。制限します。")
-        days = config['max_days']
+    # 日付範囲の決定
+    if start_date is not None:
+        # start_date指定時
+        if end_date is None:
+            end_date = dt.date.today()
+        calc_days = (end_date - start_date).days + 1
+    else:
+        # days指定時
+        if days is None:
+            days = 14
+        end_date = dt.date.today()
+        start_date = end_date - dt.timedelta(days=days - 1)
+        calc_days = days
 
-    end_date = dt.date.today()
-    start_date = end_date - dt.timedelta(days=days - 1)
+    # 最大日数制限
+    if config['max_days'] and calc_days > config['max_days']:
+        print(f"警告: {endpoint} APIは最大{config['max_days']}日間まで。制限します。")
+        end_date = start_date + dt.timedelta(days=config['max_days'] - 1)
 
     print(f"{config['description']}を取得中... ({start_date} ~ {end_date})")
 
@@ -324,7 +346,8 @@ def _save_sleep_levels(response: dict, overwrite: bool) -> dict:
     return {'records': len(df_levels), 'path': out_path}
 
 
-def fetch_time_series_endpoints(client, days: int = 2, overwrite: bool = False) -> dict:
+def fetch_time_series_endpoints(client, days: int = None, overwrite: bool = False,
+                                start_date: dt.date = None, end_date: dt.date = None) -> dict:
     """
     Time Series API（期間指定、1リクエスト）のエンドポイントを取得
 
@@ -332,23 +355,26 @@ def fetch_time_series_endpoints(client, days: int = 2, overwrite: bool = False) 
         client: Fitbitクライアント
         days: 取得日数
         overwrite: 上書きモード
+        start_date: 開始日（指定時はdaysを無視）
+        end_date: 終了日（start_date指定時のみ有効、未指定時は今日）
 
     Returns:
         各エンドポイントの結果辞書
 
     Note:
         sleep, hrv, heart_rate, active_zone_minutes, breathing_rate,
-        spo2, cardio_score, temperature_skin
+        spo2, cardio_score, temperature_skin, temperature_core
     """
     results = {}
     errors = []
 
     for endpoint, config in ENDPOINTS.items():
-        if not config.get('is_time_series_api', False):
+        # is_time_series_api または is_range_api のどちらかがTrueなら対象
+        if not (config.get('is_time_series_api', False) or config.get('is_range_api', False)):
             continue
 
         print(f"\n=== {config['description']} ===")
-        result = fetch_endpoint(client, endpoint, days, overwrite)
+        result = fetch_endpoint(client, endpoint, days, overwrite, start_date, end_date)
         results[endpoint] = result
 
         if result.get('error'):
@@ -357,7 +383,8 @@ def fetch_time_series_endpoints(client, days: int = 2, overwrite: bool = False) 
     return results, errors
 
 
-def fetch_daily_endpoints(client, days: int = 2, overwrite: bool = False) -> dict:
+def fetch_daily_endpoints(client, days: int = None, overwrite: bool = False,
+                          start_date: dt.date = None, end_date: dt.date = None) -> dict:
     """
     日付ごとループまたはページング方式のエンドポイントを取得
 
@@ -365,6 +392,8 @@ def fetch_daily_endpoints(client, days: int = 2, overwrite: bool = False) -> dic
         client: Fitbitクライアント
         days: 取得日数
         overwrite: 上書きモード
+        start_date: 開始日（指定時はdaysを無視）
+        end_date: 終了日（start_date指定時のみ有効、未指定時は今日）
 
     Returns:
         各エンドポイントの結果辞書
@@ -376,11 +405,12 @@ def fetch_daily_endpoints(client, days: int = 2, overwrite: bool = False) -> dic
     errors = []
 
     for endpoint, config in ENDPOINTS.items():
-        if config.get('is_time_series_api', False):
+        # is_time_series_api または is_range_api がTrueの場合は対象外
+        if config.get('is_time_series_api', False) or config.get('is_range_api', False):
             continue
 
         print(f"\n=== {config['description']} ===")
-        result = fetch_endpoint(client, endpoint, days, overwrite)
+        result = fetch_endpoint(client, endpoint, days, overwrite, start_date, end_date)
         results[endpoint] = result
 
         if result.get('error'):
@@ -389,7 +419,8 @@ def fetch_daily_endpoints(client, days: int = 2, overwrite: bool = False) -> dic
     return results, errors
 
 
-def fetch_all(client, days: int = 2, overwrite: bool = False) -> dict:
+def fetch_all(client, days: int = None, overwrite: bool = False,
+              start_date: dt.date = None, end_date: dt.date = None) -> dict:
     """
     全エンドポイントのデータを取得
 
@@ -397,6 +428,8 @@ def fetch_all(client, days: int = 2, overwrite: bool = False) -> dict:
         client: Fitbitクライアント
         days: 取得日数
         overwrite: 上書きモード
+        start_date: 開始日（指定時はdaysを無視）
+        end_date: 終了日（start_date指定時のみ有効、未指定時は今日）
 
     Returns:
         各エンドポイントの結果辞書
@@ -409,12 +442,16 @@ def fetch_all(client, days: int = 2, overwrite: bool = False) -> dict:
     print("=" * 60)
     print("Time Series API（期間指定、1リクエスト）")
     print("=" * 60)
-    time_series_results, time_series_errors = fetch_time_series_endpoints(client, days, overwrite)
+    time_series_results, time_series_errors = fetch_time_series_endpoints(
+        client, days, overwrite, start_date, end_date
+    )
 
     print("\n" + "=" * 60)
     print("日付ごとAPI（N日間=Nリクエスト）")
     print("=" * 60)
-    daily_results, daily_errors = fetch_daily_endpoints(client, days, overwrite)
+    daily_results, daily_errors = fetch_daily_endpoints(
+        client, days, overwrite, start_date, end_date
+    )
 
     # 結果を統合
     results = {**time_series_results, **daily_results}
