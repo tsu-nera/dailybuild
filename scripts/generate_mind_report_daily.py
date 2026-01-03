@@ -746,7 +746,7 @@ def main():
     # 免疫ストレススコア計算
     print()
     print('免疫ストレススコア計算中...')
-    responsiveness_daily = calculate_immune_stress_scores(responsiveness_daily, sleep_patterns_daily, debug=True)
+    responsiveness_daily = calculate_immune_stress_scores(responsiveness_daily, sleep_patterns_daily, debug=False)
     print(f'  免疫ストレススコア計算完了')
 
     # 期間文字列

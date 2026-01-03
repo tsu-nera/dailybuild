@@ -369,8 +369,12 @@ def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep, df_levels=
 
     # 入眠潜時・起床後時間を計算（df_levelsが提供されている場合）
     sleep_timing = {}
-    if df_levels is not None:
-        sleep_timing = calc_sleep_timing(df_levels)
+    if df_levels is not None and not df_levels.empty:
+        raw_timing = calc_sleep_timing(df_levels)
+        # キーを日付文字列('YYYY-MM-DD')に正規化（calc_sleep_timingはdatetime型キーを返す場合がある）
+        for key, value in raw_timing.items():
+            date_key = pd.to_datetime(key).strftime('%Y-%m-%d')
+            sleep_timing[date_key] = value
 
     for date in all_dates:
         row = {'date': date}
@@ -439,8 +443,8 @@ def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep, df_levels=
         # 入眠潜時・起床後時間（sleep_timingから取得）
         if date_str in sleep_timing:
             timing = sleep_timing[date_str]
-            row['minutes_to_fall_asleep'] = timing.get('minutes_to_fall_asleep', 0)
-            row['minutes_after_wakeup'] = timing.get('minutes_after_wakeup', 0)
+            row['minutes_to_fall_asleep'] = timing.get('minutes_to_fall_asleep')
+            row['minutes_after_wakeup'] = timing.get('minutes_after_wakeup')
         else:
             row['minutes_to_fall_asleep'] = None
             row['minutes_after_wakeup'] = None

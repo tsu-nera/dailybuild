@@ -5,7 +5,7 @@
 | 日付 | 就寝時刻 | 起床時刻 | 睡眠時間 | 効率 | 入眠 | 起後 | 中途覚醒回数 |
 |------|----------|----------|----------|------|------|------|--------------|
 {% for day in sleep_patterns_data %}
-| {{ day.date.strftime('%m-%d') }} | {{ day.bedtime if day.bedtime else '-' }} | {{ day.waketime if day.waketime else '-' }} | {{ day.sleep_hours|number_format(1) if day.sleep_hours else '-' }}h | {{ day.efficiency|number_format(1) if day.efficiency else '-' }}% | {{ day.minutes_to_fall_asleep|number_format(0) if day.minutes_to_fall_asleep else '-' }}分 | {{ day.minutes_after_wakeup|number_format(0) if day.minutes_after_wakeup else '-' }}分 | {{ day.wake_count|number_format(0) if day.wake_count else '-' }} |
+| {{ day.date.strftime('%m-%d') }} | {{ day.bedtime if day.bedtime else '-' }} | {{ day.waketime if day.waketime else '-' }} | {{ day.sleep_hours|number_format(1) if day.sleep_hours else '-' }}h | {{ day.efficiency|number_format(1) if day.efficiency else '-' }}% | {{ day.minutes_to_fall_asleep|number_format(0) if day.minutes_to_fall_asleep is not none else '-' }}分 | {{ day.minutes_after_wakeup|number_format(0) if day.minutes_after_wakeup is not none else '-' }}分 | {{ day.wake_count|number_format(0) if day.wake_count else '-' }} |
 {% endfor %}
 
 **解釈**:
