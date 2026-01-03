@@ -23,6 +23,7 @@ STAGE_COLORS = {
     'rem': '#9B59B6',    # 紫
     'light': '#5DADE2',  # 水色
     'deep': '#2E4053',   # 濃紺
+    'asleep': '#5DADE2', # 水色（古いフォーマット、lightと同じ扱い）
 }
 
 # Y軸の位置（上から wake, rem, light, deep）
@@ -31,6 +32,7 @@ STAGE_Y_POSITION = {
     'rem': 2,
     'light': 1,
     'deep': 0,
+    'asleep': 1,  # 古いフォーマット、lightと同じ位置
 }
 
 

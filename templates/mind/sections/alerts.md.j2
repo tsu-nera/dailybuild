@@ -1,0 +1,60 @@
+## ⚠️ 体調アラート
+
+異常値を**太字**で表示（ベースラインから±1.5SD以上乖離）
+
+### 3.1 データ概要
+
+| 日付 | HRV<br>(ms) | 皮膚温<br>(°C) | RHR<br>(bpm) | SpO2<br>(%) | 睡眠効率<br>(%) | 免疫ストレス<br>スコア |
+|------|------------|---------------|-------------|------------|----------------|-------------------|
+{% set hrv_values = [] %}
+{% set hrv_baseline_values = [] %}
+{% set hrv_std_values = [] %}
+{% set temp_values = [] %}
+{% set temp_baseline_values = [] %}
+{% set temp_std_values = [] %}
+{% set rhr_values = [] %}
+{% set rhr_baseline_values = [] %}
+{% set rhr_std_values = [] %}
+{% set spo2_values = [] %}
+{% set spo2_baseline_values = [] %}
+{% set spo2_std_values = [] %}
+{% for day in responsiveness_data %}
+{% if day.hrv_daily %}{% set _ = hrv_values.append(day.hrv_daily) %}{% endif %}
+{% if day.get('hrv_daily_baseline') %}{% set _ = hrv_baseline_values.append(day.hrv_daily_baseline) %}{% endif %}
+{% if day.get('hrv_daily_baseline_std') %}{% set _ = hrv_std_values.append(day.hrv_daily_baseline_std) %}{% endif %}
+{% if day.temp_variation is not none %}{% set _ = temp_values.append(day.temp_variation) %}{% endif %}
+{% if day.get('temp_variation_baseline') %}{% set _ = temp_baseline_values.append(day.temp_variation_baseline) %}{% endif %}
+{% if day.get('temp_variation_baseline_std') %}{% set _ = temp_std_values.append(day.temp_variation_baseline_std) %}{% endif %}
+{% if day.rhr %}{% set _ = rhr_values.append(day.rhr) %}{% endif %}
+{% if day.get('rhr_baseline') %}{% set _ = rhr_baseline_values.append(day.rhr_baseline) %}{% endif %}
+{% if day.get('rhr_baseline_std') %}{% set _ = rhr_std_values.append(day.rhr_baseline_std) %}{% endif %}
+{% if day.get('spo2_avg') %}{% set _ = spo2_values.append(day.spo2_avg) %}{% endif %}
+{% if day.get('spo2_avg_baseline') %}{% set _ = spo2_baseline_values.append(day.spo2_avg_baseline) %}{% endif %}
+{% if day.get('spo2_avg_baseline_std') %}{% set _ = spo2_std_values.append(day.spo2_avg_baseline_std) %}{% endif %}
+{% endfor %}
+{% if responsiveness_data %}
+{% set date_range_str = responsiveness_data[0].date.strftime('%m/%d') ~ '-' ~ responsiveness_data[-1].date.strftime('%m/%d') %}
+| {{ date_range_str }}<br>**ベースライン** | {% if hrv_baseline_values %}{{ (hrv_baseline_values|sum / hrv_baseline_values|length)|number_format(1) }}<br>±{{ (hrv_std_values|sum / hrv_std_values|length)|number_format(1) if hrv_std_values else '-' }}{% else %}-{% endif %} | {% if temp_baseline_values %}{{ (temp_baseline_values|sum / temp_baseline_values|length)|number_format(1) }}<br>±{{ (temp_std_values|sum / temp_std_values|length)|number_format(1) if temp_std_values else '-' }}{% else %}-{% endif %} | {% if rhr_baseline_values %}{{ (rhr_baseline_values|sum / rhr_baseline_values|length)|number_format(1) }}<br>±{{ (rhr_std_values|sum / rhr_std_values|length)|number_format(1) if rhr_std_values else '-' }}{% else %}-{% endif %} | {% if spo2_baseline_values %}{{ (spo2_baseline_values|sum / spo2_baseline_values|length)|number_format(1) }}<br>±{{ (spo2_std_values|sum / spo2_std_values|length)|number_format(1) if spo2_std_values else '-' }}{% else %}-{% endif %} | - | - |
+{% endif %}
+{% for day in responsiveness_data %}
+{% set sleep_day = sleep_patterns_data|selectattr('date', 'equalto', day.date)|list|first if sleep_patterns_data else None %}
+{% set hrv_anomaly = day.hrv_daily_z_score and day.hrv_daily_z_score|abs >= 1.5 %}
+{% set temp_anomaly = day.temp_variation_z_score and day.temp_variation_z_score|abs >= 1.5 %}
+{% set rhr_anomaly = day.rhr_z_score and day.rhr_z_score|abs >= 1.5 %}
+{% set spo2_anomaly = day.spo2_avg_z_score and day.spo2_avg_z_score|abs >= 1.5 %}
+{% set sleep_eff_anomaly = sleep_day and sleep_day.efficiency and sleep_day.efficiency < 80 %}
+| {{ day.date.strftime('%m/%d') }} | {% if hrv_anomaly %}**{{ day.hrv_daily|number_format(1) }}**{% elif day.hrv_daily %}{{ day.hrv_daily|number_format(1) }}{% else %}-{% endif %} | {% if temp_anomaly %}**{{ day.temp_variation|number_format(1) if day.temp_variation >= 0 else day.temp_variation|number_format(1) }}**{% elif day.temp_variation is not none %}{{ day.temp_variation|number_format(1) if day.temp_variation >= 0 else day.temp_variation|number_format(1) }}{% else %}-{% endif %} | {% if rhr_anomaly %}**{{ day.rhr|number_format(0) }}**{% elif day.rhr %}{{ day.rhr|number_format(0) }}{% else %}-{% endif %} | {% if spo2_anomaly %}**{{ day.spo2_avg|number_format(1) }}**{% elif day.spo2_avg %}{{ day.spo2_avg|number_format(1) }}{% else %}-{% endif %} | {% if sleep_eff_anomaly %}**{{ sleep_day.efficiency|number_format(0) }}**{% elif sleep_day and sleep_day.efficiency %}{{ sleep_day.efficiency|number_format(0) }}{% else %}-{% endif %} | {{ day.immune_stress_score|number_format(1) if day.immune_stress_score else '-' }}σ |
+{% endfor %}
+
+**太字**: ベースラインから有意な逸脱（±1.5SD以上）
+
+### 3.2 免疫ストレススコアの推移
+
+各指標の標準化スコア（ベースラインからの標準偏差）を統合：
+
+```
+日付     免疫ストレス総合スコア  判定           主な異常指標
+{{ immune_stress_table }}
+```
+
+---

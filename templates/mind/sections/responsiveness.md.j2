@@ -2,16 +2,34 @@
 
 自律神経系の反応性と回復力を評価
 
-| 日付 | HRV Daily | HRV Deep | 安静時HR | 呼吸数 | SpO2 | 皮膚温変動 |
-|------|-----------|----------|----------|--------|------|-----------|
+### 📊 期間サマリー
+
+{% set hrv_values = responsiveness_data|selectattr('hrv_daily', 'ne', None)|map(attribute='hrv_daily')|list %}
+{% set hrv_baseline_values = responsiveness_data|selectattr('hrv_daily_baseline', 'ne', None)|map(attribute='hrv_daily_baseline')|list %}
+{% set rhr_values = responsiveness_data|selectattr('rhr', 'ne', None)|map(attribute='rhr')|list %}
+{% set rhr_baseline_values = responsiveness_data|selectattr('rhr_baseline', 'ne', None)|map(attribute='rhr_baseline')|list %}
+{% set br_values = responsiveness_data|selectattr('breathing_rate', 'ne', None)|map(attribute='breathing_rate')|list %}
+{% set spo2_values = responsiveness_data|selectattr('spo2_avg', 'ne', None)|map(attribute='spo2_avg')|list %}
+
+| 指標 | 期間平均 | ベースライン | 変化 |
+|------|----------|-------------|------|
+{% if hrv_values %}| HRV | {{ (hrv_values|sum / hrv_values|length)|number_format(1) }} ms | {% if hrv_baseline_values %}{{ (hrv_baseline_values|sum / hrv_baseline_values|length)|number_format(1) }} ms{% else %}-{% endif %} | {% if hrv_baseline_values %}{% set avg = hrv_values|sum / hrv_values|length %}{% set bl = hrv_baseline_values|sum / hrv_baseline_values|length %}{% set change_pct = ((avg - bl) / bl * 100) %}{% if change_pct > 10 %}**{{ change_pct|number_format(1) }}%**{% elif change_pct < -10 %}⚠️{{ change_pct|number_format(1) }}%{% else %}{{ change_pct|number_format(1) }}%{% endif %}{% else %}-{% endif %} |
+{% endif %}{% if rhr_values %}| RHR | {{ (rhr_values|sum / rhr_values|length)|number_format(1) }} bpm | {% if rhr_baseline_values %}{{ (rhr_baseline_values|sum / rhr_baseline_values|length)|number_format(1) }} bpm{% else %}-{% endif %} | {% if rhr_baseline_values %}{% set avg = rhr_values|sum / rhr_values|length %}{% set bl = rhr_baseline_values|sum / rhr_baseline_values|length %}{% set change_pct = ((avg - bl) / bl * 100) %}{% if change_pct > 5 %}⚠️{{ change_pct|number_format(1) }}%{% elif change_pct < -5 %}**{{ change_pct|number_format(1) }}%**{% else %}{{ change_pct|number_format(1) }}%{% endif %}{% else %}-{% endif %} |
+{% endif %}{% if br_values %}| BR | {{ (br_values|sum / br_values|length)|number_format(1) }} /min | - | - |
+{% endif %}{% if spo2_values %}| SpO2 | {{ (spo2_values|sum / spo2_values|length)|number_format(1) }}% | - | - |
+{% endif %}
+
+### 📅 日別データ
+
+| 日付 | HRV | RHR | BR | SpO2 | 体温Δ |
+|------|-----|-----|----|----|------|
 {% for day in responsiveness_data %}
-| {{ day.date.strftime('%m-%d') }} | {{ day.hrv_daily|number_format(1) if day.hrv_daily else '-' }} | {{ day.hrv_deep|number_format(1) if day.hrv_deep else '-' }} | {{ day.rhr|number_format(0) if day.rhr else '-' }} | {{ day.breathing_rate|number_format(1) if day.breathing_rate else '-' }} | {% if day.spo2_min and day.spo2_avg %}{{ day.spo2_min|number_format(1) }}/{{ day.spo2_avg|number_format(1) }}{% else %}-{% endif %} | {{ day.temp_variation|number_format(2) if day.temp_variation else '-' }} |
+| {{ day.date.strftime('%m-%d') }} | {{ day.hrv_daily|number_format(1) if day.hrv_daily else '-' }} | {{ day.rhr|number_format(0) if day.rhr else '-' }} | {{ day.breathing_rate|number_format(1) if day.breathing_rate else '-' }} | {% if day.spo2_min and day.spo2_avg %}{{ day.spo2_min|number_format(1) }}/{{ day.spo2_avg|number_format(1) }}{% else %}-{% endif %} | {{ day.temp_variation|number_format(2) if day.temp_variation else '-' }} |
 {% endfor %}
 
-**解釈**:
-- HRVが高く、安静時心拍数が低いほど、自律神経の回復が良好
-- Daily HRV: 日中全体のHRV、Deep HRV: 深睡眠時のHRV
-- 呼吸数は12-20回/分が正常範囲
-- SpO2は95%以上が正常範囲（min/ave表示）
+**凡例**:
+- **HRV**: 心拍変動（RMSSD, ms） / **RHR**: 安静時心拍数（bpm） / **BR**: 呼吸数（回/分）
+- **SpO2**: 血中酸素飽和度（最小/平均%、95%以上が正常）
+- **体温Δ**: 皮膚温変動（℃）
 
 ---

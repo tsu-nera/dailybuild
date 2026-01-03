@@ -29,6 +29,7 @@ from lib.utils.report_args import add_common_report_args, parse_period_args, det
 BASE_DIR = project_root
 MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
 LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
+HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 
 
 def prepare_sleep_report_data(results):
@@ -49,11 +50,36 @@ def prepare_sleep_report_data(results):
     debt = stats['sleep_debt']
     debt_hours = debt['total_hours']
 
-    # 睡眠負債テキスト
+    # 睡眠負債テキスト（旧形式）
     if debt_hours >= 0:
         debt_text = f"+{debt_hours:.1f}時間（余裕あり）"
     else:
         debt_text = f"{debt_hours:.1f}時間（不足）"
+
+    # 睡眠負債分析データ（新形式）
+    sleep_debt_data = None
+    if results.get('sleep_debt') is not None and results.get('sleep_need') is not None:
+        debt_result = results['sleep_debt']
+        need_result = results['sleep_need']
+
+        # 睡眠負債履歴テーブルの作成
+        debt_table = None
+        if results.get('debt_history') is not None:
+            table_data = sleep.format_debt_history_table(results['debt_history'])
+            debt_table = table_data.to_markdown(index=False)
+
+        sleep_debt_data = {
+            'recommended_hours': f'{need_result.recommended_hours:.1f}',
+            'habitual_hours': f'{need_result.habitual_hours:.1f}',
+            'potential_debt_hours': f'{need_result.potential_debt_hours:.1f}',
+            'confidence': need_result.confidence,
+            'sleep_debt_hours': f'{debt_result.sleep_debt_hours:.1f}',
+            'category': debt_result.category,
+            'avg_sleep_hours': f'{debt_result.avg_sleep_hours:.1f}',
+            'recovery_days': debt_result.recovery_days_estimate,
+            'debt_table': debt_table,
+            'trend_image': f'img/{results["debt_trend_img"]}' if results.get('debt_trend_img') else None
+        }
 
     # サイクル分析データ（条件付き）
     cycles_data = None
@@ -110,6 +136,7 @@ def prepare_sleep_report_data(results):
             'days_met_goal': debt['days_met_goal'],
             'recommended_hours': f"{debt['recommended_hours']:.0f}"
         },
+        'sleep_debt': sleep_debt_data,
         'efficiency': {
             'mean': f"{stats['efficiency']['mean']:.1f}",
             'min': stats['efficiency']['min'],
@@ -223,12 +250,12 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
 
     # データ読み込み
     print(f'Loading: {MASTER_CSV}')
-    df_master = pd.read_csv(MASTER_CSV)
+    df_master_full = pd.read_csv(MASTER_CSV)
 
     # 共通フィルタリング関数を使用
     from lib.utils.report_args import filter_dataframe_by_period
     df_master = filter_dataframe_by_period(
-        df_master, 'dateOfSleep', week, month, year, days, is_index=False
+        df_master_full.copy(), 'dateOfSleep', week, month, year, days, is_index=False
     )
 
     # フィルタリング結果を表示
@@ -394,6 +421,60 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         results['timeline_img'] = None
         results['cycle_table'] = None
         results['cycle_stats'] = None
+
+    # 睡眠負債分析（全データを使用）
+    df_hrv = None
+    if HRV_CSV.exists():
+        print(f'Loading: {HRV_CSV}')
+        df_hrv = pd.read_csv(HRV_CSV)
+        df_hrv['date'] = pd.to_datetime(df_hrv['date'])
+
+    print('計算中: 最適睡眠時間推定...')
+    estimator = sleep.SleepNeedEstimator(
+        sleep_data=df_master_full.copy(),
+        hrv_data=df_hrv,
+        lookback_days=90
+    )
+    sleep_need_result = estimator.estimate()
+    results['sleep_need'] = sleep_need_result
+
+    print('計算中: 睡眠負債...')
+    calculator = sleep.SleepDebtCalculator(
+        sleep_data=df_master_full.copy(),
+        sleep_need_hours=sleep_need_result.recommended_hours,
+        window_days=14,
+        min_data_points=5
+    )
+
+    # フィルタリング期間の睡眠負債履歴を取得
+    try:
+        # フィルタリング期間の開始日と終了日
+        filtered_dates = pd.to_datetime(df_master['dateOfSleep'])
+        start_date = filtered_dates.min()
+        latest_date = filtered_dates.max()
+
+        # 最新日時点の睡眠負債
+        sleep_debt_result = calculator.calculate(end_date=latest_date)
+        results['sleep_debt'] = sleep_debt_result
+
+        # フィルタリング期間の履歴を取得してグラフ用データを作成
+        debt_history = calculator.get_history(start_date, latest_date)
+        results['debt_history'] = debt_history
+    except ValueError as e:
+        print(f'警告: 睡眠負債の計算をスキップ - {e}')
+        results['sleep_debt'] = None
+        results['debt_history'] = None
+
+    # 睡眠負債トレンドグラフ
+    if results.get('debt_history') is not None:
+        print('プロット中: 睡眠負債トレンド...')
+        sleep.plot_sleep_debt_trend(
+            results['debt_history'],
+            save_path=img_dir / 'sleep_debt_trend.png'
+        )
+        results['debt_trend_img'] = 'sleep_debt_trend.png'
+    else:
+        results['debt_trend_img'] = None
 
     # レポート生成
     generate_markdown_report(output_dir, results)

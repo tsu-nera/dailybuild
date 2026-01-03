@@ -164,19 +164,19 @@ def format_trend(trend):
 
 def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rate, df_breathing, df_temp, df_spo2=None):
     """
-    反応性の日別データを準備
+    反応性の日別データを準備（ベースライン情報含む）
 
     Args:
         start_date: 開始日
         end_date: 終了日
-        df_hrv: HRVデータフレーム（index=date）
-        df_heart_rate: 心拍数データフレーム（index=date）
-        df_breathing: 呼吸数データフレーム（index=date）
-        df_temp: 皮膚温データフレーム（index=date）
-        df_spo2: SpO2データフレーム（index=date）
+        df_hrv: HRVデータフレーム（index=date、ベースライン計算済み）
+        df_heart_rate: 心拍数データフレーム（index=date、ベースライン計算済み）
+        df_breathing: 呼吸数データフレーム（index=date、ベースライン計算済み）
+        df_temp: 皮膚温データフレーム（index=date、ベースライン計算済み）
+        df_spo2: SpO2データフレーム（index=date、ベースライン計算済み）
 
     Returns:
-        list[dict]: 日別データリスト
+        list[dict]: 日別データリスト（ベースライン乖離情報含む）
     """
     responsiveness_data = []
     all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
@@ -188,6 +188,16 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
         if df_hrv is not None and date in df_hrv.index:
             val = df_hrv.loc[date, 'daily_rmssd']
             row['hrv_daily'] = float(val) if pd.notna(val) else None
+            # ベースライン情報
+            if 'daily_rmssd_baseline' in df_hrv.columns:
+                baseline = df_hrv.loc[date, 'daily_rmssd_baseline']
+                row['hrv_daily_baseline'] = float(baseline) if pd.notna(baseline) else None
+                baseline_std = df_hrv.loc[date, 'daily_rmssd_baseline_std']
+                row['hrv_daily_baseline_std'] = float(baseline_std) if pd.notna(baseline_std) else None
+                dev_pct = df_hrv.loc[date, 'daily_rmssd_deviation_pct']
+                row['hrv_daily_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
+                z_score = df_hrv.loc[date, 'daily_rmssd_z_score']
+                row['hrv_daily_z_score'] = float(z_score) if pd.notna(z_score) else None
         else:
             row['hrv_daily'] = None
 
@@ -195,6 +205,12 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
         if df_hrv is not None and date in df_hrv.index:
             val = df_hrv.loc[date, 'deep_rmssd']
             row['hrv_deep'] = float(val) if pd.notna(val) else None
+            # ベースライン情報
+            if 'deep_rmssd_baseline' in df_hrv.columns:
+                baseline = df_hrv.loc[date, 'deep_rmssd_baseline']
+                row['hrv_deep_baseline'] = float(baseline) if pd.notna(baseline) else None
+                dev_pct = df_hrv.loc[date, 'deep_rmssd_deviation_pct']
+                row['hrv_deep_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
         else:
             row['hrv_deep'] = None
 
@@ -202,6 +218,16 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
         if df_heart_rate is not None and date in df_heart_rate.index:
             val = df_heart_rate.loc[date, 'resting_heart_rate']
             row['rhr'] = float(val) if pd.notna(val) else None
+            # ベースライン情報
+            if 'resting_heart_rate_baseline' in df_heart_rate.columns:
+                baseline = df_heart_rate.loc[date, 'resting_heart_rate_baseline']
+                row['rhr_baseline'] = float(baseline) if pd.notna(baseline) else None
+                baseline_std = df_heart_rate.loc[date, 'resting_heart_rate_baseline_std']
+                row['rhr_baseline_std'] = float(baseline_std) if pd.notna(baseline_std) else None
+                dev_pct = df_heart_rate.loc[date, 'resting_heart_rate_deviation_pct']
+                row['rhr_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
+                z_score = df_heart_rate.loc[date, 'resting_heart_rate_z_score']
+                row['rhr_z_score'] = float(z_score) if pd.notna(z_score) else None
         else:
             row['rhr'] = None
 
@@ -209,6 +235,16 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
         if df_breathing is not None and date in df_breathing.index:
             val = df_breathing.loc[date, 'breathing_rate']
             row['breathing_rate'] = float(val) if pd.notna(val) else None
+            # ベースライン情報
+            if 'breathing_rate_baseline' in df_breathing.columns:
+                baseline = df_breathing.loc[date, 'breathing_rate_baseline']
+                row['breathing_rate_baseline'] = float(baseline) if pd.notna(baseline) else None
+                baseline_std = df_breathing.loc[date, 'breathing_rate_baseline_std']
+                row['breathing_rate_baseline_std'] = float(baseline_std) if pd.notna(baseline_std) else None
+                dev_pct = df_breathing.loc[date, 'breathing_rate_deviation_pct']
+                row['breathing_rate_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
+                z_score = df_breathing.loc[date, 'breathing_rate_z_score']
+                row['breathing_rate_z_score'] = float(z_score) if pd.notna(z_score) else None
         else:
             row['breathing_rate'] = None
 
@@ -218,6 +254,16 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
             min_val = df_spo2.loc[date, 'min_spo2']
             row['spo2_avg'] = float(avg_val) if pd.notna(avg_val) else None
             row['spo2_min'] = float(min_val) if pd.notna(min_val) else None
+            # ベースライン情報
+            if 'avg_spo2_baseline' in df_spo2.columns:
+                baseline = df_spo2.loc[date, 'avg_spo2_baseline']
+                row['spo2_avg_baseline'] = float(baseline) if pd.notna(baseline) else None
+                baseline_std = df_spo2.loc[date, 'avg_spo2_baseline_std']
+                row['spo2_avg_baseline_std'] = float(baseline_std) if pd.notna(baseline_std) else None
+                dev_pct = df_spo2.loc[date, 'avg_spo2_deviation_pct']
+                row['spo2_avg_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
+                z_score = df_spo2.loc[date, 'avg_spo2_z_score']
+                row['spo2_avg_z_score'] = float(z_score) if pd.notna(z_score) else None
         else:
             row['spo2_avg'] = None
             row['spo2_min'] = None
@@ -226,6 +272,16 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
         if df_temp is not None and date in df_temp.index:
             val = df_temp.loc[date, 'nightly_relative']
             row['temp_variation'] = float(val) if pd.notna(val) else None
+            # ベースライン情報
+            if 'nightly_relative_baseline' in df_temp.columns:
+                baseline = df_temp.loc[date, 'nightly_relative_baseline']
+                row['temp_variation_baseline'] = float(baseline) if pd.notna(baseline) else None
+                baseline_std = df_temp.loc[date, 'nightly_relative_baseline_std']
+                row['temp_variation_baseline_std'] = float(baseline_std) if pd.notna(baseline_std) else None
+                dev_pct = df_temp.loc[date, 'nightly_relative_deviation_pct']
+                row['temp_variation_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
+                z_score = df_temp.loc[date, 'nightly_relative_z_score']
+                row['temp_variation_z_score'] = float(z_score) if pd.notna(z_score) else None
         else:
             row['temp_variation'] = None
 
@@ -293,7 +349,7 @@ def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_az
     return exertion_data
 
 
-def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep):
+def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep, df_levels=None):
     """
     睡眠パターンの日別データを準備
 
@@ -301,15 +357,24 @@ def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep):
         start_date: 開始日
         end_date: 終了日
         df_sleep: 睡眠データフレーム（dateOfSleep列あり）
+        df_levels: 睡眠レベルデータフレーム（sleep_levels.csv、オプショナル）
 
     Returns:
-        list[dict]: 日別データリスト
+        list[dict]: 日別データリスト（入眠潜時・起床後時間含む）
     """
+    from lib.analytics.sleep import calc_sleep_timing
+
     sleep_data = []
     all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
 
+    # 入眠潜時・起床後時間を計算（df_levelsが提供されている場合）
+    sleep_timing = {}
+    if df_levels is not None:
+        sleep_timing = calc_sleep_timing(df_levels)
+
     for date in all_dates:
         row = {'date': date}
+        date_str = date.strftime('%Y-%m-%d')
 
         # 睡眠データ
         if df_sleep is not None:
@@ -343,6 +408,13 @@ def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep):
                 val = sleep_day.iloc[0]['efficiency']
                 row['efficiency'] = float(val) if pd.notna(val) else None
 
+                # 覚醒時間（分）
+                if 'minutesAwake' in sleep_day.columns:
+                    val = sleep_day.iloc[0]['minutesAwake']
+                    row['minutes_awake'] = float(val) if pd.notna(val) else None
+                else:
+                    row['minutes_awake'] = None
+
                 # 中途覚醒回数
                 if 'wakeCount' in sleep_day.columns:
                     val = sleep_day.iloc[0]['wakeCount']
@@ -354,14 +426,100 @@ def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep):
                 row['waketime'] = None
                 row['sleep_hours'] = None
                 row['efficiency'] = None
+                row['minutes_awake'] = None
                 row['wake_count'] = None
         else:
             row['bedtime'] = None
             row['waketime'] = None
             row['sleep_hours'] = None
             row['efficiency'] = None
+            row['minutes_awake'] = None
             row['wake_count'] = None
+
+        # 入眠潜時・起床後時間（sleep_timingから取得）
+        if date_str in sleep_timing:
+            timing = sleep_timing[date_str]
+            row['minutes_to_fall_asleep'] = timing.get('minutes_to_fall_asleep', 0)
+            row['minutes_after_wakeup'] = timing.get('minutes_after_wakeup', 0)
+        else:
+            row['minutes_to_fall_asleep'] = None
+            row['minutes_after_wakeup'] = None
 
         sleep_data.append(row)
 
     return sleep_data
+
+
+# ベースライン計算期間の定義
+BASELINE_WINDOWS = {
+    'hrv_daily': 60,        # HRVは日々の変動が大きいため長期
+    'hrv_deep': 60,
+    'rhr': 30,              # 安静時心拍数は比較的安定
+    'breathing_rate': 30,   # 呼吸数
+    'spo2_avg': 30,         # SpO2
+    'temp_variation': 30,   # 皮膚温変動
+}
+
+
+def calculate_baseline_metrics(
+    df: pd.DataFrame,
+    value_column: str,
+    baseline_window: int = 30,
+    min_periods: int = 7
+) -> pd.DataFrame:
+    """
+    ベースラインと乖離指標を計算する共通関数
+
+    個人のベースライン（移動平均）を計算し、現在値がベースラインから
+    どれだけ乖離しているかを複数の指標で評価します。
+
+    Parameters
+    ----------
+    df : DataFrame
+        計算対象のDataFrame（index=date）
+    value_column : str
+        計算対象の列名（例: 'daily_rmssd', 'resting_heart_rate'）
+    baseline_window : int
+        ベースライン計算期間（日数）、デフォルト30日
+    min_periods : int
+        最小必要データ数、デフォルト7日
+
+    Returns
+    -------
+    DataFrame
+        以下の列が追加されたDataFrame:
+        - {value_column}_baseline: 移動平均ベースライン
+        - {value_column}_baseline_std: 標準偏差
+        - {value_column}_deviation: 乖離（実数）
+        - {value_column}_deviation_pct: 乖離率（%）
+        - {value_column}_z_score: Z-score（標準偏差何個分か）
+
+    Examples
+    --------
+    >>> df_hrv = calculate_baseline_metrics(df_hrv, 'daily_rmssd', baseline_window=60)
+    >>> # HRVが45msで、ベースラインが40msの場合
+    >>> # deviation = +5ms, deviation_pct = +12.5%, z_score = +0.8 など
+    """
+    df = df.copy()
+
+    # 移動平均・標準偏差
+    df[f'{value_column}_baseline'] = df[value_column].rolling(
+        window=baseline_window, min_periods=min_periods
+    ).mean()
+
+    df[f'{value_column}_baseline_std'] = df[value_column].rolling(
+        window=baseline_window, min_periods=min_periods
+    ).std()
+
+    # 乖離指標
+    df[f'{value_column}_deviation'] = df[value_column] - df[f'{value_column}_baseline']
+
+    df[f'{value_column}_deviation_pct'] = (
+        df[f'{value_column}_deviation'] / df[f'{value_column}_baseline']
+    ) * 100
+
+    df[f'{value_column}_z_score'] = (
+        df[f'{value_column}_deviation'] / df[f'{value_column}_baseline_std']
+    )
+
+    return df

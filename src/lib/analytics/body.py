@@ -12,7 +12,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from lib.templates.filters import format_change
+from ..templates.filters import format_change
 
 # デフォルト身長 (cm)
 DEFAULT_HEIGHT_CM = 170

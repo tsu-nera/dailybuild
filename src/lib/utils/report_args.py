@@ -89,7 +89,10 @@ def parse_period_args(args) -> Tuple[Optional[int], Optional[int], Optional[int]
             year = year or now.year
         else:
             month = int(args.month)
-            year = year or datetime.now().year
+            if year is None:
+                now = datetime.now()
+                # 指定月が現在月より大きい場合は前年とみなす
+                year = now.year if month <= now.month else now.year - 1
 
     return week, month, year
 

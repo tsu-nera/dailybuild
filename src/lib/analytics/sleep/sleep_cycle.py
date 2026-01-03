@@ -33,6 +33,7 @@ STAGE_COLORS = {
     'rem': '#9B59B6',    # 紫
     'light': '#5DADE2',  # 水色
     'deep': '#2E4053',   # 濃紺
+    'asleep': '#5DADE2', # 水色（古いフォーマット、lightと同じ扱い）
 }
 
 

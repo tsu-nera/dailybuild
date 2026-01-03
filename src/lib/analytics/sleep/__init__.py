@@ -4,6 +4,8 @@
 モジュール:
     sleep_analysis: 睡眠統計・可視化
     sleep_cycle: 睡眠サイクル検出・分析
+    sleep_need_estimator: 最適睡眠時間の推定
+    sleep_debt_clean: 睡眠負債の計算
 """
 
 from .sleep_analysis import (
@@ -41,6 +43,28 @@ from .sleep_cycle import (
     print_cycle_report,
 )
 
+from .sleep_need_estimator import (
+    # データクラス
+    SleepNeedEstimate,
+    IntegratedSleepNeed,
+    # 分析
+    SleepNeedEstimator,
+    # レポート
+    print_sleep_need_report,
+)
+
+from .sleep_debt_clean import (
+    # データクラス
+    SleepDebtResult,
+    # 分析
+    SleepDebtCalculator,
+    # 可視化
+    plot_sleep_debt_trend,
+    # レポート
+    print_debt_report,
+    format_debt_history_table,
+)
+
 __all__ = [
     # sleep_analysis
     'STAGE_COLORS',
@@ -66,4 +90,15 @@ __all__ = [
     'plot_cycle_structure',
     'plot_cycle_comparison',
     'print_cycle_report',
+    # sleep_need_estimator
+    'SleepNeedEstimate',
+    'IntegratedSleepNeed',
+    'SleepNeedEstimator',
+    'print_sleep_need_report',
+    # sleep_debt_clean
+    'SleepDebtResult',
+    'SleepDebtCalculator',
+    'plot_sleep_debt_trend',
+    'print_debt_report',
+    'format_debt_history_table',
 ]
