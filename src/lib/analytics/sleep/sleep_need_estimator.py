@@ -70,6 +70,7 @@ class SleepNeedEstimator:
         sleep_data: 睡眠データ（dateOfSleep, minutesAsleep, efficiencyを含む）
         hrv_data: HRVデータ（オプション）
         lookback_days: 分析対象期間（デフォルト: 90日）
+        rebound_top_percentile: 睡眠リバウンド法で使用する上位パーセンテージ（デフォルト: 4.0%）
     """
 
     # 成人の推奨睡眠時間（米国睡眠財団）
@@ -81,12 +82,14 @@ class SleepNeedEstimator:
         self,
         sleep_data: pd.DataFrame,
         hrv_data: Optional[pd.DataFrame] = None,
-        lookback_days: int = 90
+        lookback_days: int = 90,
+        rebound_top_percentile: float = 4.0
     ):
         """初期化"""
         self.sleep_data = sleep_data.copy()
         self.hrv_data = hrv_data
         self.lookback_days = lookback_days
+        self.rebound_top_percentile = rebound_top_percentile
 
         # 日付処理
         if 'dateOfSleep' in self.sleep_data.columns:
@@ -166,6 +169,9 @@ class SleepNeedEstimator:
         # 5. HRV上位日（重みは小さく）
         if 'daily_rmssd' in period_data.columns:
             estimates['hrv'] = self._estimate_by_hrv(period_data)
+
+        # 6. 睡眠リバウンド法
+        estimates['sleep_rebound'] = self._estimate_by_sleep_rebound(period_data)
 
         return estimates
 
@@ -334,6 +340,72 @@ class SleepNeedEstimator:
             sample_size=len(top_days),
             note=f'⚠ HRVと睡眠時間の相関は弱い（r≈0.12）。参考程度。',
             weight=1.0  # 重みを下げる
+        )
+
+    def _estimate_by_sleep_rebound(self, period_data: pd.DataFrame) -> SleepNeedEstimate:
+        """睡眠リバウンド法による推定（RISE式）
+
+        睡眠時間が最も長かった上位N%の日の平均を、真の睡眠必要量とする。
+        RISEアプリと同じアルゴリズムを実装。
+
+        アルゴリズム:
+        1. 全データから上位N%（デフォルト4%）の最も睡眠時間が長い日を抽出
+        2. その平均値を最適睡眠時間とする
+        3. 外れ値除外は行わない（9時間以上の睡眠も重要なデータ）
+
+        理論的根拠:
+        - 睡眠負債からの完全回復日が真の睡眠必要量を示す
+        - 短期的な睡眠不足で習慣的睡眠時間が低下している可能性を考慮
+        - 相対的な割合を使うことで期間依存性を排除
+
+        Parameters:
+            period_data: 分析対象の睡眠データ
+
+        Returns:
+            SleepNeedEstimate: 推定結果
+        """
+        valid_data = period_data.dropna(subset=['minutesAsleep']).copy()
+
+        if len(valid_data) < 30:
+            return SleepNeedEstimate(
+                method='睡眠リバウンド法',
+                value_hours=0.0,
+                confidence='low',
+                sample_size=len(valid_data),
+                note='データ不足。最低30日必要。',
+                weight=0.0
+            )
+
+        # 上位N%のサンプル数を計算
+        n_samples = max(1, int(len(valid_data) * self.rebound_top_percentile / 100))
+
+        # 睡眠時間が最も長い上位N%を抽出
+        top_days = valid_data.nlargest(n_samples, 'minutesAsleep')
+
+        # 平均値を計算
+        value_hours = top_days['minutesAsleep'].mean() / 60
+
+        # 信頼度判定（サンプル数ベース）
+        if n_samples >= 10:
+            confidence = 'high'
+            weight = 2.5
+        elif n_samples >= 5:
+            confidence = 'medium'
+            weight = 1.5
+        else:
+            confidence = 'low'
+            weight = 0.5
+
+        # 習慣的睡眠時間（参考情報）
+        habitual_hours = valid_data['minutesAsleep'].median() / 60
+
+        return SleepNeedEstimate(
+            method='睡眠リバウンド法',
+            value_hours=round(value_hours, 2),
+            confidence=confidence,
+            sample_size=n_samples,
+            note=f'睡眠時間上位{self.rebound_top_percentile:.1f}%（{n_samples}日）の平均。習慣的睡眠（{habitual_hours:.1f}h）より{value_hours - habitual_hours:.1f}h長く、睡眠不足からの回復を示唆。',
+            weight=weight
         )
 
     def _integrate_estimates(self, estimates: Dict[str, SleepNeedEstimate]) -> float:

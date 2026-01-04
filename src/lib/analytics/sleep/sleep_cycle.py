@@ -194,7 +194,7 @@ def detect_sleep_cycles(
 
     cycles = []
     current_cycle_start = None
-    cycle_stages = {'deep': 0.0, 'light': 0.0, 'rem': 0.0, 'wake': 0.0}
+    cycle_stages = {'deep': 0.0, 'light': 0.0, 'rem': 0.0, 'wake': 0.0, 'asleep': 0.0}
     rem_start = None
     nrem_end = None
 
@@ -273,7 +273,7 @@ def detect_sleep_cycles(
             current_cycle_start = cycle_end
             nrem_end = None
             rem_start = None
-            cycle_stages = {'deep': 0.0, 'light': 0.0, 'rem': 0.0, 'wake': 0.0}
+            cycle_stages = {'deep': 0.0, 'light': 0.0, 'rem': 0.0, 'wake': 0.0, 'asleep': 0.0}
             # 累積REMもリセット
             cumulative_rem = 0.0
             last_rem_end = None

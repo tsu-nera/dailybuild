@@ -1,23 +1,27 @@
 {% if sleep_debt %}
 ## 睡眠負債分析
 
-### 最適睡眠時間の推定
+### 最適睡眠時間
 
-- **推奨睡眠時間**: {{ sleep_debt.recommended_hours }}時間
+{% if sleep_debt.rebound_method %}
+- **最適睡眠時間**: {{ sleep_debt.rebound_method.value_hours }}時間
 - **習慣的睡眠時間**: {{ sleep_debt.habitual_hours }}時間
 - **潜在的睡眠負債**: {{ sleep_debt.potential_debt_hours }}時間/日
-- **信頼度**: {{ sleep_debt.confidence }}
+- **サンプル数**: {{ sleep_debt.rebound_method.sample_size }}日（上位{{ sleep_debt.rebound_method.percentile }}%）
 
-> 推奨睡眠時間は、過去90日間のデータから複数の手法（習慣的睡眠時間、一般推奨値、HRV・効率・深い睡眠の複合スコア）で推定し、重み付き平均で算出しています。
+> {{ sleep_debt.rebound_method.note }}
+
+睡眠リバウンド法は、睡眠時間が最も長かった上位{{ sleep_debt.rebound_method.percentile }}%の日（過去1年間）の平均を、真の睡眠必要量として推定する手法です。睡眠負債から完全に回復した日が、身体が本当に必要としている睡眠時間を示すという理論（RISEアプリと同じアルゴリズム）に基づいています。
+{% endif %}
 
 ### 現在の睡眠負債
 
-- **カテゴリ**: {{ sleep_debt.category }}
 - **睡眠負債**: {{ sleep_debt.sleep_debt_hours }}時間
 - **平均睡眠時間（過去14日）**: {{ sleep_debt.avg_sleep_hours }}時間
-- **推定回復日数**: {{ sleep_debt.recovery_days }}日
+{% if sleep_debt.avg_total_sleep_hours %}- **平均睡眠時間（昼寝込み）**: {{ sleep_debt.avg_total_sleep_hours }}時間
+{% endif %}- **推定回復日数**: {{ sleep_debt.recovery_days }}日
 
-> 回復日数は、1日あたり0.3時間のペースで睡眠負債が減少すると仮定して計算されています。
+> 睡眠負債の計算には昼寝も含めた総睡眠時間を使用しています。回復日数は、1日あたり0.3時間のペースで睡眠負債が減少すると仮定して計算されています。
 
 {% if sleep_debt.debt_table %}
 ### 日別推移

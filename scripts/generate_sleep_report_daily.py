@@ -68,14 +68,28 @@ def prepare_sleep_report_data(results):
             table_data = sleep.format_debt_history_table(results['debt_history'])
             debt_table = table_data.to_markdown(index=False)
 
+        # 睡眠リバウンド法の詳細データ
+        rebound_method_data = None
+        potential_debt_hours = 0.0
+        if 'sleep_rebound' in need_result.estimates:
+            rebound_est = need_result.estimates['sleep_rebound']
+            if rebound_est.value_hours > 0:
+                # リバウンド法の推定値から潜在的睡眠負債を計算
+                potential_debt_hours = max(0, rebound_est.value_hours - need_result.habitual_hours)
+                rebound_method_data = {
+                    'value_hours': f'{rebound_est.value_hours:.1f}',
+                    'sample_size': rebound_est.sample_size,
+                    'percentile': f'{results.get("rebound_percentile", 4.0):.1f}',
+                    'note': rebound_est.note
+                }
+
         sleep_debt_data = {
-            'recommended_hours': f'{need_result.recommended_hours:.1f}',
             'habitual_hours': f'{need_result.habitual_hours:.1f}',
-            'potential_debt_hours': f'{need_result.potential_debt_hours:.1f}',
-            'confidence': need_result.confidence,
+            'potential_debt_hours': f'{potential_debt_hours:.1f}',
+            'rebound_method': rebound_method_data,
             'sleep_debt_hours': f'{debt_result.sleep_debt_hours:.1f}',
-            'category': debt_result.category,
             'avg_sleep_hours': f'{debt_result.avg_sleep_hours:.1f}',
+            'avg_total_sleep_hours': f'{results.get("avg_total_sleep_hours", 0):.1f}' if results.get('avg_total_sleep_hours') else None,
             'recovery_days': debt_result.recovery_days_estimate,
             'debt_table': debt_table,
             'trend_image': f'img/{results["debt_trend_img"]}' if results.get('debt_trend_img') else None
@@ -132,9 +146,7 @@ def prepare_sleep_report_data(results):
         'summary': {
             'time_in_bed_hours': f"{stats['weekly_total']['time_in_bed_hours']:.1f}",
             'hours_asleep': f"{stats['weekly_total']['hours_asleep']:.1f}",
-            'sleep_debt_text': debt_text,
-            'days_met_goal': debt['days_met_goal'],
-            'recommended_hours': f"{debt['recommended_hours']:.0f}"
+            'avg_sleep_hours': f"{stats['duration']['mean_hours']:.1f}"
         },
         'sleep_debt': sleep_debt_data,
         'efficiency': {
@@ -250,12 +262,20 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
 
     # データ読み込み
     print(f'Loading: {MASTER_CSV}')
-    df_master_full = pd.read_csv(MASTER_CSV)
+    df_all_sleep = pd.read_csv(MASTER_CSV)
+
+    # 主睡眠のみを抽出（ほとんどの分析で使用）
+    df_main_sleep_full = df_all_sleep[df_all_sleep['isMainSleep'] == True].copy()
 
     # 共通フィルタリング関数を使用
     from lib.utils.report_args import filter_dataframe_by_period
     df_master = filter_dataframe_by_period(
-        df_master_full.copy(), 'dateOfSleep', week, month, year, days, is_index=False
+        df_main_sleep_full.copy(), 'dateOfSleep', week, month, year, days, is_index=False
+    )
+
+    # 全睡眠（主睡眠+昼寝）もフィルタリング（睡眠負債計算用）
+    df_all_sleep_filtered = filter_dataframe_by_period(
+        df_all_sleep.copy(), 'dateOfSleep', week, month, year, days, is_index=False
     )
 
     # フィルタリング結果を表示
@@ -390,9 +410,14 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         print(f'Loading: {LEVELS_CSV}')
         df_levels = pd.read_csv(LEVELS_CSV)
 
-        # 対象日付でフィルタ（days指定時も week指定時も適用）
-        target_dates = df_master['dateOfSleep'].tolist() if 'dateOfSleep' in df_master.columns else df_master.index.tolist()
-        df_levels = df_levels[df_levels['dateOfSleep'].isin(target_dates)]
+        # 主睡眠のlogIdでフィルタ（昼寝を除外）
+        if 'logId' in df_master.columns:
+            target_log_ids = df_master['logId'].tolist()
+            df_levels = df_levels[df_levels['logId'].isin(target_log_ids)]
+        else:
+            # logIdがない場合は日付でフィルタ（後方互換性）
+            target_dates = df_master['dateOfSleep'].tolist() if 'dateOfSleep' in df_master.columns else df_master.index.tolist()
+            df_levels = df_levels[df_levels['dateOfSleep'].isin(target_dates)]
 
         print('プロット中: 睡眠タイムライン...')
         timeline_img = 'sleep_timeline.png'
@@ -430,18 +455,35 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         df_hrv['date'] = pd.to_datetime(df_hrv['date'])
 
     print('計算中: 最適睡眠時間推定...')
+    rebound_percentile = 4.0  # RISE式推奨値
     estimator = sleep.SleepNeedEstimator(
-        sleep_data=df_master_full.copy(),
+        sleep_data=df_main_sleep_full.copy(),  # 主睡眠のみで推定
         hrv_data=df_hrv,
-        lookback_days=90
+        lookback_days=365,  # RISEアプリは約1年分のデータを使用（Issue #004参照）
+        rebound_top_percentile=rebound_percentile
     )
     sleep_need_result = estimator.estimate()
     results['sleep_need'] = sleep_need_result
+    results['rebound_percentile'] = rebound_percentile
 
+    # 睡眠リバウンド法の推定値を使用して睡眠負債を計算
+    sleep_need_for_debt = sleep_need_result.recommended_hours
+    if 'sleep_rebound' in sleep_need_result.estimates:
+        rebound_est = sleep_need_result.estimates['sleep_rebound']
+        if rebound_est.value_hours > 0:
+            sleep_need_for_debt = rebound_est.value_hours
+            print(f'  → 睡眠リバウンド法推定値: {rebound_est.value_hours:.1f}h を睡眠負債計算に使用')
+
+    # 日別に全睡眠時間（主睡眠+昼寝）を集計
     print('計算中: 睡眠負債...')
+    df_daily_total_sleep = df_all_sleep.groupby('dateOfSleep', as_index=False).agg({
+        'minutesAsleep': 'sum',  # 同じ日の全睡眠時間を合計
+        'timeInBed': 'sum'
+    })
+
     calculator = sleep.SleepDebtCalculator(
-        sleep_data=df_master_full.copy(),
-        sleep_need_hours=sleep_need_result.recommended_hours,
+        sleep_data=df_daily_total_sleep,  # 日別総睡眠時間（昼寝込み）
+        sleep_need_hours=sleep_need_for_debt,
         window_days=14,
         min_data_points=5
     )
@@ -460,10 +502,18 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         # フィルタリング期間の履歴を取得してグラフ用データを作成
         debt_history = calculator.get_history(start_date, latest_date)
         results['debt_history'] = debt_history
+
+        # フィルタリング期間の日別総睡眠時間（昼寝込み）の平均を計算
+        df_filtered_daily = df_all_sleep_filtered.groupby('dateOfSleep', as_index=False).agg({
+            'minutesAsleep': 'sum'
+        })
+        avg_total_sleep_hours = df_filtered_daily['minutesAsleep'].mean() / 60
+        results['avg_total_sleep_hours'] = avg_total_sleep_hours
     except ValueError as e:
         print(f'警告: 睡眠負債の計算をスキップ - {e}')
         results['sleep_debt'] = None
         results['debt_history'] = None
+        results['avg_total_sleep_hours'] = None
 
     # 睡眠負債トレンドグラフ
     if results.get('debt_history') is not None:

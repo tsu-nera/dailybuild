@@ -31,6 +31,7 @@ class SleepDebtResult:
         sleep_debt_hours: 睡眠負債（時間）
         category: カテゴリ (None/Low/Moderate/High)
         avg_sleep_hours: 計算期間の平均睡眠時間（時間）
+        actual_sleep_hours: 当日の実際の睡眠時間（時間）
         data_points: データ点数
         daily_deficits: 日ごとの不足分（分）
         recovery_days_estimate: 推定回復日数
@@ -40,6 +41,7 @@ class SleepDebtResult:
     sleep_debt_hours: float
     category: str
     avg_sleep_hours: float
+    actual_sleep_hours: float
     data_points: int
     daily_deficits: List[float]
     recovery_days_estimate: int
@@ -162,6 +164,9 @@ class SleepDebtCalculator:
         # 平均睡眠時間
         avg_sleep_minutes = np.mean(sleep_minutes)
 
+        # 当日の実際の睡眠時間を取得
+        actual_sleep_minutes = self._get_actual_sleep_on_date(end_date)
+
         # 回復日数の推定
         recovery_days = self._estimate_recovery_days(sleep_debt_hours)
 
@@ -171,6 +176,7 @@ class SleepDebtCalculator:
             sleep_debt_hours=round(sleep_debt_hours, 2),
             category=category,
             avg_sleep_hours=round(avg_sleep_minutes / 60, 1),
+            actual_sleep_hours=round(actual_sleep_minutes / 60, 1),
             data_points=len(window_data),
             daily_deficits=daily_deficits.tolist(),
             recovery_days_estimate=recovery_days,
@@ -203,6 +209,7 @@ class SleepDebtCalculator:
                     'date': date,
                     'sleep_need_hours': result.sleep_need_hours,
                     'avg_sleep_hours': result.avg_sleep_hours,
+                    'actual_sleep_hours': result.actual_sleep_hours,
                     'sleep_debt_hours': result.sleep_debt_hours,
                     'category': result.category,
                     'recovery_days': result.recovery_days_estimate,
@@ -242,15 +249,18 @@ class SleepDebtCalculator:
     def _calculate_weights(self, n: int, method: str) -> np.ndarray:
         """重み付けを計算"""
         if method == 'linear':
-            # 線形減衰: 最古の日 0.5 → 最新の日 1.0
-            return np.linspace(0.5, 1.0, n)
+            # 線形減衰: 最古の日 0.3 → 最新の日 0.7（RISE App方式）
+            # 合計重み ≈ 7.0（14日の場合）、平均0.5
+            return np.linspace(0.3, 0.7, n)
         elif method == 'exponential':
             # 指数減衰
             decay_rate = 0.1
             weights = np.exp(decay_rate * np.arange(n))
-            return weights / np.max(weights)
+            # 合計重み ≈ 7.0に調整
+            return weights / np.max(weights) * 0.5
         else:  # uniform
-            return np.ones(n)
+            # 均等重み0.5（合計 = n * 0.5）
+            return np.ones(n) * 0.5
 
     def _categorize_debt(self, sleep_debt_hours: float) -> str:
         """睡眠負債をカテゴリ分類"""
@@ -268,6 +278,19 @@ class SleepDebtCalculator:
         if sleep_debt_hours == 0:
             return 0
         return int(np.ceil(sleep_debt_hours / self.RECOVERY_RATE_PER_DAY))
+
+    def _get_actual_sleep_on_date(self, target_date: datetime) -> float:
+        """指定日の実際の睡眠時間（分）を取得"""
+        if self.date_column:
+            mask = self.sleep_data[self.date_column] == target_date
+            matching_rows = self.sleep_data[mask]
+        else:
+            matching_rows = self.sleep_data[self.sleep_data.index == target_date]
+
+        if len(matching_rows) == 0:
+            return 0.0
+
+        return matching_rows['minutesAsleep'].iloc[0]
 
 
 # =============================================================================
@@ -386,7 +409,7 @@ def format_debt_history_table(history_df: pd.DataFrame) -> pd.DataFrame:
     # テーブル用にフォーマット
     table_data = pd.DataFrame()
     table_data['日付'] = pd.to_datetime(df['date']).dt.strftime('%m/%d')
-    table_data['実績'] = df['avg_sleep_hours'].apply(lambda x: f'{x:.1f}h')
+    table_data['実績'] = df['actual_sleep_hours'].apply(lambda x: f'{x:.1f}h')
     table_data['負債'] = df['sleep_debt_hours'].apply(lambda x: f'{x:.1f}h')
 
     # 増減：最初の日は'-'、それ以降は+/-付きで表示

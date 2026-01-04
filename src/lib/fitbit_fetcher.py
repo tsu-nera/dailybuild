@@ -263,10 +263,12 @@ def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = Fa
         start_date = end_date - dt.timedelta(days=days - 1)
         calc_days = days
 
-    # 最大日数制限
-    if config['max_days'] and calc_days > config['max_days']:
-        print(f"警告: {endpoint} APIは最大{config['max_days']}日間まで。制限します。")
-        end_date = start_date + dt.timedelta(days=config['max_days'] - 1)
+    # 最大日数制限チェック - 100日を超える場合は自動分割
+    max_days = config.get('max_days')
+    if max_days and calc_days > max_days:
+        print(f"{config['description']}を取得中... ({start_date} ~ {end_date}, {calc_days}日)")
+        print(f"  {max_days}日制限があるため、{max_days}日ごとに分割取得します")
+        return _fetch_endpoint_chunked(client, endpoint, start_date, end_date, max_days, overwrite, config)
 
     print(f"{config['description']}を取得中... ({start_date} ~ {end_date})")
 
@@ -297,17 +299,34 @@ def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = Fa
     # 日付列の処理
     date_col = config['date_column']
     df[date_col] = pd.to_datetime(df[date_col])
-    df.set_index(date_col, inplace=True)
-    df.sort_index(inplace=True)
 
     # 保存
     out_path = get_output_path(endpoint)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     if not overwrite:
-        df = csv_utils.merge_csv(df, out_path, date_col)
+        # 睡眠データはlogIdで重複判定（同じ日に複数の睡眠ログがあるため）
+        if endpoint == 'sleep' and 'logId' in df.columns:
+            df = csv_utils.merge_csv_by_columns(
+                df, out_path,
+                key_columns=['logId'],
+                parse_dates=[date_col],
+                sort_by=[date_col]
+            )
+        else:
+            # その他のエンドポイントは日付で重複判定
+            df.set_index(date_col, inplace=True)
+            df = csv_utils.merge_csv(df, out_path, date_col)
+    else:
+        # overwriteモードでは既存のインデックス処理を維持
+        if endpoint != 'sleep' or 'logId' not in df.columns:
+            df.set_index(date_col, inplace=True)
 
-    df.to_csv(out_path)
+    # CSVに保存（睡眠データはindex=False、その他はindex=True）
+    if endpoint == 'sleep' and 'logId' in df.columns:
+        df.to_csv(out_path, index=False)
+    else:
+        df.to_csv(out_path)
     print(f"  保存: {out_path} ({len(df)}件)")
 
     result = {'records': len(df), 'path': out_path}
@@ -316,6 +335,144 @@ def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = Fa
     if config.get('has_levels'):
         levels_result = _save_sleep_levels(response, overwrite)
         result['levels'] = levels_result
+
+    return result
+
+
+def _fetch_endpoint_chunked(client, endpoint: str, start_date: dt.date, end_date: dt.date,
+                             max_days: int, overwrite: bool, config: dict) -> dict:
+    """
+    100日を超える期間を自動分割して取得
+
+    Args:
+        client: Fitbitクライアント
+        endpoint: エンドポイント名
+        start_date: 開始日
+        end_date: 終了日
+        max_days: API最大日数制限（通常100日）
+        overwrite: 上書きモード
+        config: エンドポイント設定
+
+    Returns:
+        結果情報の辞書
+    """
+    all_records = []
+    all_sleep_levels = []  # sleep_levels用
+    current_start = start_date
+    chunk_num = 1
+    total_chunks = ((end_date - start_date).days + max_days) // max_days
+
+    while current_start <= end_date:
+        # チャンクの終了日を計算（max_days-1日後、またはend_dateまで）
+        chunk_end = min(current_start + dt.timedelta(days=max_days - 1), end_date)
+
+        print(f"  チャンク {chunk_num}/{total_chunks}: {current_start} ~ {chunk_end}")
+
+        try:
+            # API呼び出し
+            fetch_fn = getattr(fitbit_api, config['fetch_fn'])
+            response = fetch_fn(client, current_start, chunk_end)
+
+            # パース
+            if config['parse_fn']:
+                parse_fn = getattr(fitbit_api, config['parse_fn'])
+                records = parse_fn(response)
+                if records:
+                    all_records.extend(records)
+                    print(f"    取得: {len(records)}件")
+                else:
+                    print(f"    データなし")
+            else:
+                # activity, activity_logsはDataFrameを直接返す
+                df_chunk = response
+                if not df_chunk.empty:
+                    all_records.append(df_chunk)
+                    print(f"    取得: {len(df_chunk)}件")
+                else:
+                    print(f"    データなし")
+
+            # sleep_levelsも取得
+            if config.get('has_levels'):
+                levels_data = fitbit_api.parse_sleep_levels(response)
+                if levels_data:
+                    all_sleep_levels.extend(levels_data)
+
+        except Exception as e:
+            error_msg = _format_api_error(e)
+            print(f"    エラー: {error_msg}")
+            # エラーがあっても次のチャンクを続行
+
+        # 次のチャンクへ
+        current_start = chunk_end + dt.timedelta(days=1)
+        chunk_num += 1
+
+    # 全チャンクのデータがない場合
+    if not all_records:
+        print(f"  全期間でデータがありません")
+        return {'records': 0, 'path': None}
+
+    # DataFrameに変換
+    if config['parse_fn']:
+        df = pd.DataFrame(all_records)
+    else:
+        # activity, activity_logsは複数のDataFrameを結合
+        df = pd.concat(all_records, ignore_index=True)
+
+    # 日付列の処理
+    date_col = config['date_column']
+    df[date_col] = pd.to_datetime(df[date_col])
+
+    # 保存
+    out_path = get_output_path(endpoint)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not overwrite:
+        # 睡眠データはlogIdで重複判定（同じ日に複数の睡眠ログがあるため）
+        if endpoint == 'sleep' and 'logId' in df.columns:
+            df = csv_utils.merge_csv_by_columns(
+                df, out_path,
+                key_columns=['logId'],
+                parse_dates=[date_col],
+                sort_by=[date_col]
+            )
+        else:
+            # その他のエンドポイントは日付で重複判定
+            df.set_index(date_col, inplace=True)
+            df = csv_utils.merge_csv(df, out_path, date_col)
+    else:
+        # overwriteモードでは既存のインデックス処理を維持
+        if endpoint != 'sleep' or 'logId' not in df.columns:
+            df.set_index(date_col, inplace=True)
+
+    # CSVに保存（睡眠データはindex=False、その他はindex=True）
+    if endpoint == 'sleep' and 'logId' in df.columns:
+        df.to_csv(out_path, index=False)
+    else:
+        df.to_csv(out_path)
+    print(f"  保存: {out_path} ({len(df)}件)")
+
+    result = {'records': len(df), 'path': out_path}
+
+    # 睡眠ステージ詳細データ（sleepのみ）
+    if config.get('has_levels') and all_sleep_levels:
+        df_levels = pd.DataFrame(all_sleep_levels)
+        df_levels['dateTime'] = pd.to_datetime(df_levels['dateTime'])
+        df_levels.sort_values(['dateOfSleep', 'dateTime'], inplace=True)
+
+        out_levels_path = get_levels_output_path()
+
+        if not overwrite:
+            df_levels = csv_utils.merge_csv_by_columns(
+                df_levels, out_levels_path,
+                key_columns=['dateOfSleep', 'dateTime'],
+                parse_dates=['dateTime'],
+                sort_by=['dateOfSleep', 'dateTime']
+            )
+
+        df_levels.to_csv(out_levels_path, index=False)
+        print(f"  詳細保存: {out_levels_path} ({len(df_levels)}件)")
+
+        result['levels'] = {'records': len(df_levels), 'path': out_levels_path}
 
     return result
 
