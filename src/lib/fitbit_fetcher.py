@@ -163,6 +163,24 @@ ENDPOINTS = {
         'is_paginated': True,  # ページング方式のAPI
         'is_time_series_api': False,  # ページング（データ量次第）
     },
+    'heart_rate_intraday': {
+        'description': '心拍数Intraday（1分間隔）',
+        'fetch_fn': 'get_heart_rate_intraday_by_date_range',
+        'parse_fn': None,  # DataFrameを直接返す
+        'date_column': 'datetime',
+        'max_days': None,
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
+        'is_intraday': True,  # Intraday API
+    },
+    'steps_intraday': {
+        'description': '歩数Intraday（1分間隔）',
+        'fetch_fn': 'get_steps_intraday_by_date_range',
+        'parse_fn': None,  # DataFrameを直接返す
+        'date_column': 'datetime',
+        'max_days': None,
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
+        'is_intraday': True,  # Intraday API
+    },
 }
 
 

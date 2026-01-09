@@ -249,7 +249,7 @@ class SleepDebtCalculator:
     def _calculate_weights(self, n: int, method: str) -> np.ndarray:
         """重み付けを計算"""
         if method == 'linear':
-            # 線形減衰: 最古の日 0.3 → 最新の日 0.7（RISE App方式）
+            # 線形減衰: 最古の日 0.3 → 最新の日 0.7
             # 合計重み ≈ 7.0（14日の場合）、平均0.5
             return np.linspace(0.3, 0.7, n)
         elif method == 'exponential':
@@ -258,6 +258,29 @@ class SleepDebtCalculator:
             weights = np.exp(decay_rate * np.arange(n))
             # 合計重み ≈ 7.0に調整
             return weights / np.max(weights) * 0.5
+        elif method == 'rise':
+            # RISE App方式: 最新日15%、残り85%を線形配分
+            # 昨晩の睡眠が今日のパフォーマンスに最も影響するという科学的知見に基づく
+            if n == 1:
+                return np.array([0.5])
+
+            # 目標合計重み（既存の実装と同じスケール）
+            target_sum = n * 0.5
+
+            # 最新日の重み（15%）
+            last_night_weight = target_sum * 0.15
+
+            # 残りの日数の重み合計（85%）
+            remaining_sum = target_sum * 0.85
+
+            # 残りの日を線形配分（古い→新しいで増加）
+            linear_weights = np.linspace(0.3, 0.7, n-1)
+            linear_weights = linear_weights / linear_weights.sum() * remaining_sum
+
+            # 結合
+            weights = np.concatenate([linear_weights, [last_night_weight]])
+
+            return weights
         else:  # uniform
             # 均等重み0.5（合計 = n * 0.5）
             return np.ones(n) * 0.5

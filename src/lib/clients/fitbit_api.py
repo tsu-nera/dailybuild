@@ -1153,7 +1153,7 @@ def get_temperature_skin_by_date_range(client, start_date, end_date):
     return client.make_request(url)
 
 
-def get_temperature_core_by_date_range(client, start_date, end_date):
+def get_temperature_core_by_date_range(client, start_date, end_date, api_version='1'):
     """
     期間指定で体温データを取得
 
@@ -1161,6 +1161,7 @@ def get_temperature_core_by_date_range(client, start_date, end_date):
         client: Fitbitクライアント
         start_date: 開始日（datetime.date）
         end_date: 終了日（datetime.date）
+        api_version: APIバージョン（'1' または '1.2'、デフォルト: '1'）
 
     Returns:
         APIレスポンス（dict）: tempCore配列
@@ -1169,12 +1170,14 @@ def get_temperature_core_by_date_range(client, start_date, end_date):
         最大30日間まで一括取得可能
         ユーザーが手動で記録した体温データ
 
-    Endpoint: /1/user/-/temp/core/date/{startDate}/{endDate}.json
+        API version 1.0 と 1.2 の両方をサポート
+
+    Endpoint: /{api_version}/user/-/temp/core/date/{startDate}/{endDate}.json
     https://dev.fitbit.com/build/reference/web-api/temperature/get-temperature-core-summary-by-interval/
     """
     start_str = start_date.strftime('%Y-%m-%d')
     end_str = end_date.strftime('%Y-%m-%d')
-    url = f"{client.API_ENDPOINT}/1/user/-/temp/core/date/{start_str}/{end_str}.json"
+    url = f"{client.API_ENDPOINT}/{api_version}/user/-/temp/core/date/{start_str}/{end_str}.json"
     return client.make_request(url)
 
 
@@ -1235,6 +1238,201 @@ def parse_temperature_core(data):
         results.append(row)
 
     return results
+
+
+# =============================================================================
+# Intraday Time Series API
+# https://dev.fitbit.com/build/reference/web-api/intraday/
+# =============================================================================
+
+def get_heart_rate_intraday(client, date, detail_level='1min'):
+    """
+    指定日の心拍数Intradayデータを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+        detail_level: 粒度（'1sec', '1min', '5min', '15min'）
+
+    Returns:
+        APIレスポンス（dict）
+
+    Note:
+        Personal用途では自動的に利用可能
+        1日分のみ取得可能（複数日は日付ごとにループ）
+
+    Endpoint: /1/user/-/activities/heart/date/{date}/1d/{detail-level}.json
+    https://dev.fitbit.com/build/reference/web-api/intraday/get-heartrate-intraday-by-date/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/activities/heart/date/{date_str}/1d/{detail_level}.json"
+    return client.make_request(url)
+
+
+def get_steps_intraday(client, date, detail_level='1min'):
+    """
+    指定日の歩数Intradayデータを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+        detail_level: 粒度（'1min', '5min', '15min'）
+
+    Returns:
+        APIレスポンス（dict）
+
+    Note:
+        Personal用途では自動的に利用可能
+        1日分のみ取得可能（複数日は日付ごとにループ）
+
+    Endpoint: /1/user/-/activities/steps/date/{date}/1d/{detail-level}.json
+    https://dev.fitbit.com/build/reference/web-api/intraday/get-steps-intraday-by-date/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/activities/steps/date/{date_str}/1d/{detail_level}.json"
+    return client.make_request(url)
+
+
+def parse_heart_rate_intraday(data, date):
+    """
+    Heart Rate Intradayデータをリストに変換
+
+    Args:
+        data: get_heart_rate_intradayの戻り値
+        date: 日付（datetime.date）
+
+    Returns:
+        心拍数Intradayエントリのリスト
+
+    データ構造:
+        - datetime: タイムスタンプ（日付+時刻）
+        - heart_rate: 心拍数（bpm）
+    """
+    intraday_data = data.get('activities-heart-intraday', {}).get('dataset', [])
+    if not intraday_data:
+        return []
+
+    results = []
+    date_str = date.strftime('%Y-%m-%d')
+
+    for entry in intraday_data:
+        time_str = entry.get('time')
+        value = entry.get('value')
+
+        if time_str and value is not None:
+            results.append({
+                'datetime': f"{date_str} {time_str}",
+                'heart_rate': value,
+            })
+
+    return results
+
+
+def parse_steps_intraday(data, date):
+    """
+    Steps Intradayデータをリストに変換
+
+    Args:
+        data: get_steps_intradayの戻り値
+        date: 日付（datetime.date）
+
+    Returns:
+        歩数Intradayエントリのリスト
+
+    データ構造:
+        - datetime: タイムスタンプ（日付+時刻）
+        - steps: 歩数
+    """
+    intraday_data = data.get('activities-steps-intraday', {}).get('dataset', [])
+    if not intraday_data:
+        return []
+
+    results = []
+    date_str = date.strftime('%Y-%m-%d')
+
+    for entry in intraday_data:
+        time_str = entry.get('time')
+        value = entry.get('value')
+
+        if time_str and value is not None:
+            results.append({
+                'datetime': f"{date_str} {time_str}",
+                'steps': value,
+            })
+
+    return results
+
+
+def get_heart_rate_intraday_by_date_range(client, start_date, end_date, detail_level='1min'):
+    """
+    期間指定で心拍数Intradayデータを取得（日付ごとにループ）
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+        detail_level: 粒度（'1sec', '1min', '5min', '15min'）
+
+    Returns:
+        pandas.DataFrame: 心拍数Intradayデータ
+
+    Note:
+        Intraday APIは1日分ずつしか取得できないため、
+        日付ごとにループして取得する
+        N日間 = Nリクエスト
+    """
+    import datetime as dt
+    import pandas as pd
+
+    current = start_date
+    all_records = []
+
+    while current <= end_date:
+        data = get_heart_rate_intraday(client, current, detail_level)
+        records = parse_heart_rate_intraday(data, current)
+        all_records.extend(records)
+        current += dt.timedelta(days=1)
+
+    if not all_records:
+        return pd.DataFrame()
+
+    return pd.DataFrame(all_records)
+
+
+def get_steps_intraday_by_date_range(client, start_date, end_date, detail_level='1min'):
+    """
+    期間指定で歩数Intradayデータを取得（日付ごとにループ）
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+        detail_level: 粒度（'1min', '5min', '15min'）
+
+    Returns:
+        pandas.DataFrame: 歩数Intradayデータ
+
+    Note:
+        Intraday APIは1日分ずつしか取得できないため、
+        日付ごとにループして取得する
+        N日間 = Nリクエスト
+    """
+    import datetime as dt
+    import pandas as pd
+
+    current = start_date
+    all_records = []
+
+    while current <= end_date:
+        data = get_steps_intraday(client, current, detail_level)
+        records = parse_steps_intraday(data, current)
+        all_records.extend(records)
+        current += dt.timedelta(days=1)
+
+    if not all_records:
+        return pd.DataFrame()
+
+    return pd.DataFrame(all_records)
 
 
 # =============================================================================

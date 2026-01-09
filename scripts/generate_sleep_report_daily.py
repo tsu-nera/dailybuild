@@ -495,12 +495,12 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         start_date = filtered_dates.min()
         latest_date = filtered_dates.max()
 
-        # 最新日時点の睡眠負債
-        sleep_debt_result = calculator.calculate(end_date=latest_date)
+        # 最新日時点の睡眠負債（RISE方式）
+        sleep_debt_result = calculator.calculate(end_date=latest_date, weight_method='rise')
         results['sleep_debt'] = sleep_debt_result
 
-        # フィルタリング期間の履歴を取得してグラフ用データを作成
-        debt_history = calculator.get_history(start_date, latest_date)
+        # フィルタリング期間の履歴を取得してグラフ用データを作成（RISE方式）
+        debt_history = calculator.get_history(start_date, latest_date, weight_method='rise')
         results['debt_history'] = debt_history
 
         # フィルタリング期間の日別総睡眠時間（昼寝込み）の平均を計算
