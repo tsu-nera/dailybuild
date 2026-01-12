@@ -5,6 +5,8 @@
 
 週ごとのTraining Volume（重量×回数）の推移を集計し、前週比を可視化。
 
+実行時に自動的に日次・週次統計CSVを生成してからレポートを作成します。
+
 Usage:
     python generate_workout_report_interval.py [--weeks <N>] [--output <PATH>]
 """
@@ -18,6 +20,7 @@ sys.path.insert(0, str(project_root / 'src'))
 
 from lib import hevy_csv
 from lib.analytics import workout
+from lib.templates.renderer import WorkoutReportRenderer
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/hevy/workouts.csv'
@@ -158,28 +161,36 @@ def main():
     )
     args = parser.parse_args()
 
-    # 週次統計CSVを読み込み
-    weekly_stats_csv = BASE_DIR / 'data/hevy/workouts_weekly.csv'
-    if not weekly_stats_csv.exists():
-        print(f"Error: {weekly_stats_csv} not found")
-        print("Run 'python scripts/generate_workout_report_weekly.py' first")
-        return 1
-
-    weekly_stats = pd.read_csv(weekly_stats_csv)
-
-    # 直近N週間に絞る
-    weekly_stats = weekly_stats.sort_values(['iso_year', 'iso_week']).tail(args.weeks)
-
-    # 週次ボリューム（種目別詳細）を生成するため、生データも読み込む
+    # 生データから日次・週次統計を自動生成
+    print("日次・週次統計を生成中...")
     if not DATA_CSV.exists():
         print(f"Error: {DATA_CSV} not found")
         return 1
 
-    # Hevy CSVを解析
-    df = hevy_csv.parse_hevy_csv(DATA_CSV)
+    # Hevy CSVをパース
+    df_raw = hevy_csv.parse_hevy_csv(DATA_CSV)
 
-    # データ前処理
-    df = workout.prepare_workout_df(df)
+    # 日次統計を計算
+    daily_stats = workout.calc_daily_stats(df_raw)
+
+    # 日次統計CSVを保存
+    daily_csv = BASE_DIR / 'data/hevy/workouts_daily.csv'
+    daily_stats.to_csv(daily_csv, index=False)
+    print(f"日次統計: {len(daily_stats)}日分を生成")
+
+    # 週次統計を計算
+    weekly_stats = workout.calc_weekly_stats_from_daily(daily_stats)
+
+    # 週次統計CSVを保存
+    weekly_stats_csv = BASE_DIR / 'data/hevy/workouts_weekly.csv'
+    weekly_stats.to_csv(weekly_stats_csv, index=False)
+    print(f"週次統計: {len(weekly_stats)}週分を生成\n")
+
+    # 直近N週間に絞る
+    weekly_stats = weekly_stats.sort_values(['iso_year', 'iso_week']).tail(args.weeks)
+
+    # 週次ボリューム（種目別詳細）を計算するため、生データを前処理
+    df = workout.prepare_workout_df(df_raw)
 
     # 週次ボリューム（種目別）を計算
     weekly_volume = workout.calc_weekly_volume(df)
@@ -199,7 +210,6 @@ def main():
     )
 
     # テンプレートレンダリング
-    from lib.templates.renderer import WorkoutReportRenderer
     renderer = WorkoutReportRenderer()
     report_content = renderer.render_interval_report(context)
 

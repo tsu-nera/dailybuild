@@ -198,8 +198,17 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
                 row['hrv_daily_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
                 z_score = df_hrv.loc[date, 'daily_rmssd_z_score']
                 row['hrv_daily_z_score'] = float(z_score) if pd.notna(z_score) else None
+            else:
+                row['hrv_daily_baseline'] = None
+                row['hrv_daily_baseline_std'] = None
+                row['hrv_daily_deviation_pct'] = None
+                row['hrv_daily_z_score'] = None
         else:
             row['hrv_daily'] = None
+            row['hrv_daily_baseline'] = None
+            row['hrv_daily_baseline_std'] = None
+            row['hrv_daily_deviation_pct'] = None
+            row['hrv_daily_z_score'] = None
 
         # HRV (deep)
         if df_hrv is not None and date in df_hrv.index:
@@ -211,8 +220,13 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
                 row['hrv_deep_baseline'] = float(baseline) if pd.notna(baseline) else None
                 dev_pct = df_hrv.loc[date, 'deep_rmssd_deviation_pct']
                 row['hrv_deep_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
+            else:
+                row['hrv_deep_baseline'] = None
+                row['hrv_deep_deviation_pct'] = None
         else:
             row['hrv_deep'] = None
+            row['hrv_deep_baseline'] = None
+            row['hrv_deep_deviation_pct'] = None
 
         # 安静時心拍数
         if df_heart_rate is not None and date in df_heart_rate.index:
@@ -228,8 +242,17 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
                 row['rhr_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
                 z_score = df_heart_rate.loc[date, 'resting_heart_rate_z_score']
                 row['rhr_z_score'] = float(z_score) if pd.notna(z_score) else None
+            else:
+                row['rhr_baseline'] = None
+                row['rhr_baseline_std'] = None
+                row['rhr_deviation_pct'] = None
+                row['rhr_z_score'] = None
         else:
             row['rhr'] = None
+            row['rhr_baseline'] = None
+            row['rhr_baseline_std'] = None
+            row['rhr_deviation_pct'] = None
+            row['rhr_z_score'] = None
 
         # 呼吸数
         if df_breathing is not None and date in df_breathing.index:
@@ -245,8 +268,17 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
                 row['breathing_rate_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
                 z_score = df_breathing.loc[date, 'breathing_rate_z_score']
                 row['breathing_rate_z_score'] = float(z_score) if pd.notna(z_score) else None
+            else:
+                row['breathing_rate_baseline'] = None
+                row['breathing_rate_baseline_std'] = None
+                row['breathing_rate_deviation_pct'] = None
+                row['breathing_rate_z_score'] = None
         else:
             row['breathing_rate'] = None
+            row['breathing_rate_baseline'] = None
+            row['breathing_rate_baseline_std'] = None
+            row['breathing_rate_deviation_pct'] = None
+            row['breathing_rate_z_score'] = None
 
         # SpO2
         if df_spo2 is not None and date in df_spo2.index:
@@ -264,9 +296,18 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
                 row['spo2_avg_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
                 z_score = df_spo2.loc[date, 'avg_spo2_z_score']
                 row['spo2_avg_z_score'] = float(z_score) if pd.notna(z_score) else None
+            else:
+                row['spo2_avg_baseline'] = None
+                row['spo2_avg_baseline_std'] = None
+                row['spo2_avg_deviation_pct'] = None
+                row['spo2_avg_z_score'] = None
         else:
             row['spo2_avg'] = None
             row['spo2_min'] = None
+            row['spo2_avg_baseline'] = None
+            row['spo2_avg_baseline_std'] = None
+            row['spo2_avg_deviation_pct'] = None
+            row['spo2_avg_z_score'] = None
 
         # 皮膚温変動
         if df_temp is not None and date in df_temp.index:
@@ -282,8 +323,17 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
                 row['temp_variation_deviation_pct'] = float(dev_pct) if pd.notna(dev_pct) else None
                 z_score = df_temp.loc[date, 'nightly_relative_z_score']
                 row['temp_variation_z_score'] = float(z_score) if pd.notna(z_score) else None
+            else:
+                row['temp_variation_baseline'] = None
+                row['temp_variation_baseline_std'] = None
+                row['temp_variation_deviation_pct'] = None
+                row['temp_variation_z_score'] = None
         else:
             row['temp_variation'] = None
+            row['temp_variation_baseline'] = None
+            row['temp_variation_baseline_std'] = None
+            row['temp_variation_deviation_pct'] = None
+            row['temp_variation_z_score'] = None
 
         responsiveness_data.append(row)
 
