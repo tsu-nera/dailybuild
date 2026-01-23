@@ -10,8 +10,6 @@
 - **サンプル数**: {{ sleep_debt.rebound_method.sample_size }}日（上位{{ sleep_debt.rebound_method.percentile }}%）
 
 > {{ sleep_debt.rebound_method.note }}
-
-睡眠リバウンド法は、睡眠時間が最も長かった上位{{ sleep_debt.rebound_method.percentile }}%の日（過去1年間）の平均を、真の睡眠必要量として推定する手法です。睡眠負債から完全に回復した日が、身体が本当に必要としている睡眠時間を示すという理論（RISEアプリと同じアルゴリズム）に基づいています。
 {% endif %}
 
 ### 現在の睡眠負債
@@ -20,8 +18,6 @@
 - **平均睡眠時間（過去14日）**: {{ sleep_debt.avg_sleep_hours }}時間
 {% if sleep_debt.avg_total_sleep_hours %}- **平均睡眠時間（昼寝込み）**: {{ sleep_debt.avg_total_sleep_hours }}時間
 {% endif %}- **推定回復日数**: {{ sleep_debt.recovery_days }}日
-
-> 睡眠負債の計算には昼寝も含めた総睡眠時間を使用しています。回復日数は、1日あたり0.3時間のペースで睡眠負債が減少すると仮定して計算されています。
 
 {% if sleep_debt.debt_table %}
 ### 日別推移

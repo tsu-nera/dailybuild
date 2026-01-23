@@ -24,6 +24,8 @@ STAGE_COLORS = {
     'light': '#5DADE2',  # 水色
     'deep': '#2E4053',   # 濃紺
     'asleep': '#5DADE2', # 水色（古いフォーマット、lightと同じ扱い）
+    'restless': '#FFB74D',  # 薄いオレンジ（古いフォーマット）
+    'awake': '#FF9500',  # オレンジ（古いフォーマット、wakeと同じ扱い）
 }
 
 # Y軸の位置（上から wake, rem, light, deep）
@@ -33,6 +35,8 @@ STAGE_Y_POSITION = {
     'light': 1,
     'deep': 0,
     'asleep': 1,  # 古いフォーマット、lightと同じ位置
+    'restless': 3,  # 古いフォーマット、wakeと同じ位置
+    'awake': 3,  # 古いフォーマット、wakeと同じ位置
 }
 
 
@@ -367,9 +371,8 @@ def plot_time_in_bed_stacked(df_master, save_path=None):
 
     # 積み上げグラフ
     ax.bar(x, fall_asleep, label='Fall Asleep', color='#FFB74D')  # オレンジ
-    ax.bar(x, asleep, bottom=fall_asleep, label='Asleep', color='#4FC3F7')  # 水色
-    ax.bar(x, wake, bottom=fall_asleep + asleep, label='Wake', color='#EF5350')  # 赤
-    ax.bar(x, after_wakeup, bottom=fall_asleep + asleep + wake, label='After Wake', color='#AB47BC')  # 紫
+    ax.bar(x, wake, bottom=fall_asleep, label='Wake', color='#EF5350')  # 赤
+    ax.bar(x, after_wakeup, bottom=fall_asleep + wake, label='After Wake', color='#AB47BC')  # 紫
 
     ax.set_xticks(range(len(df)))
     ax.set_xticklabels(date_labels, rotation=45)

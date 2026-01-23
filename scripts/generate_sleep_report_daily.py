@@ -30,6 +30,9 @@ BASE_DIR = project_root
 MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
 LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
 HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
+HRV_INTRADAY_CSV = BASE_DIR / 'data/fitbit/hrv_intraday.csv'
+HR_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
+HR_DAILY_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
 
 
 def prepare_sleep_report_data(results):
@@ -135,6 +138,77 @@ def prepare_sleep_report_data(results):
             'rem_table': rem_display.to_markdown(index=False)
         }
 
+    # 心拍数データ（条件付き）
+    heart_rate_data = None
+    if results.get('heart_rate_stats') is not None:
+        hr_stats = results['heart_rate_stats']
+        baseline = results.get('hr_baseline')
+        advanced_hr = results.get('advanced_hr_metrics')
+
+        # テーブルデータ作成
+        hr_table = []
+        for date in sorted(hr_stats.keys()):
+            stats_day = hr_stats[date]
+            advanced_day = advanced_hr.get(date, {}) if advanced_hr else {}
+
+            hr_table.append({
+                'date': pd.to_datetime(date).strftime('%m/%d'),
+                'avg_hr': f"{stats_day['avg_hr']:.0f}",
+                'min_hr': stats_day['min_hr'],
+                'max_hr': stats_day['max_hr'],
+                'daily_resting_hr': stats_day.get('daily_resting_hr', '-'),
+                'above_baseline_pct': f"{stats_day.get('above_baseline_pct', 0):.0f}",
+                'below_baseline_pct': f"{stats_day.get('below_baseline_pct', 0):.0f}",
+                'dip_rate': f"{advanced_day.get('dip_rate_avg', 0):.1f}" if advanced_day else '-',
+                'time_to_min_hr': f"{advanced_day.get('time_to_min_hr', 0):.0f}" if advanced_day else '-',
+            })
+
+        # 高度な指標の平均を計算
+        avg_dip_rate = None
+        avg_time_to_min_hr = None
+        if advanced_hr:
+            dip_rates = [m['dip_rate_avg'] for m in advanced_hr.values()]
+            time_to_mins = [m['time_to_min_hr'] for m in advanced_hr.values()]
+            if dip_rates:
+                avg_dip_rate = sum(dip_rates) / len(dip_rates)
+            if time_to_mins:
+                avg_time_to_min_hr = sum(time_to_mins) / len(time_to_mins)
+
+        heart_rate_data = {
+            'table': hr_table,
+            'baseline': baseline,
+            'avg_dip_rate': f"{avg_dip_rate:.1f}" if avg_dip_rate is not None else None,
+            'avg_time_to_min_hr': f"{avg_time_to_min_hr:.0f}" if avg_time_to_min_hr is not None else None,
+        }
+
+    # HRV Intradayデータ（条件付き）
+    hrv_intraday_data = None
+    if results.get('hrv_intraday_metrics') is not None:
+        hrv_metrics = results['hrv_intraday_metrics']
+
+        # 平均値を計算
+        avg_lf_hf_ratio = None
+        avg_hf_activation_speed = None
+        avg_lf_hf_decline_rate = None
+
+        if hrv_metrics:
+            lf_hf_ratios = [m['avg_lf_hf_ratio'] for m in hrv_metrics.values() if m.get('avg_lf_hf_ratio') is not None]
+            hf_speeds = [m['hf_activation_speed'] for m in hrv_metrics.values() if m.get('hf_activation_speed') is not None]
+            decline_rates = [m['lf_hf_decline_rate'] for m in hrv_metrics.values() if m.get('lf_hf_decline_rate') is not None]
+
+            if lf_hf_ratios:
+                avg_lf_hf_ratio = sum(lf_hf_ratios) / len(lf_hf_ratios)
+            if hf_speeds:
+                avg_hf_activation_speed = sum(hf_speeds) / len(hf_speeds)
+            if decline_rates:
+                avg_lf_hf_decline_rate = sum(decline_rates) / len(decline_rates)
+
+        hrv_intraday_data = {
+            'avg_lf_hf_ratio': f"{avg_lf_hf_ratio:.2f}" if avg_lf_hf_ratio is not None else None,
+            'avg_hf_activation_speed': f"{avg_hf_activation_speed:.1f}" if avg_hf_activation_speed is not None else None,
+            'avg_lf_hf_decline_rate': f"{avg_lf_hf_decline_rate:.1f}" if avg_lf_hf_decline_rate is not None else None,
+        }
+
     context = {
         'report_title': '日次睡眠レポート',
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -197,6 +271,8 @@ def prepare_sleep_report_data(results):
             'waketime_std': f"{stats['waketime']['std_minutes']:.0f}",
             'table': results['timing_table'].to_markdown(index=False)
         },
+        'heart_rate': heart_rate_data,
+        'hrv_intraday': hrv_intraday_data,
         'cycles': cycles_data
     }
 
@@ -446,6 +522,46 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         results['timeline_img'] = None
         results['cycle_table'] = None
         results['cycle_stats'] = None
+
+    # 心拍数データの読み込みと分析
+    if HR_INTRADAY_CSV.exists() and HR_DAILY_CSV.exists():
+        print(f'Loading: {HR_INTRADAY_CSV}')
+        df_hr_intraday = pd.read_csv(HR_INTRADAY_CSV)
+
+        print(f'Loading: {HR_DAILY_CSV}')
+        df_hr_daily = pd.read_csv(HR_DAILY_CSV)
+
+        print('計算中: 睡眠中の心拍数...')
+        hr_stats = sleep.calc_sleep_heart_rate_stats(
+            df_master, df_hr_intraday, df_hr_daily, baseline_days=7
+        )
+        results['heart_rate_stats'] = hr_stats
+
+        # ベースライン計算
+        hr_baseline = sleep.calc_resting_hr_baseline(df_hr_daily, lookback_days=7)
+        results['hr_baseline'] = hr_baseline
+
+        # 高度な心拍数指標を計算
+        print('計算中: 高度な心拍数指標（ディップ率、最低HR到達時間）...')
+        advanced_hr = sleep.calc_advanced_hr_metrics(df_master, df_hr_intraday)
+        results['advanced_hr_metrics'] = advanced_hr
+    else:
+        print(f'警告: 心拍数データが見つかりません。心拍数分析をスキップします。')
+        results['heart_rate_stats'] = None
+        results['hr_baseline'] = None
+        results['advanced_hr_metrics'] = None
+
+    # HRV Intradayデータの読み込みと分析
+    if HRV_INTRADAY_CSV.exists():
+        print(f'Loading: {HRV_INTRADAY_CSV}')
+        df_hrv_intraday = pd.read_csv(HRV_INTRADAY_CSV)
+
+        print('計算中: HRV Intraday指標（LF/HF比、自律神経バランス）...')
+        hrv_intraday_metrics = sleep.calc_hrv_intraday_metrics(df_master, df_hrv_intraday)
+        results['hrv_intraday_metrics'] = hrv_intraday_metrics
+    else:
+        print(f'情報: HRV Intradayデータが見つかりません。HRV Intraday分析をスキップします。')
+        results['hrv_intraday_metrics'] = None
 
     # 睡眠負債分析（全データを使用）
     df_hrv = None

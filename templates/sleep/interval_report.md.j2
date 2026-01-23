@@ -1,0 +1,25 @@
+# {{ report_title }}
+
+{{ description }}
+
+- **生成日時**: {{ generated_at }}
+
+---
+
+{% include "sleep/sections/interval_weekly_data.md.j2" %}
+
+---
+
+{% if weekday_stats %}
+{% include "sleep/sections/weekday_analysis.md.j2" %}
+
+---
+{% endif %}
+
+## 📈 トレンドグラフ
+
+![睡眠トレンド]({{ trend_image }})
+
+{% if debt_trend_image %}
+![睡眠負債トレンド]({{ debt_trend_image }})
+{% endif %}

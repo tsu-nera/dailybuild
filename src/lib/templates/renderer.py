@@ -167,6 +167,36 @@ class MindReportRenderer:
             logger.error(f"Template rendering failed: {e}")
             raise
 
+    def render_interval_report(self, context):
+        """
+        週次隔メンタルレポートを生成
+
+        Parameters
+        ----------
+        context : dict
+            テンプレートコンテキスト
+            必須キー: report_title, description, generated_at, weekly_data,
+                     hrv_rhr_trend_image
+
+        Returns
+        -------
+        str
+            レンダリングされたMarkdown
+
+        Raises
+        ------
+        jinja2.TemplateNotFound
+            テンプレートファイルが見つからない場合
+        jinja2.TemplateSyntaxError
+            テンプレート構文エラーがある場合
+        """
+        try:
+            template = self.env.get_template('mind/interval_report.md.j2')
+            return template.render(**context)
+        except Exception as e:
+            logger.error(f"Template rendering failed: {e}")
+            raise
+
 
 class SleepReportRenderer:
     """睡眠分析レポートのテンプレートレンダラー"""
@@ -224,6 +254,36 @@ class SleepReportRenderer:
         """
         try:
             template = self.env.get_template('sleep/daily_report.md.j2')
+            return template.render(**context)
+        except Exception as e:
+            logger.error(f"Template rendering failed: {e}")
+            raise
+
+    def render_interval_report(self, context):
+        """
+        週次隔睡眠レポートを生成
+
+        Parameters
+        ----------
+        context : dict
+            テンプレートコンテキスト
+            必須キー: report_title, description, generated_at, weekly_data,
+                     trend_image, debt_trend_image
+
+        Returns
+        -------
+        str
+            レンダリングされたMarkdown
+
+        Raises
+        ------
+        jinja2.TemplateNotFound
+            テンプレートファイルが見つからない場合
+        jinja2.TemplateSyntaxError
+            テンプレート構文エラーがある場合
+        """
+        try:
+            template = self.env.get_template('sleep/interval_report.md.j2')
             return template.render(**context)
         except Exception as e:
             logger.error(f"Template rendering failed: {e}")

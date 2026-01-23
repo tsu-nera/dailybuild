@@ -181,6 +181,15 @@ ENDPOINTS = {
         'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
         'is_intraday': True,  # Intraday API
     },
+    'hrv_intraday': {
+        'description': 'HRV Intraday（5分間隔）',
+        'fetch_fn': 'get_hrv_intraday_by_date_range',
+        'parse_fn': None,  # DataFrameを直接返す
+        'date_column': 'datetime',
+        'max_days': 30,  # HRV intradayは最大30日間
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
+        'is_intraday': True,  # Intraday API
+    },
 }
 
 

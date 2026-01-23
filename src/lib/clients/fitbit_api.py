@@ -1293,6 +1293,31 @@ def get_steps_intraday(client, date, detail_level='1min'):
     return client.make_request(url)
 
 
+def get_hrv_intraday(client, date):
+    """
+    指定日のHRV Intradayデータを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）
+
+    Note:
+        - 5分間隔でデータを返す（detail_levelパラメータなし）
+        - 睡眠中のみ測定（最低3時間の睡眠が必要）
+        - 最大30日間まで取得可能
+        - データ項目: rmssd, coverage, hf, lf, lf_hf_ratio
+
+    Endpoint: /1/user/-/hrv/date/{date}/all.json
+    https://dev.fitbit.com/build/reference/web-api/intraday/get-hrv-intraday-by-date/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/hrv/date/{date_str}/all.json"
+    return client.make_request(url)
+
+
 def parse_heart_rate_intraday(data, date):
     """
     Heart Rate Intradayデータをリストに変換
@@ -1363,6 +1388,53 @@ def parse_steps_intraday(data, date):
     return results
 
 
+def parse_hrv_intraday(data, date):
+    """
+    HRV Intradayデータをリストに変換
+
+    Args:
+        data: get_hrv_intradayの戻り値
+        date: 日付（datetime.date）
+
+    Returns:
+        HRV Intradayエントリのリスト
+
+    データ構造:
+        - datetime: タイムスタンプ（日付+時刻）
+        - rmssd: RMSSD（ms、副交感神経活動指標）
+        - coverage: データカバレッジ（0.0-1.0）
+        - hf: 高周波成分（0.15-0.4Hz、副交感神経）
+        - lf: 低周波成分（0.04-0.15Hz、混合）
+        - lf_hf_ratio: LF/HF比（自律神経バランス）
+    """
+    # HRV intradayは'hrv'キー配列を返す
+    intraday_data = data.get('hrv', [])
+    if not intraday_data:
+        return []
+
+    results = []
+
+    for entry in intraday_data:
+        # 各エントリは'minutes'配列を含む
+        minutes = entry.get('minutes', [])
+
+        for minute_data in minutes:
+            timestamp = minute_data.get('minute')
+            value = minute_data.get('value', {})
+
+            if timestamp and value:
+                results.append({
+                    'datetime': timestamp,
+                    'rmssd': value.get('rmssd'),
+                    'coverage': value.get('coverage'),
+                    'hf': value.get('hf'),
+                    'lf': value.get('lf'),
+                    'lf_hf_ratio': value.get('lf_hf_ratio'),
+                })
+
+    return results
+
+
 def get_heart_rate_intraday_by_date_range(client, start_date, end_date, detail_level='1min'):
     """
     期間指定で心拍数Intradayデータを取得（日付ごとにループ）
@@ -1426,6 +1498,42 @@ def get_steps_intraday_by_date_range(client, start_date, end_date, detail_level=
     while current <= end_date:
         data = get_steps_intraday(client, current, detail_level)
         records = parse_steps_intraday(data, current)
+        all_records.extend(records)
+        current += dt.timedelta(days=1)
+
+    if not all_records:
+        return pd.DataFrame()
+
+    return pd.DataFrame(all_records)
+
+
+def get_hrv_intraday_by_date_range(client, start_date, end_date):
+    """
+    期間指定でHRV Intradayデータを取得（日付ごとにループ）
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        pandas.DataFrame: HRV Intradayデータ
+
+    Note:
+        - HRV Intraday APIは1日分ずつ取得
+        - 5分間隔、睡眠中のみ測定
+        - N日間 = Nリクエスト
+        - 最大30日間まで
+    """
+    import datetime as dt
+    import pandas as pd
+
+    current = start_date
+    all_records = []
+
+    while current <= end_date:
+        data = get_hrv_intraday(client, current)
+        records = parse_hrv_intraday(data, current)
         all_records.extend(records)
         current += dt.timedelta(days=1)
 

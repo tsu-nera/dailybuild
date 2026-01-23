@@ -6,6 +6,7 @@
     sleep_cycle: 睡眠サイクル検出・分析
     sleep_need_estimator: 最適睡眠時間の推定
     sleep_debt_clean: 睡眠負債の計算
+    sleep_intraday_analysis: 睡眠中のIntradayデータ分析
 """
 
 from .sleep_analysis import (
@@ -26,6 +27,15 @@ from .sleep_analysis import (
     plot_sleep_dashboard,
     plot_sleep_timeline,
     plot_single_day_timeline,
+)
+
+from .sleep_intraday_analysis import (
+    # 心拍数分析
+    calc_resting_hr_baseline,
+    calc_sleep_heart_rate_stats,
+    calc_advanced_hr_metrics,
+    # HRV分析
+    calc_hrv_intraday_metrics,
 )
 
 from .sleep_cycle import (
@@ -101,4 +111,9 @@ __all__ = [
     'plot_sleep_debt_trend',
     'print_debt_report',
     'format_debt_history_table',
+    # sleep_intraday_analysis
+    'calc_resting_hr_baseline',
+    'calc_sleep_heart_rate_stats',
+    'calc_advanced_hr_metrics',
+    'calc_hrv_intraday_metrics',
 ]

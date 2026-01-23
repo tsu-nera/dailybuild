@@ -3,7 +3,7 @@
 """
 Fitbit Intraday データ取得スクリプト
 
-心拍数と歩数のIntraday（1分間隔）データを取得する。
+心拍数、歩数、HRVのIntraday（1分/5分間隔）データを取得する。
 サーカディアンリズム分析用。
 
 Usage:
@@ -24,6 +24,9 @@ Usage:
 
     # 歩数のみ取得
     python scripts/fetch_intraday.py --steps-only
+
+    # HRVのみ取得
+    python scripts/fetch_intraday.py --hrv-only
 """
 
 import argparse
@@ -72,6 +75,11 @@ def main():
         action='store_true',
         help='歩数Intradayのみ取得'
     )
+    parser.add_argument(
+        '--hrv-only',
+        action='store_true',
+        help='HRV Intradayのみ取得'
+    )
 
     args = parser.parse_args()
 
@@ -92,6 +100,17 @@ def main():
         end_date = dt.date.today()
         start_date = end_date - dt.timedelta(days=days - 1)
 
+    # エンドポイントの選択
+    if args.hrv_only:
+        endpoints = ['hrv_intraday']
+    elif args.heart_rate_only:
+        endpoints = ['heart_rate_intraday']
+    elif args.steps_only:
+        endpoints = ['steps_intraday']
+    else:
+        # デフォルト: 心拍数と歩数のみ（HRVは含めない）
+        endpoints = ['heart_rate_intraday', 'steps_intraday']
+
     print("=" * 70)
     print("Fitbit Intraday データ取得")
     print("=" * 70)
@@ -100,10 +119,11 @@ def main():
     print()
 
     # レート制限の警告
+    total_requests = days * len(endpoints)
     if days > 30:
         print("⚠️  注意: レート制限（150リクエスト/時間）")
-        print(f"   {days}日分 = {days * 2}リクエスト（心拍数+歩数）")
-        if days > 75:
+        print(f"   {days}日分 × {len(endpoints)}エンドポイント = {total_requests}リクエスト")
+        if total_requests > 150:
             print("   2時間以上かかる可能性があります")
         print()
 
@@ -113,13 +133,6 @@ def main():
     token_file = config_dir / 'fitbit_token_dev.json'
 
     client = fitbit_api.create_client(str(creds_file), str(token_file))
-
-    # エンドポイントの選択
-    endpoints = []
-    if not args.steps_only:
-        endpoints.append('heart_rate_intraday')
-    if not args.heart_rate_only:
-        endpoints.append('steps_intraday')
 
     # データ取得
     results = {}

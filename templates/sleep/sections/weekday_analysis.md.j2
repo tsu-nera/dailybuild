@@ -1,0 +1,32 @@
+## 📅 曜日別分析
+
+{% if weekday_vs_weekend %}
+### 平日 vs 週末
+
+| 指標 | 平日 | 週末 | 差分 |
+|------|------|------|------|
+| 睡眠時間 | {{ "%.1f"|format(weekday_vs_weekend.weekday.sleep_hours) }}h | {{ "%.1f"|format(weekday_vs_weekend.weekend.sleep_hours) }}h | {{ "%+.1f"|format(weekday_vs_weekend.diff.sleep_hours) }}h |
+| 睡眠効率 | {{ "%.0f"|format(weekday_vs_weekend.weekday.efficiency) }}% | {{ "%.0f"|format(weekday_vs_weekend.weekend.efficiency) }}% | {{ "%+.1f"|format(weekday_vs_weekend.diff.efficiency) }}% |
+| 深い睡眠 | {{ "%.1f"|format(weekday_vs_weekend.weekday.deep_pct) }}% | {{ "%.1f"|format(weekday_vs_weekend.weekend.deep_pct) }}% | {{ "%+.1f"|format(weekday_vs_weekend.weekend.deep_pct - weekday_vs_weekend.weekday.deep_pct) }}% |
+| レム睡眠 | {{ "%.1f"|format(weekday_vs_weekend.weekday.rem_pct) }}% | {{ "%.1f"|format(weekday_vs_weekend.weekend.rem_pct) }}% | {{ "%+.1f"|format(weekday_vs_weekend.weekend.rem_pct - weekday_vs_weekend.weekday.rem_pct) }}% |
+
+{% if weekday_vs_weekend.diff.sleep_hours|abs > 1.0 %}
+> ⚠️ **社会的時差ボケの可能性**: 平日と週末の睡眠時間差が{{ "%.1f"|format(weekday_vs_weekend.diff.sleep_hours|abs) }}時間あります。平日の睡眠不足を週末で補償している可能性があり、体内リズムの乱れにつながります。
+{% endif %}
+{% endif %}
+
+{% if weekday_stats %}
+### 曜日ごとの傾向
+
+| 曜日 | データ数 | 睡眠時間 | 効率 | 深い% | REM% |
+|------|----------|----------|------|-------|------|
+{% for stat in weekday_stats %}
+| {{ stat.weekday_ja }} | {{ stat.count }}日 | {{ "%.1f"|format(stat.sleep_hours) }}h | {{ "%.0f"|format(stat.efficiency) }}% | {{ "%.1f"|format(stat.deep_pct) }}% | {{ "%.1f"|format(stat.rem_pct) }}% |
+{% endfor %}
+
+![曜日別比較]({{ weekday_image }})
+
+> - 平日の睡眠パターンと週末の回復パターンを確認
+> - 特定の曜日に睡眠時間が短い場合、その前日の生活習慣を見直す
+> - 週の後半（木〜金）に睡眠不足が蓄積しやすい傾向がある場合は要注意
+{% endif %}

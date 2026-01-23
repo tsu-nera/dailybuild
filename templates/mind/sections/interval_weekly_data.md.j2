@@ -1,0 +1,15 @@
+## 📊 週次データ
+
+### 自律神経系
+
+| 週 | HRV | RHR | 呼吸数 | SpO2 |
+|---|---|---|---|---|
+{% for week_data in weekly_data %}
+| **{{ week_data.week_label }}** | {{ week_data.hrv }} ({{ week_data.hrv_diff }}) | {{ week_data.rhr }} ({{ week_data.rhr_diff }}) | {{ week_data.breathing }} ({{ week_data.breathing_diff }}) | {{ week_data.spo2 }} ({{ week_data.spo2_diff }}) |
+{% endfor %}
+
+> - **HRV**: 週平均RMSSD（高い方が良好）
+> - **RHR**: 週平均安静時心拍数（低い方が良好）
+> - **呼吸数**: 週平均呼吸数（安定が良好）
+> - **SpO2**: 週平均SpO2（96%以上が良好）
+> - カッコ内は前週比（**太字**は改善方向）

@@ -1,0 +1,14 @@
+## 📊 週次データ
+
+| 週 | 睡眠時間 | 効率 | 深い% | REM% | 負債 | 就寝ばらつき | 起床ばらつき |
+|---|---|---|---|---|---|---|---|
+{% for week_data in weekly_data %}
+| **{{ week_data.week_label }}** | {{ week_data.sleep_hours }} ({{ week_data.sleep_diff }}) | {{ week_data.efficiency }} ({{ week_data.efficiency_diff }}) | {{ week_data.deep_pct }} ({{ week_data.deep_diff }}) | {{ week_data.rem_pct }} ({{ week_data.rem_diff }}) | {{ week_data.debt_value }} ({{ week_data.debt_diff }}) | {{ week_data.bedtime_std }} | {{ week_data.wakeup_std }} |
+{% endfor %}
+
+> - **睡眠時間**: 週平均睡眠時間（主睡眠のみ）
+> - **効率**: Time in Bed に対する睡眠時間の割合（85%以上が良好）
+> - **深い%/REM%**: Total Sleep Time に占める各ステージの割合
+> - **負債**: 週末時点の推定累積睡眠負債（過去14日分）
+> - **ばらつき**: 就寝・起床時刻の標準偏差（小さいほど規則的）
+> - カッコ内は前週比（**太字**は改善方向）
