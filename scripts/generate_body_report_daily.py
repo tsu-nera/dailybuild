@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib.analytics import sleep, hrv, body, nutrition, activity
+from lib.analytics import sleep, hrv, body, nutrition, activity, training
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 
 BASE_DIR = project_root
@@ -458,11 +458,22 @@ def _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats):
     if HRV_MASTER_CSV.exists():
         df_hrv_all = pd.read_csv(HRV_MASTER_CSV)
         df_hrv_all['date'] = pd.to_datetime(df_hrv_all['date'])
+        df_hrv_all.set_index('date', inplace=True)
+
+        # 7日移動統計を計算
+        df_hrv_all = training.calc_hrv_7day_rolling_stats(df_hrv_all)
 
     df_hr_all = None
     if HEART_RATE_MASTER_CSV.exists():
         df_hr_all = pd.read_csv(HEART_RATE_MASTER_CSV)
         df_hr_all['date'] = pd.to_datetime(df_hr_all['date'])
+
+    # 筋トレ判断データを準備
+    training_readiness = None
+    if df_hrv_all is not None:
+        training_readiness = training.prepare_training_readiness_data(
+            start_date, end_date, df_hrv_all, df_sleep_filtered
+        )
 
     # 日別データの準備
     recovery_data = []
@@ -485,12 +496,8 @@ def _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats):
             row['deep_minutes'] = None
 
         # HRVデータ
-        if df_hrv_all is not None:
-            hrv_day = df_hrv_all[df_hrv_all['date'] == date]
-            if len(hrv_day) > 0:
-                row['hrv'] = hrv_day['daily_rmssd'].iloc[0]
-            else:
-                row['hrv'] = None
+        if df_hrv_all is not None and date in df_hrv_all.index:
+            row['hrv'] = df_hrv_all.loc[date, 'daily_rmssd']
         else:
             row['hrv'] = None
 
@@ -503,6 +510,17 @@ def _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats):
                 row['hr'] = None
         else:
             row['hr'] = None
+
+        # 筋トレ判断データを追加
+        if training_readiness:
+            training_day = next((t for t in training_readiness if t['date'] == date), None)
+            if training_day:
+                row['training_recommendation'] = training_day.get('recommendation', '-')
+                row['training_intensity'] = training_day.get('intensity', 'unknown')
+                row['training_reason'] = training_day.get('reason', '-')
+                row['hrv_7day_mean'] = training_day.get('hrv_7day_mean')
+                row['hrv_7day_lower'] = training_day.get('hrv_7day_lower')
+                row['hrv_7day_upper'] = training_day.get('hrv_7day_upper')
 
         recovery_data.append(row)
 
