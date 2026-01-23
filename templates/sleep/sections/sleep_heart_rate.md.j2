@@ -1,54 +1,11 @@
 {% if heart_rate %}
 ## 睡眠中の心拍数
 
-| 日付 | 平均 | 最小 | 最大 | 安静時 | ベースライン比較 | ディップ率(%) | 最低HR到達(分) |
-|------|------|------|------|--------|------------------|---------------|----------------|
+| 日付 | 平均 | 最小 | 最大 | 安静時 | ベースライン比較 | ディップ率(%) | 最低HR到達(分) | Daily RMSSD | Deep RMSSD |
+|------|------|------|------|--------|------------------|---------------|----------------|-------------|------------|
 {% for row in heart_rate.table -%}
-| {{ row.date }} | {{ row.avg_hr }} | {{ row.min_hr }} | {{ row.max_hr }} | {{ row.daily_resting_hr }} | 高{{ row.above_baseline_pct }}% / 低{{ row.below_baseline_pct }}% | {{ row.dip_rate }} | {{ row.time_to_min_hr }} |
+| {{ row.date }} | {{ row.avg_hr }} | {{ row.min_hr }} | {{ row.max_hr }} | {{ row.daily_resting_hr }} | 高{{ row.above_baseline_pct }}% / 低{{ row.below_baseline_pct }}% | {{ row.dip_rate }} | {{ row.time_to_min_hr }} | {{ row.daily_rmssd }} | {{ row.deep_rmssd }} |
 {% endfor %}
 
 **ベースライン**: 過去7日間の平均安静時心拍数（{{ heart_rate.baseline|round(1) }} bpm）
-
-{% if heart_rate.avg_dip_rate %}
-### 高度な心拍数指標
-
-- **平均ディップ率**: {{ heart_rate.avg_dip_rate }}%
-  - 健康な人は睡眠中に心拍数が日中の10-20%低下します
-  - 10%未満の場合は「非ディッパー」で心血管リスクが2.4倍に増加
-- **平均最低HR到達時間**: {{ heart_rate.avg_time_to_min_hr }}分
-  - 入眠後、副交感神経が活性化し心拍数が低下します
-  - 健康な範囲は60-180分程度
-{% endif %}
-
-> ほとんどの人の場合、睡眠中の心拍数は、起きているときの安静時心拍数よりも平均して低くなります。
-{% endif %}
-
-{% if hrv_intraday %}
-## 自律神経バランス（HRV Intraday）
-
-睡眠中の心拍変動（HRV）から自律神経の状態を評価します。
-
-### 主要指標
-
-- **平均LF/HF比**: {{ hrv_intraday.avg_lf_hf_ratio }}
-  - 自律神経バランスの指標（低いほど副交感神経優位、リラックス状態）
-  - 覚醒時より低い値が望ましい
-{% if hrv_intraday.avg_hf_activation_speed %}
-- **HF変化率（入眠後30-60分）**: {{ hrv_intraday.avg_hf_activation_speed }}%
-  - 入眠初期のHF成分の変化
-  - 正の値は副交感神経の活性化、負の値は変動を示す
-{% endif %}
-{% if hrv_intraday.avg_lf_hf_decline_rate %}
-- **LF/HF変化率（入眠後→起床前）**: {{ hrv_intraday.avg_lf_hf_decline_rate }}%
-  - 睡眠中のLF/HF比の変化
-  - 正の値は睡眠中にリラックスが進んだことを示す
-{% endif %}
-
-### HRVの意味
-
-- **HF（高周波成分）**: 副交感神経活動の指標。高いほどリラックス状態
-- **LF（低周波成分）**: 交感神経と副交感神経の混合指標
-- **LF/HF比**: 自律神経バランス。睡眠中は低下するのが理想的
-
-> 睡眠中のHRVは、回復の質を評価する重要な指標です。副交感神経が優位になることで、身体が効果的に回復します。
 {% endif %}

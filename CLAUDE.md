@@ -51,8 +51,8 @@ python scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
     - `base.md.j2`, `daily_report.md.j2`
     - `sections/` - HRV、心拍、睡眠、生理指標のセクション
   - `sleep/` - 睡眠分析レポート
-    - `base.md.j2`, `daily_report.md.j2`
-    - `sections/` - サマリー、効率、ステージ、タイミング、サイクルのセクション
+    - `base.md.j2`, `daily_report.md.j2`, `interval_report.md.j2`
+    - `sections/` - サマリー、効率、ステージ、タイミング、サイクル、週次データのセクション
 - `config/` - API認証情報（gitignore対象）
 - `data/` - 出力CSV
 - `notes/` - Jupyter notebooks（実験・分析用）
@@ -72,6 +72,7 @@ python scripts/generate_mind_report_daily.py --days 7          # 日次（7日�
 
 # 睡眠分析レポート
 python scripts/generate_sleep_report_daily.py --days 7         # 日次（7日間）
+python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8週間）
 ```
 
 ### テンプレートアーキテクチャ
