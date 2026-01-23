@@ -8,4 +8,20 @@
 {% for row in recovery_data %}
 | {{ row.date | date_format }} | {{ row.sleep_hours | number_format(1) }} | {{ row.deep_minutes | number_format(0) }} | {{ row.hrv | number_format(0) }} | {{ row.hr | number_format(0) }} |
 {% endfor %}
+
+### 💪 筋トレ判断（HRVベース）
+
+> **Kiviniemiアルゴリズム**: 7日移動平均 ± 0.5SD で判定
+> - 🟢 通常トレーニングOK：HRV > 平均 + 0.5SD
+> - 🟢 中強度（70%）：正常範囲内
+> - 🟡 軽め（50%）または休養：HRV < 平均 - 0.5SD
+
+| 日付 | HRV | 7日平均 | 範囲 | 判定 |
+|------|-----|---------|------|------|
+{% for row in recovery_data %}
+{% if row.training_recommendation %}
+| {{ row.date | date_format }} | {{ row.hrv | number_format(1) }} | {{ row.hrv_7day_mean | number_format(1) if row.hrv_7day_mean else '-' }} | {{ row.hrv_7day_lower | number_format(1) if row.hrv_7day_lower else '-' }} - {{ row.hrv_7day_upper | number_format(1) if row.hrv_7day_upper else '-' }} | {% if row.training_intensity == 'high' %}🟢{% elif row.training_intensity == 'medium' %}🟢{% elif row.training_intensity == 'low' %}🟡{% else %}⚪{% endif %} {{ row.training_recommendation }} |
+{% endif %}
+{% endfor %}
+
 {% endif %}
