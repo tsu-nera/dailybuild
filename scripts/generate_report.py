@@ -34,7 +34,8 @@ REPORT_SCRIPTS = {
     },
     'interval': {
         'body': 'generate_body_report_interval.py',
-        # sleep/mind は未実装
+        'sleep': 'generate_sleep_report_interval.py',
+        'mind': 'generate_mind_report_interval.py',
     },
 }
 
