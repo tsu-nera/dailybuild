@@ -175,6 +175,7 @@ def prepare_sleep_report_data(results):
                 'below_baseline_pct': f"{stats_day.get('below_baseline_pct', 0):.0f}",
                 'dip_rate': f"{advanced_day.get('dip_rate_avg', 0):.1f}" if advanced_day else '-',
                 'time_to_min_hr': f"{advanced_day.get('time_to_min_hr', 0):.0f}" if advanced_day else '-',
+                'min_hr_time': advanced_day.get('min_hr_time', '-') if advanced_day else '-',
                 'daily_rmssd': daily_rmssd,
                 'deep_rmssd': deep_rmssd,
             })
