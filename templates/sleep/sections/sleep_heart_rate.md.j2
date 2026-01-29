@@ -1,10 +1,10 @@
 {% if heart_rate %}
 ## 睡眠中の心拍分析
 
-| 日付 | 平均 | 最小 | 最大 | 安静時 | Baseline | Dip(%) | min HR | Daily RMSSD | Deep RMSSD |
+| 日付 | 平均 | 最小 | 最大 | 安静時 | Baseline | Dip(%) | 最低HR | Daily RMSSD | Deep RMSSD |
 |------|------|------|------|--------|----------|--------|--------|-------------|------------|
 {% for row in heart_rate.table -%}
-| {{ row.date }} | {{ row.avg_hr }} | {{ row.min_hr }} | {{ row.max_hr }} | {{ row.daily_resting_hr }} | 高{{ row.above_baseline_pct }}% / 低{{ row.below_baseline_pct }}% | {{ row.dip_rate }} | {{ row.min_hr_time }}({{ row.time_to_min_hr }}) | {{ row.daily_rmssd }} | {{ row.deep_rmssd }} |
+| {{ row.date }} | {{ row.avg_hr }} | {{ row.min_hr }} | {{ row.max_hr }} | {{ row.daily_resting_hr }} | 高{{ row.above_baseline_pct }}% / 低{{ row.below_baseline_pct }}% | {{ row.dip_rate }} | {{ row.time_to_min_hr }} | {{ row.daily_rmssd }} | {{ row.deep_rmssd }} |
 {% endfor %}
 
 **ベースライン**: 過去7日間の平均安静時心拍数（{{ heart_rate.baseline|round(1) }} bpm）

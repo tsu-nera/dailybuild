@@ -67,6 +67,15 @@ def fetch_latest_data() -> bool:
         print("HealthPlanet取得エラー")
         return False
 
+    print("\n=== 日出・日入データ取得 ===")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_DIR / 'fetch_sun_times.py'), '--days', '14'],
+        cwd=str(PROJECT_ROOT)
+    )
+    if result.returncode != 0:
+        print("日出・日入取得エラー")
+        return False
+
     print("\n=== 完了 ===\n")
     return True
 

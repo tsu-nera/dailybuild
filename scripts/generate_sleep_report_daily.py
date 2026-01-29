@@ -33,6 +33,7 @@ HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 HRV_INTRADAY_CSV = BASE_DIR / 'data/fitbit/hrv_intraday.csv'
 HR_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
 HR_DAILY_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
+SUN_TIMES_CSV = BASE_DIR / 'data/sun_times.csv'
 
 
 def prepare_sleep_report_data(results):
@@ -165,6 +166,11 @@ def prepare_sleep_report_data(results):
                     daily_rmssd = f"{hrv_row['daily_rmssd'].iloc[0]:.1f}"
                     deep_rmssd = f"{hrv_row['deep_rmssd'].iloc[0]:.1f}"
 
+            # 最低HR: 入眠からの経過分を表示
+            time_to_min_hr_display = '-'
+            if advanced_day and advanced_day.get('time_to_min_hr') is not None:
+                time_to_min_hr_display = f"{advanced_day['time_to_min_hr']:.0f}"
+
             hr_table.append({
                 'date': pd.to_datetime(date).strftime('%m/%d'),
                 'avg_hr': f"{stats_day['avg_hr']:.0f}",
@@ -174,7 +180,7 @@ def prepare_sleep_report_data(results):
                 'above_baseline_pct': f"{stats_day.get('above_baseline_pct', 0):.0f}",
                 'below_baseline_pct': f"{stats_day.get('below_baseline_pct', 0):.0f}",
                 'dip_rate': f"{advanced_day.get('dip_rate_avg', 0):.1f}" if advanced_day else '-',
-                'time_to_min_hr': f"{advanced_day.get('time_to_min_hr', 0):.0f}" if advanced_day else '-',
+                'time_to_min_hr': time_to_min_hr_display,
                 'min_hr_time': advanced_day.get('min_hr_time', '-') if advanced_day else '-',
                 'daily_rmssd': daily_rmssd,
                 'deep_rmssd': deep_rmssd,
@@ -197,6 +203,60 @@ def prepare_sleep_report_data(results):
             'avg_dip_rate': f"{avg_dip_rate:.1f}" if avg_dip_rate is not None else None,
             'avg_time_to_min_hr': f"{avg_time_to_min_hr:.0f}" if avg_time_to_min_hr is not None else None,
         }
+
+    # timing_tableに最低HR時刻を追加
+    timing_table = results['timing_table'].copy()
+    if results.get('advanced_hr_metrics') is not None:
+        advanced_hr = results['advanced_hr_metrics']
+
+        # 日付をキーにして最低HR時刻を取得
+        min_hr_times = []
+        for idx, row in timing_table.iterrows():
+            date_str = row['日付']
+            # mm/dd形式からyyyy-mm-dd形式に変換
+            year = stats['period']['end'].split('-')[0]
+            month, day = date_str.split('/')
+            full_date = f"{year}-{month}-{day}"
+
+            min_hr_time = advanced_hr.get(full_date, {}).get('min_hr_time', '-')
+            min_hr_times.append(min_hr_time)
+
+        # 最低HRカラムを日出の前に挿入
+        timing_table.insert(timing_table.columns.get_loc('日出'), '最低HR', min_hr_times)
+
+        # 最低HR時刻の統計を計算
+        valid_times = [t for t in min_hr_times if t != '-']
+        min_hr_mean = '-'
+        min_hr_earliest = '-'
+        min_hr_latest = '-'
+        min_hr_std = '-'
+
+        if valid_times:
+            # HH:MM形式を分単位に変換
+            times_in_minutes = []
+            for t in valid_times:
+                h, m = map(int, t.split(':'))
+                times_in_minutes.append(h * 60 + m)
+
+            mean_minutes = sum(times_in_minutes) / len(times_in_minutes)
+            min_hr_mean = f"{int(mean_minutes // 60):02d}:{int(mean_minutes % 60):02d}"
+
+            earliest_minutes = min(times_in_minutes)
+            min_hr_earliest = f"{int(earliest_minutes // 60):02d}:{int(earliest_minutes % 60):02d}"
+
+            latest_minutes = max(times_in_minutes)
+            min_hr_latest = f"{int(latest_minutes // 60):02d}:{int(latest_minutes % 60):02d}"
+
+            # 標準偏差を計算
+            if len(times_in_minutes) > 1:
+                variance = sum((t - mean_minutes) ** 2 for t in times_in_minutes) / len(times_in_minutes)
+                std_minutes = variance ** 0.5
+                min_hr_std = f"{std_minutes:.0f}"
+    else:
+        min_hr_mean = '-'
+        min_hr_earliest = '-'
+        min_hr_latest = '-'
+        min_hr_std = '-'
 
     context = {
         'report_title': '日次睡眠レポート',
@@ -258,7 +318,13 @@ def prepare_sleep_report_data(results):
             'waketime_earliest': stats['waketime']['earliest'],
             'waketime_latest': stats['waketime']['latest'],
             'waketime_std': f"{stats['waketime']['std_minutes']:.0f}",
-            'table': results['timing_table'].to_markdown(index=False)
+            'min_hr_mean': min_hr_mean,
+            'min_hr_earliest': min_hr_earliest,
+            'min_hr_latest': min_hr_latest,
+            'min_hr_std': min_hr_std,
+            'sunrise_mean': timing_table['日出'].iloc[0] if len(timing_table) > 0 and '日出' in timing_table.columns else '-',
+            'sunset_mean': timing_table['日入'].iloc[0] if len(timing_table) > 0 and '日入' in timing_table.columns else '-',
+            'table': timing_table.to_markdown(index=False)
         },
         'heart_rate': heart_rate_data,
         'cycles': cycles_data
@@ -327,6 +393,9 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
     # データ読み込み
     print(f'Loading: {MASTER_CSV}')
     df_all_sleep = pd.read_csv(MASTER_CSV)
+
+    # 日出・日入データ読み込み
+    df_sun = pd.read_csv(SUN_TIMES_CSV) if SUN_TIMES_CSV.exists() else pd.DataFrame()
 
     # 主睡眠のみを抽出（ほとんどの分析で使用）
     df_main_sleep_full = df_all_sleep[df_all_sleep['isMainSleep'] == True].copy()
@@ -447,6 +516,15 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         else:
             wakeup_time = '-'
 
+        # 日出・日入をCSVから取得
+        if not df_sun.empty and date in df_sun['date'].values:
+            sun_row = df_sun[df_sun['date'] == date].iloc[0]
+            sunrise_time = sun_row['sunrise']
+            sunset_time = sun_row['sunset']
+        else:
+            sunrise_time = '-'
+            sunset_time = '-'
+
         # 就寝・起床テーブル（時刻のばらつき）
         timing_data.append({
             '日付': date_short,
@@ -454,6 +532,8 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
             '入眠': fall_asleep_time,
             '起床': wakeup_time,
             '離床': waketime,
+            '日出': sunrise_time,
+            '日入': sunset_time,
         })
 
     results['efficiency_table'] = pd.DataFrame(efficiency_data)
@@ -483,9 +563,17 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
             target_dates = df_master['dateOfSleep'].tolist() if 'dateOfSleep' in df_master.columns else df_master.index.tolist()
             df_levels = df_levels[df_levels['dateOfSleep'].isin(target_dates)]
 
+        # タイムライン画像は最新7日分のみ表示
+        df_levels_timeline = df_levels.copy()
+        if len(df_master) > 7:
+            # 最新7日分の日付を取得
+            latest_dates = df_master.sort_values('dateOfSleep', ascending=False).head(7)['dateOfSleep'].tolist()
+            df_levels_timeline = df_levels[df_levels['dateOfSleep'].isin(latest_dates)]
+            print(f'タイムライン表示: 最新7日分に制限（全体: {len(df_master)}日）')
+
         print('プロット中: 睡眠タイムライン...')
         timeline_img = 'sleep_timeline.png'
-        sleep.plot_sleep_timeline(df_levels, save_path=img_dir / timeline_img)
+        sleep.plot_sleep_timeline(df_levels_timeline, save_path=img_dir / timeline_img)
         results['timeline_img'] = timeline_img
 
         # サイクル分析
