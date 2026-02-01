@@ -520,6 +520,63 @@ def parse_food_log(data):
     return results
 
 
+def parse_food_logs(data):
+    """
+    個別の食事ログをリストに変換
+
+    Args:
+        data: get_food_log_by_date_rangeの戻り値
+
+    Returns:
+        個別食事ログのリスト
+
+    各ログの情報:
+        - logId: ログID
+        - logDate: 日付
+        - foodId: 食品ID
+        - foodName: 食品名
+        - mealTypeId: 食事タイプ（1=朝食, 2=昼食, 3=夕食, 4=間食, 7=水分）
+        - amount: 量
+        - unitId: 単位ID
+        - unitName: 単位名
+        - calories: カロリー
+        - protein: タンパク質
+        - fat: 脂質
+        - carbs: 炭水化物
+        - fiber: 食物繊維
+        - sodium: ナトリウム
+    """
+    results = []
+
+    for date_str, day_data in data.items():
+        foods = day_data.get('foods', [])
+
+        for food in foods:
+            logged_food = food.get('loggedFood', {})
+            unit = logged_food.get('unit', {})
+            nutrients = logged_food.get('nutritionalValues', {})
+
+            row = {
+                'logId': food.get('logId'),
+                'logDate': food.get('logDate'),
+                'foodId': logged_food.get('foodId'),
+                'foodName': logged_food.get('name'),
+                'mealTypeId': logged_food.get('mealTypeId'),
+                'amount': logged_food.get('amount'),
+                'unitId': unit.get('id'),
+                'unitName': unit.get('name'),
+                'calories': logged_food.get('calories'),
+                'protein': nutrients.get('protein'),
+                'fat': nutrients.get('fat'),
+                'carbs': nutrients.get('carbs'),
+                'fiber': nutrients.get('fiber'),
+                'sodium': nutrients.get('sodium'),
+            }
+            results.append(row)
+
+    return results
+
+
 # =============================================================================
 # Activity API
 # https://dev.fitbit.com/build/reference/web-api/activity/

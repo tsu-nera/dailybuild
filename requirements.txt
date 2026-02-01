@@ -1,3 +1,4 @@
+astral
 fitbit
 gspread
 pandas

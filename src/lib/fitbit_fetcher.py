@@ -113,6 +113,7 @@ ENDPOINTS = {
         'date_column': 'date',
         'max_days': None,
         'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
+        'has_food_logs': True,  # 個別食事ログあり
     },
     'breathing_rate': {
         'description': '呼吸数',
@@ -201,6 +202,11 @@ def get_output_path(endpoint: str) -> Path:
 def get_levels_output_path() -> Path:
     """睡眠ステージ詳細データの出力パスを取得"""
     return DATA_DIR / 'sleep_levels.csv'
+
+
+def get_food_logs_output_path() -> Path:
+    """個別食事ログの出力パスを取得"""
+    return DATA_DIR / 'food_logs.csv'
 
 
 def _format_api_error(exception: Exception) -> str:
@@ -363,6 +369,11 @@ def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = Fa
         levels_result = _save_sleep_levels(response, overwrite)
         result['levels'] = levels_result
 
+    # 個別食事ログ（nutritionのみ）
+    if config.get('has_food_logs'):
+        food_logs_result = _save_food_logs(response, overwrite)
+        result['food_logs'] = food_logs_result
+
     return result
 
 
@@ -385,6 +396,7 @@ def _fetch_endpoint_chunked(client, endpoint: str, start_date: dt.date, end_date
     """
     all_records = []
     all_sleep_levels = []  # sleep_levels用
+    all_food_logs = []  # food_logs用
     current_start = start_date
     chunk_num = 1
     total_chunks = ((end_date - start_date).days + max_days) // max_days
@@ -423,6 +435,12 @@ def _fetch_endpoint_chunked(client, endpoint: str, start_date: dt.date, end_date
                 levels_data = fitbit_api.parse_sleep_levels(response)
                 if levels_data:
                     all_sleep_levels.extend(levels_data)
+
+            # food_logsも取得
+            if config.get('has_food_logs'):
+                food_logs_data = fitbit_api.parse_food_logs(response)
+                if food_logs_data:
+                    all_food_logs.extend(food_logs_data)
 
         except Exception as e:
             error_msg = _format_api_error(e)
@@ -501,6 +519,27 @@ def _fetch_endpoint_chunked(client, endpoint: str, start_date: dt.date, end_date
 
         result['levels'] = {'records': len(df_levels), 'path': out_levels_path}
 
+    # 個別食事ログ（nutritionのみ）
+    if config.get('has_food_logs') and all_food_logs:
+        df_food_logs = pd.DataFrame(all_food_logs)
+        df_food_logs['logDate'] = pd.to_datetime(df_food_logs['logDate'])
+        df_food_logs.sort_values(['logDate', 'logId'], inplace=True)
+
+        out_food_logs_path = get_food_logs_output_path()
+
+        if not overwrite:
+            df_food_logs = csv_utils.merge_csv_by_columns(
+                df_food_logs, out_food_logs_path,
+                key_columns=['logId'],
+                parse_dates=['logDate'],
+                sort_by=['logDate', 'logId']
+            )
+
+        df_food_logs.to_csv(out_food_logs_path, index=False)
+        print(f"  個別ログ保存: {out_food_logs_path} ({len(df_food_logs)}件)")
+
+        result['food_logs'] = {'records': len(df_food_logs), 'path': out_food_logs_path}
+
     return result
 
 
@@ -528,6 +567,32 @@ def _save_sleep_levels(response: dict, overwrite: bool) -> dict:
     print(f"  詳細保存: {out_path} ({len(df_levels)}件)")
 
     return {'records': len(df_levels), 'path': out_path}
+
+
+def _save_food_logs(response: dict, overwrite: bool) -> dict:
+    """個別食事ログを保存"""
+    food_logs_data = fitbit_api.parse_food_logs(response)
+    if not food_logs_data:
+        return {'records': 0, 'path': None}
+
+    df_logs = pd.DataFrame(food_logs_data)
+    df_logs['logDate'] = pd.to_datetime(df_logs['logDate'])
+    df_logs.sort_values(['logDate', 'logId'], inplace=True)
+
+    out_path = get_food_logs_output_path()
+
+    if not overwrite:
+        df_logs = csv_utils.merge_csv_by_columns(
+            df_logs, out_path,
+            key_columns=['logId'],
+            parse_dates=['logDate'],
+            sort_by=['logDate', 'logId']
+        )
+
+    df_logs.to_csv(out_path, index=False)
+    print(f"  個別ログ保存: {out_path} ({len(df_logs)}件)")
+
+    return {'records': len(df_logs), 'path': out_path}
 
 
 def fetch_time_series_endpoints(client, days: int = None, overwrite: bool = False,
