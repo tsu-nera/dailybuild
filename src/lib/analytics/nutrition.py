@@ -168,6 +168,55 @@ def calc_predicted_gl(carbs, fiber, protein, fat):
     return max(0, gl)
 
 
+def calc_simple_gl(carbs, fiber):
+    """
+    シンプルなグリセミック負荷（GL）計算式
+
+    食事記録が不正確な場合に適した簡易版。
+    炭水化物と食物繊維のみを使用し、タンパク質・脂質の影響を考慮しない。
+
+    Parameters
+    ----------
+    carbs : float
+        炭水化物 (g)
+    fiber : float
+        食物繊維 (g)
+
+    Returns
+    -------
+    float
+        簡易グリセミック負荷
+        - 低 (< 10): 血糖値への影響が小さい
+        - 中 (10-20): 中程度の血糖値上昇
+        - 高 (> 20): 大きな血糖値上昇
+
+    Notes
+    -----
+    計算式:
+    GL = (炭水化物 - 食物繊維) × 0.2
+
+    理論的根拠:
+    - 標準的なGL定義: GL = (利用可能炭水化物 × GI) / 100
+    - GI値を20（低GI食品の平均）と仮定
+    - 実際の食事は低GI食品（さつまいも、オートミール等）が中心のため
+    - タンパク質・脂質の記録が不正確でも影響を受けない
+    - シンプルで理解しやすい
+
+    利点:
+    - 記録の不正確さに対してロバスト
+    - タンパク質が極端に多い日でもGLが0にならない
+    - 炭水化物の絶対量を直接反映
+    - 低GI食品中心の食事パターンに適合
+    """
+    # 利用可能炭水化物（正味炭水化物）
+    available_carbs = max(0, carbs - fiber)
+
+    # シンプルGL計算（低GI食品を仮定してGI=20相当）
+    gl = available_carbs * 0.2
+
+    return max(0, gl)
+
+
 def categorize_gl(gl):
     """
     グリセミック負荷をカテゴリに分類
@@ -190,7 +239,7 @@ def categorize_gl(gl):
         return "高"
 
 
-def add_glycemic_scores(df_nutrition):
+def add_glycemic_scores(df_nutrition, method='simple'):
     """
     栄養データフレームにGLスコアを追加
 
@@ -198,6 +247,12 @@ def add_glycemic_scores(df_nutrition):
     ----------
     df_nutrition : pd.DataFrame
         carbs, fiber, protein, fatを含む栄養データ
+    method : str, optional
+        GL計算方法（デフォルト: 'simple'）
+        - 'simple': 簡易版（炭水化物と食物繊維のみ）
+          記録が不正確な場合に適している
+        - 'research': 研究ベース（Pongutta et al., 2021）
+          タンパク質・脂質も考慮する高精度版
 
     Returns
     -------
@@ -207,18 +262,27 @@ def add_glycemic_scores(df_nutrition):
     Examples
     --------
     >>> df = pd.read_csv('nutrition.csv')
-    >>> df = add_glycemic_scores(df)
+    >>> df = add_glycemic_scores(df, method='simple')
     >>> print(df[['date', 'predicted_gl', 'gl_category']].head())
     """
     df = df_nutrition.copy()
 
-    # GL計算
-    df['predicted_gl'] = df.apply(
-        lambda row: calc_predicted_gl(
-            row['carbs'], row['fiber'],
-            row['protein'], row['fat']
-        ), axis=1
-    )
+    # GL計算（方法を選択）
+    if method == 'simple':
+        df['predicted_gl'] = df.apply(
+            lambda row: calc_simple_gl(
+                row['carbs'], row['fiber']
+            ), axis=1
+        )
+    elif method == 'research':
+        df['predicted_gl'] = df.apply(
+            lambda row: calc_predicted_gl(
+                row['carbs'], row['fiber'],
+                row['protein'], row['fat']
+            ), axis=1
+        )
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'simple' or 'research'.")
 
     # カテゴリ分類
     df['gl_category'] = df['predicted_gl'].apply(categorize_gl)
@@ -293,7 +357,7 @@ def analyze_glycemic_impact(df_nutrition):
 # 夜の食事のみのGL計算（nutrition_logs.csv）
 # ============================================================================
 
-def calc_evening_gl_from_logs(logs_csv_path):
+def calc_evening_gl_from_logs(logs_csv_path, method='simple'):
     """
     nutrition_logs.csvから夜の食事（夕食+夜の間食）のGLを計算
 
@@ -303,6 +367,10 @@ def calc_evening_gl_from_logs(logs_csv_path):
     ----------
     logs_csv_path : str
         nutrition_logs.csvのパス
+    method : str, optional
+        GL計算方法（デフォルト: 'simple'）
+        - 'simple': 簡易版（炭水化物と食物繊維のみ）
+        - 'research': 研究ベース（タンパク質・脂質も考慮）
 
     Returns
     -------
@@ -355,13 +423,22 @@ def calc_evening_gl_from_logs(logs_csv_path):
         'fat': 'sum',
     }).reset_index()
 
-    # evening_glを計算
-    evening_daily['evening_gl'] = evening_daily.apply(
-        lambda row: calc_predicted_gl(
-            row['carbs'], row['fiber'],
-            row['protein'], row['fat']
-        ), axis=1
-    )
+    # evening_glを計算（方法を選択）
+    if method == 'simple':
+        evening_daily['evening_gl'] = evening_daily.apply(
+            lambda row: calc_simple_gl(
+                row['carbs'], row['fiber']
+            ), axis=1
+        )
+    elif method == 'research':
+        evening_daily['evening_gl'] = evening_daily.apply(
+            lambda row: calc_predicted_gl(
+                row['carbs'], row['fiber'],
+                row['protein'], row['fat']
+            ), axis=1
+        )
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'simple' or 'research'.")
 
     # evening_gl_categoryを追加
     evening_daily['evening_gl_category'] = evening_daily['evening_gl'].apply(categorize_gl)
@@ -370,7 +447,7 @@ def calc_evening_gl_from_logs(logs_csv_path):
     return evening_daily[['date', 'evening_gl', 'evening_gl_category']]
 
 
-def add_evening_gl_to_nutrition(df_nutrition, logs_csv_path):
+def add_evening_gl_to_nutrition(df_nutrition, logs_csv_path, method='simple'):
     """
     栄養データに夜の食事のみのGLを追加
 
@@ -380,6 +457,10 @@ def add_evening_gl_to_nutrition(df_nutrition, logs_csv_path):
         栄養データ（dateカラム必須）
     logs_csv_path : str
         nutrition_logs.csvのパス
+    method : str, optional
+        GL計算方法（デフォルト: 'simple'）
+        - 'simple': 簡易版（炭水化物と食物繊維のみ）
+        - 'research': 研究ベース（タンパク質・脂質も考慮）
 
     Returns
     -------
@@ -394,7 +475,7 @@ def add_evening_gl_to_nutrition(df_nutrition, logs_csv_path):
     >>> print(df[['date', 'predicted_gl', 'evening_gl']])
     """
     # 夜の食事のGLを計算
-    df_evening = calc_evening_gl_from_logs(logs_csv_path)
+    df_evening = calc_evening_gl_from_logs(logs_csv_path, method=method)
 
     df = df_nutrition.copy()
 
