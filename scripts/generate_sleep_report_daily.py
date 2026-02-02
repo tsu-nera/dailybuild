@@ -34,6 +34,7 @@ HRV_INTRADAY_CSV = BASE_DIR / 'data/fitbit/hrv_intraday.csv'
 HR_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
 HR_DAILY_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
 SUN_TIMES_CSV = BASE_DIR / 'data/sun_times.csv'
+NUTRITION_CSV = BASE_DIR / 'data/fitbit/nutrition.csv'
 
 
 def prepare_sleep_report_data(results):
@@ -137,6 +138,14 @@ def prepare_sleep_report_data(results):
             'avg_deep_in_first_half': f"{cs['avg_deep_in_first_half']:.0f}",
             'cycle_table': cycle_display.to_markdown(index=False),
             'rem_table': rem_display.to_markdown(index=False)
+        }
+
+    # 栄養データ（条件付き）
+    nutrition_data = None
+    if results.get('nutrition_table') is not None:
+        nutr_table = results['nutrition_table']
+        nutrition_data = {
+            'table': nutr_table.to_dict('records'),
         }
 
     # 心拍数データ（条件付き）
@@ -326,6 +335,7 @@ def prepare_sleep_report_data(results):
             'sunset_mean': timing_table['日入'].iloc[0] if len(timing_table) > 0 and '日入' in timing_table.columns else '-',
             'table': timing_table.to_markdown(index=False)
         },
+        'nutrition': nutrition_data,
         'heart_rate': heart_rate_data,
         'cycles': cycles_data
     }
@@ -626,6 +636,58 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         results['heart_rate_stats'] = None
         results['hr_baseline'] = None
         results['advanced_hr_metrics'] = None
+
+    # 栄養データの読み込みと分析
+    if NUTRITION_CSV.exists():
+        print(f'Loading: {NUTRITION_CSV}')
+        df_nutrition = pd.read_csv(NUTRITION_CSV)
+        df_nutrition['date'] = pd.to_datetime(df_nutrition['date'])
+
+        # カロリーが0より大きい日のみ（記録がある日）
+        df_nutrition = df_nutrition[df_nutrition['calories'] > 0].copy()
+
+        # GLスコアを計算
+        from lib.analytics import nutrition as nutr
+        df_nutrition = nutr.add_glycemic_scores(df_nutrition)
+
+        # 栄養データと睡眠心拍数データを結合（栄養日の翌日の睡眠データ）
+        print('計算中: 栄養データと睡眠心拍数の結合...')
+        nutrition_table = []
+        for _, nutr_row in df_nutrition.iterrows():
+            nutrition_date = nutr_row['date']
+            sleep_date = nutrition_date + pd.Timedelta(days=1)
+
+            # 対応する睡眠データを検索
+            sleep_date_str = sleep_date.strftime('%Y-%m-%d')
+            sleep_rows = df_master[df_master['dateOfSleep'] == sleep_date_str]
+
+            # フィルタリング期間内の睡眠データのみを対象
+            if len(sleep_rows) > 0:
+                sleep_row = sleep_rows.iloc[0]
+                # 心拍数データを取得
+                hr_stat = hr_stats.get(sleep_date_str, {}) if hr_stats else {}
+                adv_hr = advanced_hr.get(sleep_date_str, {}) if advanced_hr else {}
+
+                nutrition_table.append({
+                    'date': pd.to_datetime(nutrition_date).strftime('%m/%d'),
+                    'carbs': f"{nutr_row['carbs']:.0f}",
+                    'fiber': f"{nutr_row['fiber']:.0f}",
+                    'predicted_gl': f"{nutr_row['predicted_gl']:.1f}",
+                    'gl_category': nutr_row['gl_category'],
+                    'deep_minutes': int(sleep_row['deepMinutes']),
+                    'efficiency': int(sleep_row['efficiency']),
+                    'min_hr': hr_stat.get('min_hr', '-'),
+                    'min_hr_time': adv_hr.get('min_hr_time', '-'),
+                    'dip_rate': f"{adv_hr.get('dip_rate_avg', 0):.1f}" if adv_hr.get('dip_rate_avg') else '-',
+                })
+
+        if nutrition_table:
+            results['nutrition_table'] = pd.DataFrame(nutrition_table)
+        else:
+            results['nutrition_table'] = None
+    else:
+        print(f'警告: {NUTRITION_CSV} が見つかりません。栄養分析をスキップします。')
+        results['nutrition_table'] = None
 
     # 睡眠負債分析（全データを使用）
     df_hrv = None

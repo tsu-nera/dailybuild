@@ -113,7 +113,7 @@ ENDPOINTS = {
         'date_column': 'date',
         'max_days': None,
         'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
-        'has_nutrition_logs': True,  # 個別食事ログあり
+        'has_nutrition_logs': False,  # 個別食事ログあり（デフォルトでは取得しない）
     },
     'breathing_rate': {
         'description': '呼吸数',
