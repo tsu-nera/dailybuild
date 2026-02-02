@@ -520,7 +520,7 @@ def parse_food_log(data):
     return results
 
 
-def parse_food_logs(data):
+def parse_nutrition_logs(data):
     """
     個別の食事ログをリストに変換
 
@@ -535,7 +535,7 @@ def parse_food_logs(data):
         - logDate: 日付
         - foodId: 食品ID
         - foodName: 食品名
-        - mealTypeId: 食事タイプ（1=朝食, 2=昼食, 3=夕食, 4=間食, 7=水分）
+        - mealTypeId: 食事タイプ（1=朝食, 2=午前の間食, 3=昼食, 4=午後の間食, 5=夕食, 6=夜の間食, 7=任意）
         - amount: 量
         - unitId: 単位ID
         - unitName: 単位名

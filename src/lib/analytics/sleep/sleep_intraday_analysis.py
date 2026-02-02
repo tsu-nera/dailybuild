@@ -134,7 +134,7 @@ def calc_advanced_hr_metrics(df_sleep, df_hr_intraday):
             - dip_rate_avg: 夜間心拍数ディップ率（睡眠平均）(%)
             - dip_rate_min: 夜間心拍数ディップ率（最低心拍数）(%)
             - night_day_ratio: 夜/昼心拍数比率
-            - time_to_min_hr: 入眠から最低心拍数までの時間（分）
+            - time_to_min_hr: 就寝から最低心拍数までの時間（分）
             - min_hr_time: 最低心拍数の発生時刻
             - avg_day_hr: 日中平均心拍数
             - avg_sleep_hr: 睡眠中平均心拍数
@@ -144,19 +144,33 @@ def calc_advanced_hr_metrics(df_sleep, df_hr_intraday):
         return {}
 
     df_hr = df_hr_intraday.copy()
+
+    # datetime列を確実にdatetime型に変換し、タイムゾーンを削除
     if not pd.api.types.is_datetime64_any_dtype(df_hr['datetime']):
         df_hr['datetime'] = pd.to_datetime(df_hr['datetime'])
+
+    # タイムゾーン情報があれば削除（比較時の不一致を防ぐ）
+    if df_hr['datetime'].dt.tz is not None:
+        df_hr['datetime'] = df_hr['datetime'].dt.tz_localize(None)
 
     results = {}
 
     for _, row in df_sleep.iterrows():
         date = row['dateOfSleep']
+
+        # startTime/endTimeをdatetime型に変換し、タイムゾーンを削除
         sleep_start = pd.to_datetime(row['startTime'])
         sleep_end = pd.to_datetime(row['endTime'])
 
+        if hasattr(sleep_start, 'tz_localize'):
+            if sleep_start.tz is not None:
+                sleep_start = sleep_start.tz_localize(None)
+            if sleep_end.tz is not None:
+                sleep_end = sleep_end.tz_localize(None)
+
         # 日中の平均心拍数を計算（6:00-22:00）
-        day_start = sleep_start.replace(hour=6, minute=0, second=0)
-        day_end = sleep_start.replace(hour=22, minute=0, second=0)
+        day_start = sleep_start.replace(hour=6, minute=0, second=0, microsecond=0)
+        day_end = sleep_start.replace(hour=22, minute=0, second=0, microsecond=0)
 
         day_hr = df_hr[
             (df_hr['datetime'] >= day_start) &
@@ -175,6 +189,9 @@ def calc_advanced_hr_metrics(df_sleep, df_hr_intraday):
         ]
 
         if len(sleep_hr) == 0:
+            print(f"警告: {date} の睡眠時間帯に心拍数データが見つかりません")
+            print(f"  睡眠時間: {sleep_start} - {sleep_end}")
+            print(f"  心拍数データ範囲: {df_hr['datetime'].min()} - {df_hr['datetime'].max()}")
             continue
 
         # 睡眠中の心拍数統計
@@ -186,9 +203,14 @@ def calc_advanced_hr_metrics(df_sleep, df_hr_intraday):
         dip_rate_min = ((avg_day_hr - min_sleep_hr) / avg_day_hr) * 100
         night_day_ratio = avg_sleep_hr / avg_day_hr
 
-        # 入眠から最低心拍数までの時間
+        # 就寝から最低心拍数までの時間を正確に計算
         min_hr_idx = sleep_hr['heart_rate'].idxmin()
         min_hr_time = sleep_hr.loc[min_hr_idx, 'datetime']
+
+        # タイムゾーン情報を削除して計算
+        if hasattr(min_hr_time, 'tz_localize') and min_hr_time.tz is not None:
+            min_hr_time = min_hr_time.tz_localize(None)
+
         time_to_min_hr = (min_hr_time - sleep_start).total_seconds() / 60  # 分単位
 
         results[date] = {
