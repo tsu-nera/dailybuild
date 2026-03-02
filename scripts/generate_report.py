@@ -40,9 +40,14 @@ REPORT_SCRIPTS = {
 }
 
 
-def fetch_latest_data() -> bool:
+def fetch_latest_data(days: int = 2) -> bool:
     """
-    最新データを取得（2日分）
+    最新データを取得
+
+    Parameters
+    ----------
+    days : int
+        取得日数（デフォルト: 2）
 
     Returns
     -------
@@ -51,7 +56,7 @@ def fetch_latest_data() -> bool:
     """
     print("=== Fitbitデータ取得 ===")
     result = subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / 'fetch_fitbit.py'), '--all'],
+        [sys.executable, str(SCRIPT_DIR / 'fetch_fitbit.py'), '--all', '--days', str(days)],
         cwd=str(PROJECT_ROOT)
     )
     if result.returncode != 0:
@@ -176,13 +181,14 @@ Examples:
     parser.add_argument('--week', type=str, help='ISO週番号（例: 48）または "current"')
     parser.add_argument('--month', type=str, help='月番号（例: 11）または "current"')
     parser.add_argument('--year', type=int, help='年（--week/--month指定時に使用）')
-    parser.add_argument('--fetch', action='store_true', help='レポート生成前に最新データを取得（2日分）')
+    parser.add_argument('--fetch', type=int, nargs='?', const=2, default=None,
+                        metavar='DAYS', help='レポート生成前に最新データを取得（日数指定可、デフォルト: 2）')
 
     args = parser.parse_args()
 
     # データ取得
-    if args.fetch:
-        if not fetch_latest_data():
+    if args.fetch is not None:
+        if not fetch_latest_data(days=args.fetch):
             print("データ取得に失敗しました")
             return 1
 
