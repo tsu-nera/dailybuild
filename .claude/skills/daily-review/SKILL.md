@@ -9,41 +9,56 @@ allowed-tools: Bash, Read, Glob
 
 データ取得、レポート生成、AIレビューを3ステップで実行する。
 
+## オプション
+
+| オプション | 説明 | デフォルト |
+|------------|------|------------|
+| `--no-fetch` | Step 1（データ取得）をスキップ | なし |
+| `--fetch N` | 取得日数を指定（例: `--fetch 7` で過去7日分） | 2 |
+| `--only body\|sleep\|mind` | 指定したレポートのみ生成・レビュー | 全3種 |
+
+例:
+- `/daily-review` → 全3ステップ実行
+- `/daily-review --no-fetch` → データ取得スキップ、レポート生成→レビュー
+- `/daily-review --fetch 7` → 過去7日分取得してから全レポート生成
+- `/daily-review --only body` → 体組成レポートのみ生成・レビュー
+- `/daily-review --no-fetch --only sleep` → 睡眠レポートのみ生成・レビュー
+
 ## Step 1: データ取得
 
-最新のFitbit・HealthPlanet・日出日入データを取得する。
+**`--no-fetch` が指定されている場合はこのステップをスキップする。**
+
+`--fetch N` が指定されている場合はNを使用する。指定がなければ `2` を使用する。
 
 ```bash
 cd /home/tsu-nera/repo/dailybuild
-python scripts/generate_report.py body --fetch 2 --days 1
+python scripts/generate_report.py body --fetch <N> --days 1
 ```
 
-注意: `generate_report.py` の `--fetch` はデータ取得のみ行う。上記コマンドでデータ取得が実行される。レポート生成は次のステップで個別に行うため、この出力レポートは無視してよい。
+## Step 2: レポート生成
 
-## Step 2: レポート生成（3種類を個別実行）
-
-レポートごとに適切な期間で生成する。出力先はデフォルトの `tmp/` を使用。
+`--only <type>` が指定されている場合は該当するコマンドのみ実行する。指定がなければ3つすべて実行する。
 
 ```bash
-# 体組成レポート（直近7日）
+# 体組成レポート（直近7日）-- --only body または指定なしの場合
 python scripts/generate_body_report_daily.py --days 7
 
-# 睡眠レポート（直近30日）
+# 睡眠レポート（直近30日）-- --only sleep または指定なしの場合
 python scripts/generate_sleep_report_daily.py --days 30
 
-# メンタルレポート（直近14日）
+# メンタルレポート（直近14日）-- --only mind または指定なしの場合
 python scripts/generate_mind_report_daily.py --days 14
 ```
 
-3つとも実行し、エラーがあれば報告する。
+エラーがあれば報告する。
 
 ## Step 3: AIレビュー
 
-生成された3つのレポートを読み込む:
+`--only <type>` が指定されている場合は該当するレポートのみ読み込む。指定がなければすべて読み込む。
 
-- `tmp/body_report/REPORT.md`
-- `tmp/sleep_report/REPORT.md`
-- `tmp/mind_report/REPORT.md`
+- `tmp/body_report/REPORT.md`（body または指定なし）
+- `tmp/sleep_report/REPORT.md`（sleep または指定なし）
+- `tmp/mind_report/REPORT.md`（mind または指定なし）
 
 ### レビュー観点
 
