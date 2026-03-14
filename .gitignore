@@ -20,3 +20,5 @@ venv/
 # Project specific
 config/
 tmp/
+
+data/mf

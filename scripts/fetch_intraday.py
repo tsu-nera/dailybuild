@@ -80,6 +80,16 @@ def main():
         action='store_true',
         help='HRV Intradayのみ取得'
     )
+    parser.add_argument(
+        '--spo2-only',
+        action='store_true',
+        help='SpO2 Intradayのみ取得'
+    )
+    parser.add_argument(
+        '--br-only',
+        action='store_true',
+        help='BR Intradayのみ取得'
+    )
 
     args = parser.parse_args()
 
@@ -103,6 +113,10 @@ def main():
     # エンドポイントの選択
     if args.hrv_only:
         endpoints = ['hrv_intraday']
+    elif args.spo2_only:
+        endpoints = ['spo2_intraday']
+    elif args.br_only:
+        endpoints = ['br_intraday']
     elif args.heart_rate_only:
         endpoints = ['heart_rate_intraday']
     elif args.steps_only:

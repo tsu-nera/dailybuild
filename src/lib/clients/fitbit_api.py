@@ -1181,6 +1181,222 @@ def parse_spo2(data):
 
 
 # =============================================================================
+# SpO2 Intraday API
+# https://dev.fitbit.com/build/reference/web-api/intraday/get-spo2-intraday-by-date/
+# =============================================================================
+
+def get_spo2_intraday(client, date):
+    """
+    指定日のSpO2 Intradayデータを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）
+
+    Note:
+        - 睡眠中の分単位データ
+        - 睡眠中のみ測定
+
+    Endpoint: /1/user/-/spo2/date/{date}/all.json
+    https://dev.fitbit.com/build/reference/web-api/intraday/get-spo2-intraday-by-date/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/spo2/date/{date_str}/all.json"
+    return client.make_request(url)
+
+
+def parse_spo2_intraday(data, date):
+    """
+    SpO2 Intradayデータをリストに変換
+
+    Args:
+        data: get_spo2_intradayの戻り値
+        date: 日付（datetime.date）
+
+    Returns:
+        SpO2 Intradayエントリのリスト
+
+    データ構造:
+        - datetime: タイムスタンプ（日付+時刻）
+        - spo2: 血中酸素濃度（%）
+
+    APIレスポンス例:
+        {"minutes": [{"minute": "2026-02-16 00:00:00", "value": 95.5}, ...]}
+    """
+    minutes = data.get('minutes', [])
+    if not minutes:
+        return []
+
+    results = []
+    for entry in minutes:
+        timestamp = entry.get('minute')
+        value = entry.get('value')
+
+        if timestamp and value is not None:
+            results.append({
+                'datetime': timestamp,
+                'spo2': value,
+            })
+
+    return results
+
+
+def get_spo2_intraday_by_date_range(client, start_date, end_date):
+    """
+    期間指定でSpO2 Intradayデータを取得（日付ごとにループ）
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        pandas.DataFrame: SpO2 Intradayデータ
+
+    Note:
+        - SpO2 Intraday APIは1日分ずつ取得
+        - 睡眠中のみ測定
+        - N日間 = Nリクエスト
+    """
+    import datetime as dt
+    import pandas as pd
+
+    current = start_date
+    all_records = []
+
+    while current <= end_date:
+        data = get_spo2_intraday(client, current)
+        records = parse_spo2_intraday(data, current)
+        all_records.extend(records)
+        current += dt.timedelta(days=1)
+
+    if not all_records:
+        return pd.DataFrame()
+
+    return pd.DataFrame(all_records)
+
+
+# =============================================================================
+# BR Intraday API
+# https://dev.fitbit.com/build/reference/web-api/intraday/get-breathing-rate-intraday-by-date/
+# =============================================================================
+
+def get_br_intraday(client, date):
+    """
+    指定日のBR（呼吸数）Intradayデータを取得
+
+    Args:
+        client: Fitbitクライアント
+        date: 日付（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）
+
+    Note:
+        - 睡眠ステージ別の平均呼吸数（分単位ではなくステージ別サマリー）
+        - fullSleepSummary, deepSleepSummary, lightSleepSummary, remSleepSummary
+
+    Endpoint: /1/user/-/br/date/{date}/all.json
+    https://dev.fitbit.com/build/reference/web-api/intraday/get-breathing-rate-intraday-by-date/
+    """
+    date_str = date.strftime('%Y-%m-%d')
+    url = f"{client.API_ENDPOINT}/1/user/-/br/date/{date_str}/all.json"
+    return client.make_request(url)
+
+
+def parse_br_intraday(data, date):
+    """
+    BR Intradayデータをリストに変換
+
+    Args:
+        data: get_br_intradayの戻り値
+        date: 日付（datetime.date）
+
+    Returns:
+        BRエントリのリスト（日別）
+
+    データ構造:
+        - date: 日付
+        - br_full_sleep: 全睡眠平均呼吸数
+        - br_deep: 深睡眠平均呼吸数
+        - br_light: 浅睡眠平均呼吸数
+        - br_rem: REM睡眠平均呼吸数
+
+    APIレスポンス例:
+        {"br": [{"dateTime": "2026-02-16", "value": {
+            "fullSleepSummary": {"breathingRate": 14.5},
+            "deepSleepSummary": {"breathingRate": 13.2},
+            ...
+        }}]}
+
+    Note:
+        -1.0はデータ不足を意味するのでNoneに変換
+    """
+    br_data = data.get('br', [])
+    if not br_data:
+        return []
+
+    results = []
+    for entry in br_data:
+        value = entry.get('value', {})
+
+        def safe_br(summary_key):
+            br = value.get(summary_key, {}).get('breathingRate')
+            if br is None or br == -1.0:
+                return None
+            return br
+
+        row = {
+            'date': entry.get('dateTime'),
+            'br_full_sleep': safe_br('fullSleepSummary'),
+            'br_deep': safe_br('deepSleepSummary'),
+            'br_light': safe_br('lightSleepSummary'),
+            'br_rem': safe_br('remSleepSummary'),
+        }
+        results.append(row)
+
+    return results
+
+
+def get_br_intraday_by_date_range(client, start_date, end_date):
+    """
+    期間指定でBR Intradayデータを取得（日付ごとにループ）
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        pandas.DataFrame: BR Intradayデータ（睡眠ステージ別）
+
+    Note:
+        - BR Intraday APIは1日分ずつ取得
+        - 分単位ではなく睡眠ステージ別サマリー
+        - N日間 = Nリクエスト
+    """
+    import datetime as dt
+    import pandas as pd
+
+    current = start_date
+    all_records = []
+
+    while current <= end_date:
+        data = get_br_intraday(client, current)
+        records = parse_br_intraday(data, current)
+        all_records.extend(records)
+        current += dt.timedelta(days=1)
+
+    if not all_records:
+        return pd.DataFrame()
+
+    return pd.DataFrame(all_records)
+
+
+# =============================================================================
 # Temperature API
 # https://dev.fitbit.com/build/reference/web-api/temperature/
 # =============================================================================

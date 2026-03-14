@@ -182,15 +182,33 @@ ENDPOINTS = {
         'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
         'is_intraday': True,  # Intraday API
     },
-    # 'hrv_intraday': {
-    #     'description': 'HRV Intraday（5分間隔）',
-    #     'fetch_fn': 'get_hrv_intraday_by_date_range',
-    #     'parse_fn': None,  # DataFrameを直接返す
-    #     'date_column': 'datetime',
-    #     'max_days': 30,  # HRV intradayは最大30日間
-    #     'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
-    #     'is_intraday': True,  # Intraday API
-    # },
+    'hrv_intraday': {
+        'description': 'HRV Intraday（5分間隔）',
+        'fetch_fn': 'get_hrv_intraday_by_date_range',
+        'parse_fn': None,  # DataFrameを直接返す
+        'date_column': 'datetime',
+        'max_days': 30,  # HRV intradayは最大30日間
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
+        'is_intraday': True,  # Intraday API
+    },
+    'spo2_intraday': {
+        'description': 'SpO2 Intraday（睡眠中、分単位）',
+        'fetch_fn': 'get_spo2_intraday_by_date_range',
+        'parse_fn': None,  # DataFrameを直接返す
+        'date_column': 'datetime',
+        'max_days': None,
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
+        'is_intraday': True,  # Intraday API
+    },
+    'br_intraday': {
+        'description': 'BR Intraday（睡眠ステージ別呼吸数）',
+        'fetch_fn': 'get_br_intraday_by_date_range',
+        'parse_fn': None,  # DataFrameを直接返す
+        'date_column': 'date',
+        'max_days': None,
+        'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
+        'is_intraday': True,  # Intraday API
+    },
 }
 
 
