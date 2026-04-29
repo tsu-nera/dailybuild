@@ -282,8 +282,9 @@ class SleepDebtCalculator:
 
             return weights
         else:  # uniform
-            # 均等重み0.5（合計 = n * 0.5）
-            return np.ones(n) * 0.5
+            # 均等重み1.0（合計 = n）。Rise app互換の単純累積方式。
+            # 過去n日間のdeficit/surplusを等しく合算する。
+            return np.ones(n)
 
     def _categorize_debt(self, sleep_debt_hours: float) -> str:
         """睡眠負債をカテゴリ分類"""

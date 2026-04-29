@@ -372,7 +372,7 @@ def generate_markdown_report(output_dir, results):
     return report_path
 
 
-def run_analysis(output_dir, days=None, week=None, month=None, year=None):
+def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_need_override=None):
     """
     睡眠データの分析を実行
 
@@ -712,13 +712,15 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
     results['sleep_need'] = sleep_need_result
     results['rebound_percentile'] = rebound_percentile
 
-    # 睡眠リバウンド法の推定値を使用して睡眠負債を計算
-    sleep_need_for_debt = sleep_need_result.recommended_hours
-    if 'sleep_rebound' in sleep_need_result.estimates:
-        rebound_est = sleep_need_result.estimates['sleep_rebound']
-        if rebound_est.value_hours > 0:
-            sleep_need_for_debt = rebound_est.value_hours
-            print(f'  → 睡眠リバウンド法推定値: {rebound_est.value_hours:.1f}h を睡眠負債計算に使用')
+    # 睡眠負債計算の基準値（Rise app内部閾値の逆算結果に基づくデフォルト）
+    # 注: 表示用の sleep_need とは別物。Rise負債値の再現を目的とした実効値。
+    SLEEP_NEED_FOR_DEBT_DEFAULT = 6.5
+    sleep_need_for_debt = (
+        sleep_need_override if sleep_need_override is not None
+        else SLEEP_NEED_FOR_DEBT_DEFAULT
+    )
+    print(f'  → 睡眠負債計算の基準値: {sleep_need_for_debt:.2f}h'
+          f'{" (override)" if sleep_need_override is not None else " (default)"}')
 
     # 日別に全睡眠時間（主睡眠+昼寝）を集計
     print('計算中: 睡眠負債...')
@@ -726,6 +728,20 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         'minutesAsleep': 'sum',  # 同じ日の全睡眠時間を合計
         'timeInBed': 'sum'
     })
+
+    # 欠損日を0埋め（Rise app互換: データ欠損日も負債としてカウント）
+    df_daily_total_sleep['dateOfSleep'] = pd.to_datetime(df_daily_total_sleep['dateOfSleep'])
+    full_range = pd.date_range(
+        df_daily_total_sleep['dateOfSleep'].min(),
+        df_daily_total_sleep['dateOfSleep'].max(),
+        freq='D'
+    )
+    df_daily_total_sleep = (
+        df_daily_total_sleep.set_index('dateOfSleep')
+        .reindex(full_range, fill_value=0)
+        .rename_axis('dateOfSleep')
+        .reset_index()
+    )
 
     calculator = sleep.SleepDebtCalculator(
         sleep_data=df_daily_total_sleep,  # 日別総睡眠時間（昼寝込み）
@@ -741,12 +757,12 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None):
         start_date = filtered_dates.min()
         latest_date = filtered_dates.max()
 
-        # 最新日時点の睡眠負債（RISE方式）
-        sleep_debt_result = calculator.calculate(end_date=latest_date, weight_method='rise')
+        # 最新日時点の睡眠負債（単純累積方式 = Rise app互換）
+        sleep_debt_result = calculator.calculate(end_date=latest_date, weight_method='uniform')
         results['sleep_debt'] = sleep_debt_result
 
-        # フィルタリング期間の履歴を取得してグラフ用データを作成（RISE方式）
-        debt_history = calculator.get_history(start_date, latest_date, weight_method='rise')
+        # フィルタリング期間の履歴を取得してグラフ用データを作成（単純累積方式）
+        debt_history = calculator.get_history(start_date, latest_date, weight_method='uniform')
         results['debt_history'] = debt_history
 
         # フィルタリング期間の日別総睡眠時間（昼寝込み）の平均を計算
@@ -789,6 +805,12 @@ def main():
 
     parser = argparse.ArgumentParser(description='日次睡眠レポートの生成')
     add_common_report_args(parser, default_output=BASE_DIR / 'tmp/sleep_report', default_days=None)
+    parser.add_argument(
+        '--sleep-need-override',
+        type=float,
+        default=None,
+        help='睡眠負債計算に用いる睡眠必要量[h]を手動指定（Rise app値の突合用）',
+    )
     args = parser.parse_args()
 
     # Parse period arguments
@@ -798,7 +820,8 @@ def main():
     output_dir = determine_output_dir(BASE_DIR, 'sleep', args.output, week, month, year)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    run_analysis(output_dir, days=args.days, week=week, month=month, year=year)
+    run_analysis(output_dir, days=args.days, week=week, month=month, year=year,
+                 sleep_need_override=args.sleep_need_override)
 
     return 0
 
