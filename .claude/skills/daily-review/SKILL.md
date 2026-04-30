@@ -7,7 +7,8 @@ allowed-tools: Bash, Read, Glob
 
 # 日次レビュースキル
 
-データ取得、レポート生成、AIレビュー、GitHub Issue投稿を4ステップで実行する。
+データ取得、レポート生成、AIレビューを3ステップで実行する。
+レビュー後のディスカッションを経て、記録は `/journal` スキルで保存する。
 
 ## オプション
 
@@ -16,15 +17,13 @@ allowed-tools: Bash, Read, Glob
 | `--no-fetch` | Step 1（データ取得）をスキップ | なし |
 | `--fetch N` | 取得日数を指定（例: `--fetch 7` で過去7日分） | 2 |
 | `--only body\|sleep\|mind` | 指定したレポートのみ生成・レビュー | 全3種 |
-| `--no-post` | Step 4（GitHub Issueへのコメント投稿）をスキップ | なし |
 
 例:
-- `/daily-review` → 全4ステップ実行（Issue投稿含む）
-- `/daily-review --no-post` → Issue投稿なし、レビュー結果はチャットのみ
-- `/daily-review --no-fetch` → データ取得スキップ、レポート生成→レビュー→投稿
+- `/daily-review` → 全3ステップ実行
+- `/daily-review --no-fetch` → データ取得スキップ、レポート生成→レビュー
 - `/daily-review --fetch 7` → 過去7日分取得してから全レポート生成
-- `/daily-review --only body` → 体組成レポートのみ生成・レビュー・投稿
-- `/daily-review --no-fetch --only sleep` → 睡眠レポートのみ生成・レビュー・投稿
+- `/daily-review --only body` → 体組成レポートのみ生成・レビュー
+- `/daily-review --no-fetch --only sleep` → 睡眠レポートのみ生成・レビュー
 
 ## Step 1: データ取得
 
@@ -86,7 +85,7 @@ python scripts/generate_mind_report_daily.py --days 14
 
 ### 出力形式
 
-以下の形式で日本語で報告:
+以下の形式で日本語で報告する。
 
 ```
 ## 日次ヘルスレビュー（YYYY-MM-DD）
@@ -110,37 +109,4 @@ python scripts/generate_mind_report_daily.py --days 14
 具体的なアクション（2-3個）
 ```
 
-## Step 4: GitHub Issueへのコメント投稿
-
-**`--no-post` が指定されている場合はこのステップをスキップする。**
-
-### 4-1. 週次Issueの確認・ローテーション
-
-`weekly-review` ラベルが付いたOpenなIssueを検索し、今週分のIssueを確保する。
-
-```bash
-# 今週の月曜日を計算
-THIS_MONDAY=$(date -d "last monday" +%Y-%m-%d)
-# ※ 今日が月曜の場合は today を使う
-if [ "$(date +%u)" = "1" ]; then THIS_MONDAY=$(date +%Y-%m-%d); fi
-
-# OpenなIssueを取得
-ISSUE_JSON=$(gh issue list --label "weekly-review" --state open --json number,title --jq '.[0]')
-```
-
-以下のロジックで判定:
-
-1. **Issueが見つかり、タイトルに今週の月曜日が含まれる** → そのまま使う
-2. **Issueが見つかるが、先週以前のもの** → クローズしてから新規作成（`bash scripts/create_weekly_issue.sh`）
-3. **Issueが見つからない** → 新規作成（`bash scripts/create_weekly_issue.sh`）
-
-### 4-2. レビュー結果の投稿
-
-確保したIssueに対して、Step 3のレビュー結果をコメントとして投稿する。
-
-```bash
-ISSUE_NUMBER=$(gh issue list --label "weekly-review" --state open --json number --jq '.[0].number')
-gh issue comment "$ISSUE_NUMBER" --body "<レビュー内容>"
-```
-
-投稿後、IssueのURLを表示する。
+レビュー後、ディスカッションを経て記録を残す場合は `/journal` を使用する。
