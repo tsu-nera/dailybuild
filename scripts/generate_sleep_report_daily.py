@@ -712,9 +712,9 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
     results['sleep_need'] = sleep_need_result
     results['rebound_percentile'] = rebound_percentile
 
-    # 睡眠負債計算の基準値（Rise app内部閾値の逆算結果に基づくデフォルト）
+    # 睡眠負債計算の基準値（Rise app の必要睡眠時間に合わせる）
     # 注: 表示用の sleep_need とは別物。Rise負債値の再現を目的とした実効値。
-    SLEEP_NEED_FOR_DEBT_DEFAULT = 6.5
+    SLEEP_NEED_FOR_DEBT_DEFAULT = 7.75
     sleep_need_for_debt = (
         sleep_need_override if sleep_need_override is not None
         else SLEEP_NEED_FOR_DEBT_DEFAULT
