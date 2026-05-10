@@ -747,7 +747,8 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
         sleep_data=df_daily_total_sleep,  # 日別総睡眠時間（昼寝込み）
         sleep_need_hours=sleep_need_for_debt,
         window_days=14,
-        min_data_points=5
+        min_data_points=5,
+        rise_last_night_ratio=0.20,  # 最新日20%、残り80%を線形配分
     )
 
     # フィルタリング期間の睡眠負債履歴を取得
@@ -757,12 +758,12 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
         start_date = filtered_dates.min()
         latest_date = filtered_dates.max()
 
-        # 最新日時点の睡眠負債（単純累積方式 = Rise app互換）
-        sleep_debt_result = calculator.calculate(end_date=latest_date, weight_method='uniform')
+        # 最新日時点の睡眠負債（rise重み付け: 最新日15%、残り85%を線形配分）
+        sleep_debt_result = calculator.calculate(end_date=latest_date, weight_method='recency_linear')
         results['sleep_debt'] = sleep_debt_result
 
-        # フィルタリング期間の履歴を取得してグラフ用データを作成（単純累積方式）
-        debt_history = calculator.get_history(start_date, latest_date, weight_method='uniform')
+        # フィルタリング期間の履歴を取得してグラフ用データを作成（rise重み付け）
+        debt_history = calculator.get_history(start_date, latest_date, weight_method='recency_linear')
         results['debt_history'] = debt_history
 
         # フィルタリング期間の日別総睡眠時間（昼寝込み）の平均を計算

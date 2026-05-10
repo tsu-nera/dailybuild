@@ -86,7 +86,8 @@ class SleepDebtCalculator:
         sleep_data: pd.DataFrame,
         sleep_need_hours: float,
         window_days: int = 14,
-        min_data_points: int = 5
+        min_data_points: int = 5,
+        rise_last_night_ratio: float = 0.15,
     ):
         """
         初期化
@@ -96,11 +97,13 @@ class SleepDebtCalculator:
             sleep_need_hours: 睡眠必要量（時間）
             window_days: 負債計算期間
             min_data_points: 最低必要データ数
+            rise_last_night_ratio: rise重み付けにおける最新日の比率（0.0-1.0）
         """
         self.sleep_data = sleep_data.copy()
         self.sleep_need_minutes = sleep_need_hours * 60
         self.window_days = window_days
         self.min_data_points = min_data_points
+        self.rise_last_night_ratio = rise_last_night_ratio
 
         # 日付カラムの処理
         if 'dateOfSleep' in self.sleep_data.columns:
@@ -258,20 +261,19 @@ class SleepDebtCalculator:
             weights = np.exp(decay_rate * np.arange(n))
             # 合計重み ≈ 7.0に調整
             return weights / np.max(weights) * 0.5
-        elif method == 'rise':
-            # RISE App方式: 最新日15%、残り85%を線形配分
-            # 昨晩の睡眠が今日のパフォーマンスに最も影響するという科学的知見に基づく
+        elif method == 'recency_linear':
+            # recency_linear: 最新日 rise_last_night_ratio、残りを線形配分
             if n == 1:
                 return np.array([0.5])
 
             # 目標合計重み（既存の実装と同じスケール）
             target_sum = n * 0.5
 
-            # 最新日の重み（15%）
-            last_night_weight = target_sum * 0.15
+            # 最新日の重み
+            last_night_weight = target_sum * self.rise_last_night_ratio
 
-            # 残りの日数の重み合計（85%）
-            remaining_sum = target_sum * 0.85
+            # 残りの日数の重み合計
+            remaining_sum = target_sum * (1.0 - self.rise_last_night_ratio)
 
             # 残りの日を線形配分（古い→新しいで増加）
             linear_weights = np.linspace(0.3, 0.7, n-1)
