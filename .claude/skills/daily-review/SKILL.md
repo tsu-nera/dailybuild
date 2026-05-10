@@ -34,6 +34,7 @@ allowed-tools: Bash, Read, Glob
 ```bash
 cd /home/tsu-nera/repo/dailybuild
 python scripts/generate_report.py body --fetch <N> --days 1
+python scripts/fetch_manual.py
 ```
 
 ## Step 2: レポート生成
