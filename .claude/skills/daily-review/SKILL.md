@@ -62,6 +62,16 @@ python scripts/generate_mind_report_daily.py --days 14
 - `tmp/sleep_report/REPORT.md`（sleep または指定なし）
 - `tmp/mind_report/REPORT.md`（mind または指定なし）
 
+加えて、手動記録データの直近7日分を読み込む（`--no-fetch` の場合も含む）:
+
+```bash
+python3 -c "
+import pandas as pd
+df = pd.read_csv('data/manual.csv', index_col='date', parse_dates=True)
+print(df.tail(7).to_markdown())
+"
+```
+
 ### レビュー観点
 
 #### 体組成（Body）
@@ -84,6 +94,12 @@ python scripts/generate_mind_report_daily.py --days 14
 - 呼吸数・SpO2の異常検出
 - 運動負荷と回復のバランス
 
+#### 手動記録（Manual）
+- 主観スコア（mind_score / body_score / soreness_score）のトレンド
+- 客観指標との乖離・一致（例: HRV低下なのに主観スコアが高い、など）
+- 実測体温（core_temperature）の変動（発熱・低体温の検出）
+- コメントに記載された自覚症状・特記事項
+
 ### 出力形式
 
 以下の形式で日本語で報告する。
@@ -105,6 +121,9 @@ python scripts/generate_mind_report_daily.py --days 14
 ### Mind（メンタル・回復）
 - 現状サマリー
 - 良い点 / 注意点
+
+### 主観 vs 客観
+手動記録の主観スコアと客観指標（HRV・睡眠等）の一致・乖離を指摘
 
 ### 今日のアドバイス
 具体的なアクション（2-3個）
