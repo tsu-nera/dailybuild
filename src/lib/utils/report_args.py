@@ -215,7 +215,14 @@ def filter_dataframe_by_period(
         return df_temp
 
     elif days is not None:
-        return df.tail(days)
+        end_date = datetime.now().date()
+        start_date = end_date - pd.Timedelta(days=days - 1)
+        if is_index:
+            date_idx = pd.to_datetime(df.index)
+            return df[(date_idx.date >= start_date) & (date_idx.date <= end_date)]
+        else:
+            col = pd.to_datetime(df[date_column])
+            return df[(col.dt.date >= start_date) & (col.dt.date <= end_date)]
 
     else:
         return df

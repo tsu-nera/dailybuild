@@ -14,6 +14,9 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+from lib.utils.report_args import filter_dataframe_by_period
+
 BASE_DIR = Path(__file__).parent.parent
 METRICS_DEF_FILE = BASE_DIR / 'config/manual_metrics_def.yaml'
 DATA_FILE = BASE_DIR / 'data/manual.csv'
@@ -86,7 +89,11 @@ def main():
 
     metrics_def = load_metrics_def()
     df = pd.read_csv(DATA_FILE, index_col='date', parse_dates=True).sort_index()
-    df_recent = df.tail(args.days)
+    df_recent = filter_dataframe_by_period(
+        df=df, date_column='date',
+        week=None, month=None, year=None, days=args.days,
+        is_index=True
+    )
 
     print(f"# 手動記録（直近{args.days}日）\n")
 

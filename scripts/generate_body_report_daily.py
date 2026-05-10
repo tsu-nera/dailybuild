@@ -21,7 +21,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import sleep, hrv, body, nutrition, activity, training
-from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
+from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir, filter_dataframe_by_period
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
@@ -599,15 +599,11 @@ def main():
     df = pd.read_csv(DATA_CSV, index_col='date', parse_dates=True)
 
     # Filter by week, month or days
-    if week is not None:
-        df['iso_week'] = df.index.isocalendar().week
-        df['iso_year'] = df.index.isocalendar().year
-        df = df[(df['iso_week'] == week) & (df['iso_year'] == year)]
-        df = df.drop(columns=['iso_week', 'iso_year'])
-    elif month is not None:
-        df = df[(df.index.month == month) & (df.index.year == year)]
-    elif args.days:
-        df = df.tail(args.days)
+    df = filter_dataframe_by_period(
+        df=df, date_column='date',
+        week=week, month=month, year=year, days=args.days,
+        is_index=True
+    )
 
     if len(df) == 0:
         print("No data")
