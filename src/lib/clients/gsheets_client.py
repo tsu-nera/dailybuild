@@ -10,12 +10,17 @@ import os
 import gspread
 
 
+_DEFAULT_CREDS_PATHS = [
+    os.path.expanduser('~/.config/gcp/gdrive-creds.json'),
+]
+
+
 def create_client(creds_file=None):
     """
     Google Sheetsクライアントを作成
 
     Args:
-        creds_file: Service AccountのJSONファイルパス（省略時は環境変数から読み込み）
+        creds_file: Service AccountのJSONファイルパス（省略時は環境変数・共通パスから探索）
 
     Returns:
         gspread.Client
@@ -23,12 +28,20 @@ def create_client(creds_file=None):
     if creds_file and os.path.exists(creds_file):
         return gspread.service_account(filename=creds_file)
 
+    env_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+    if env_path and os.path.exists(env_path):
+        return gspread.service_account(filename=env_path)
+
     creds_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT')
     if creds_json:
         creds = json.loads(creds_json)
         return gspread.service_account_from_dict(creds)
 
-    raise ValueError("認証情報が見つかりません（ファイルまたはGOOGLE_SERVICE_ACCOUNT環境変数）")
+    for path in _DEFAULT_CREDS_PATHS:
+        if os.path.exists(path):
+            return gspread.service_account(filename=path)
+
+    raise ValueError("認証情報が見つかりません（GOOGLE_APPLICATION_CREDENTIALS / GOOGLE_SERVICE_ACCOUNT / ~/.config/gcp/gdrive-creds.json）")
 
 
 def get_or_create_worksheet(spreadsheet, title, rows=1000, cols=30):
