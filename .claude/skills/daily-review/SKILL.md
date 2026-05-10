@@ -65,12 +65,14 @@ python scripts/generate_mind_report_daily.py --days 14
 加えて、手動記録データの直近7日分を読み込む（`--no-fetch` の場合も含む）:
 
 ```bash
-python3 -c "
-import pandas as pd
-df = pd.read_csv('data/manual.csv', index_col='date', parse_dates=True)
-print(df.tail(7).to_markdown())
-"
+python scripts/show_manual.py --days 7
 ```
+
+このスクリプトは `config/metrics_def.yaml` を参照し、
+- active=true な指標のみ表示（unit付きヘッダ）
+- 全NaN列は自動非表示
+- 主観・参考スコア表とコメント時系列を分離
+- active なのに記録なしの指標は警告表示
 
 ### レビュー観点
 
