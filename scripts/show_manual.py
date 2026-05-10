@@ -3,7 +3,7 @@
 """
 手動記録データの表示スクリプト
 
-config/metrics_def.yaml のメタ情報（active/unit）を活用し、
+config/manual_metrics_def.yaml のメタ情報（active/unit）を活用し、
 スコア表とコメント時系列を分離して読みやすく出力する。
 """
 
@@ -15,7 +15,7 @@ import pandas as pd
 import yaml
 
 BASE_DIR = Path(__file__).parent.parent
-METRICS_DEF_FILE = BASE_DIR / 'config/metrics_def.yaml'
+METRICS_DEF_FILE = BASE_DIR / 'config/manual_metrics_def.yaml'
 DATA_FILE = BASE_DIR / 'data/manual.csv'
 
 

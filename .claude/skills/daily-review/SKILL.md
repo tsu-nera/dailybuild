@@ -68,7 +68,7 @@ python scripts/generate_mind_report_daily.py --days 14
 python scripts/show_manual.py --days 7
 ```
 
-このスクリプトは `config/metrics_def.yaml` を参照し、
+このスクリプトは `config/manual_metrics_def.yaml` を参照し、
 - active=true な指標のみ表示（unit付きヘッダ）
 - 全NaN列は自動非表示
 - 主観・参考スコア表とコメント時系列を分離
@@ -89,7 +89,7 @@ python scripts/show_manual.py --days 7
 - 睡眠効率（85%以上が目標）
 - 深い睡眠・REM睡眠の割合
 - 就寝・起床時刻の規則性
-- 睡眠負債の蓄積状況
+- 睡眠負債: 手動記録の `rise_sleep_dept` を優先。データがなければレポートのオリジナルアルゴリズム値を参照
 - 曜日による傾向の違い
 
 #### メンタル（Mind）

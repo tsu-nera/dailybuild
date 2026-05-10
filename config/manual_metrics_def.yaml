@@ -51,15 +51,20 @@
   description: Fitbitエネルギースコア
   active: true
 
+- metric: rise_sleep_dept
+  unit: ""
+  description: Rise アプリの睡眠負債
+  active: true
+
+- metric: muse_paf
+  unit: ""
+  description: Muse PAF（Peak Alpha Frequency）
+  active: true
+
 # 以下は廃止
 - metric: fitbit_stress_score
   unit: ""
   description: Fitbitストレススコア（API取得済み）
-  active: false
-
-- metric: rise_sleep_dept
-  unit: ""
-  description: Rise アプリの睡眠負債（記録が断続的、定義不明確）
   active: false
 
 - metric: fitbit_eda_scan

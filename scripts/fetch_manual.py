@@ -2,7 +2,7 @@
 # coding: utf-8
 """
 Google Sheets手動記録データ取得スクリプト
-config/metrics_def.yaml の active=true なメトリクスのみ取得してCSVに保存
+config/manual_metrics_def.yaml の active=true なメトリクスのみ取得してCSVに保存
 """
 
 import sys
@@ -16,7 +16,7 @@ from lib.clients import gsheets_client
 from lib.utils import csv_utils
 
 BASE_DIR = Path(__file__).parent.parent
-METRICS_DEF_FILE = BASE_DIR / 'config/metrics_def.yaml'
+METRICS_DEF_FILE = BASE_DIR / 'config/manual_metrics_def.yaml'
 SPREADSHEET_ID = '1S0SwyRbM2cAATv_IOpkOspor-_Ov49rTygyTFr2gkwA'
 SHEET_NAME = 'manual'
 OUT_FILE = BASE_DIR / 'data/manual.csv'
