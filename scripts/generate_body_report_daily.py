@@ -258,6 +258,35 @@ def calc_eat_stats_for_period(start_date, end_date):
     return activity.calc_eat_stats_for_period(df_period)
 
 
+def _load_activity_logs_for_period(start_date, end_date):
+    """activity_logs.csv を読み込み、期間でスライス"""
+    if not ACTIVITY_LOGS_CSV.exists():
+        return None
+    df = pd.read_csv(ACTIVITY_LOGS_CSV)
+    df['startTime'] = pd.to_datetime(df['startTime'], format='ISO8601', utc=True).dt.tz_convert('Asia/Tokyo').dt.tz_localize(None)
+    start = pd.Timestamp(start_date)
+    end = pd.Timestamp(end_date) + pd.Timedelta(days=1)
+    mask = (df['startTime'] >= start) & (df['startTime'] < end)
+    df_period = df[mask]
+    return df_period if len(df_period) > 0 else None
+
+
+def calc_cycling_stats_for_period(start_date, end_date):
+    """指定期間のサイクリング統計を計算"""
+    df_period = _load_activity_logs_for_period(start_date, end_date)
+    if df_period is None:
+        return None
+    return activity.calc_cycling_stats_for_period(df_period)
+
+
+def calc_strength_stats_for_period(start_date, end_date):
+    """指定期間の筋トレ統計を計算"""
+    df_period = _load_activity_logs_for_period(start_date, end_date)
+    if df_period is None:
+        return None
+    return activity.calc_strength_stats_for_period(df_period)
+
+
 def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
                         hrv_stats=None, nutrition_stats=None, eat_stats=None):
     """
@@ -341,10 +370,16 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     # トレーニングセクションのデータ準備
     training_data = None
     aerobic_data = None
+    cycling_data = None
+    strength_data = None
     if activity_stats:
         training_data = {}
         # 有酸素運動データの準備
         aerobic_data = _prepare_aerobic_data(start_date, end_date, activity_stats)
+    cycling_stats = calc_cycling_stats_for_period(start_date, end_date)
+    strength_stats = calc_strength_stats_for_period(start_date, end_date)
+    cycling_data = cycling_stats['daily'] if cycling_stats else None
+    strength_data = strength_stats['daily'] if strength_stats else None
 
     # 栄養セクションのデータ準備
     nutrition_section_data = nutrition_stats if nutrition_stats else None
@@ -361,7 +396,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
 
     # コンテキスト構築
     context = {
-        'report_title': '💪 筋トレデイリーレポート',
+        'report_title': 'フィットネスデイリーレポート',
         'period': {
             'start': start_date.strftime('%Y-%m-%d'),
             'end': end_date.strftime('%Y-%m-%d'),
@@ -371,6 +406,8 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
         'body_composition_section': body.format_body_composition_section(df),
         'training_data': training_data,
         'aerobic_data': aerobic_data,
+        'cycling_data': cycling_data,
+        'strength_data': strength_data,
         'nutrition_data': nutrition_section_data,
         'calorie_analysis_data': calorie_analysis_data,
         'recovery_data': recovery_data,

@@ -67,6 +67,92 @@ def calc_eat_stats_for_period(df_activity_logs):
     }
 
 
+def calc_cycling_stats_for_period(df_activity_logs):
+    """サイクリング日別集計（Bike/Outdoor Bike）
+
+    Args:
+        df_activity_logs: アクティビティログのDataFrame
+            必須カラム: startTime, activityName, durationMinutes,
+                       distance, distanceUnit, calories, averageHeartRate
+
+    Returns:
+        dict or None: {'daily': [{date, count, duration, distance_km,
+                                   avg_hr, calories}, ...],
+                       'total_distance_km': float, 'total_duration': int,
+                       'days': int}
+    """
+    return _calc_sport_stats(
+        df_activity_logs,
+        names=['Bike', 'Outdoor Bike'],
+        with_distance=True,
+    )
+
+
+def calc_strength_stats_for_period(df_activity_logs):
+    """筋トレ日別集計（Weights/Strength training）
+
+    Args:
+        df_activity_logs: アクティビティログのDataFrame
+
+    Returns:
+        dict or None: {'daily': [{date, count, duration, avg_hr, calories}, ...],
+                       'total_duration': int, 'days': int}
+    """
+    return _calc_sport_stats(
+        df_activity_logs,
+        names=['Weights', 'Strength training'],
+        with_distance=False,
+    )
+
+
+def _calc_sport_stats(df_activity_logs, names, with_distance):
+    """指定 activityName の日別集計を生成"""
+    if df_activity_logs is None or df_activity_logs.empty:
+        return None
+
+    df = df_activity_logs[df_activity_logs['activityName'].isin(names)].copy()
+    if df.empty:
+        return None
+
+    df['date'] = pd.to_datetime(df['startTime']).dt.date
+    if with_distance:
+        df['distance_km'] = df.apply(
+            lambda r: r['distance'] * 1.609344
+            if r.get('distanceUnit') == 'Mile' else r['distance'],
+            axis=1,
+        )
+    df['hr_x_dur'] = df['averageHeartRate'].fillna(0) * df['durationMinutes']
+    df['has_hr_dur'] = df['averageHeartRate'].notna() * df['durationMinutes']
+
+    daily = []
+    for date, g in df.groupby('date'):
+        dur = int(g['durationMinutes'].sum())
+        cal = float(g['calories'].sum())
+        hr_dur = g['has_hr_dur'].sum()
+        avg_hr = float(g['hr_x_dur'].sum() / hr_dur) if hr_dur > 0 else None
+        row = {
+            'date': pd.Timestamp(date),
+            'count': len(g),
+            'duration': dur,
+            'avg_hr': avg_hr,
+            'calories': cal,
+        }
+        if with_distance:
+            row['distance_km'] = float(g['distance_km'].sum())
+        daily.append(row)
+
+    daily.sort(key=lambda r: r['date'])
+
+    result = {
+        'daily': daily,
+        'total_duration': sum(r['duration'] for r in daily),
+        'days': len(daily),
+    }
+    if with_distance:
+        result['total_distance_km'] = sum(r['distance_km'] for r in daily)
+    return result
+
+
 def merge_eat_to_daily(df_daily, eat_stats):
     """
     日別データにEATを追加

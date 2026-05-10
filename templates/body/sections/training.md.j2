@@ -1,20 +1,38 @@
-{% if training_data %}
 ## 🏋️ トレーニング
 
 {% if aerobic_data %}
-#### 🏃 有酸素運動
-
 > 歩数と活動強度の記録。Active Zoneは心拍数ベースの運動強度（週150分推奨）。
-> Zone内訳: 脂肪燃焼（中程度）、有酸素（激しい）、ピーク（最高強度）
+> Zone内訳: Z2（50-69% HRmax）、Z3-4（70-84%）、Z5（85%+）
 
-| 日付 | 歩数 | Zone合計 | 脂肪燃焼 | 有酸素 | ピーク | VO2 Max |
-|------|------|----------|----------|--------|--------|---------|
+| 日付 | 歩数 | Zone合計 | Z2 | Z3-4 | Z5 | VO2 Max |
+|------|------|----------|----|------|-----|---------|
 {% for row in aerobic_data %}
 | {{ row.date | date_format }} | {{ row.steps | number_format(0) }} | {{ row.active_zone | number_format(0) }} | {{ row.fat_burn | number_format(0) }} | {{ row.cardio | number_format(0) }} | {{ row.peak | number_format(0) }} | {{ row.vo2max | number_format(0) }} |
 {% endfor %}
 {% endif %}
 
-#### 💪 筋トレ
+### 💪 筋トレ
 
-> トレーニングログは [Hevy](https://hevy.com/profile) を参照
+{% if strength_data %}
+| 日付 | 回数 | 時間(分) | 平均HR | kcal |
+|------|------|----------|--------|------|
+{% for row in strength_data %}
+| {{ row.date | date_format }} | {{ row.count }} | {{ row.duration | number_format(0) }} | {{ row.avg_hr | number_format(0) }} | {{ row.calories | number_format(0) }} |
+{% endfor %}
+
+> 種目別詳細は [Hevy](https://hevy.com/profile) を参照
+{% else %}
+> 現在記録なし。トレーニングログは [Hevy](https://hevy.com/profile) を参照
+{% endif %}
+
+### 🚴 サイクリング
+
+{% if cycling_data %}
+| 日付 | 回数 | 時間(分) | 距離(km) | 平均HR | kcal |
+|------|------|----------|----------|--------|------|
+{% for row in cycling_data %}
+| {{ row.date | date_format }} | {{ row.count }} | {{ row.duration | number_format(0) }} | {{ row.distance_km | number_format(1) }} | {{ row.avg_hr | number_format(0) }} | {{ row.calories | number_format(0) }} |
+{% endfor %}
+{% else %}
+> 記録なし
 {% endif %}
