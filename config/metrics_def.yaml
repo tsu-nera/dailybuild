@@ -1,0 +1,68 @@
+# 手動記録メトリクス定義
+# active: false にすると fetch_manual.py での取り込み対象から除外される
+
+- metric: core_temperature
+  unit: "°C"
+  description: 起床直後の実測体温
+  active: true
+
+- metric: hrv_morning
+  unit: ms
+  description: 朝のHRV（手動計測）
+  active: true
+
+- metric: keto_morning
+  unit: mmol/L
+  description: 朝のケトン値（計測停止）
+  active: false
+
+- metric: mind_score
+  unit: "1-5"
+  description: 主観メンタルスコア（就寝前）
+  active: true
+
+- metric: body_score
+  unit: "1-5"
+  description: 主観身体スコア（倦怠感・炎症感）
+  active: true
+
+- metric: soreness_score
+  unit: "1-5"
+  description: 筋肉痛・身体疲労スコア
+  active: true
+
+- metric: sleep_score
+  unit: "1-5"
+  description: 主観睡眠スコア
+  active: true
+
+- metric: comment
+  unit: ""
+  description: 日次コメント・メモ
+  active: true
+
+- metric: fitbit_sleep_score
+  unit: "0-100"
+  description: Fitbit睡眠スコア
+  active: true
+
+- metric: fitbit_energy_score
+  unit: "0-100"
+  description: Fitbitエネルギースコア
+  active: true
+
+# 以下は廃止
+- metric: fitbit_stress_score
+  unit: ""
+  description: Fitbitストレススコア（API取得済み）
+  active: false
+
+- metric: rise_sleep_dept
+  unit: ""
+  description: Rise アプリの睡眠負債（記録が断続的、定義不明確）
+  active: false
+
+- metric: fitbit_eda_scan
+  unit: ""
+  description: Fitbit EDAスキャン（記録なし）
+  active: false

@@ -2,6 +2,7 @@ astral
 fitbit
 gspread
 pandas
+pyyaml
 requests
 requests-oauthlib
 jinja2>=3.1.0
