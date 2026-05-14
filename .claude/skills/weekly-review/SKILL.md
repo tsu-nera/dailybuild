@@ -58,6 +58,17 @@ python scripts/generate_mind_report_daily.py --week current
 - Action Plan の達成状況（Evening Check-inがあれば）
 - 週内の気づきの推移
 
+## Step 2.5: 中長期目標の読み込み
+
+`config/targets.yaml` から weekly より長い粒度（monthly / quarterly）の目標を読み込む。
+週次レビューは中長期目標への進捗確認に向くため、weekly目標は対象外（daily-reviewで毎日見ているため）。
+
+```bash
+python scripts/show_targets.py --interval monthly quarterly
+```
+
+このスクリプトは目標値・directionを返すだけ。現在値はBody/Sleep/Mindレポートから読み取って評価する。
+
 ## Step 3: AIレビュー
 
 生成された3つのREPORT.md（量的データ） + Step 2 のdaily journal（定性的データ）を統合してレビューする。
@@ -81,6 +92,11 @@ python scripts/generate_mind_report_daily.py --week current
 - 自律神経の緊張⇄回復サイクル
 - 活動量と回復のバランス（過活動/過少活動の検出）
 - 週内の不安定要因の特定
+
+#### 中長期目標（Targets）
+- Step 2.5 で読み込んだ monthly / quarterly 目標について、今週時点の現在値をレポートから読み取り進捗を評価
+- 例: FFMI 21.0（monthly）に対して今週末の値はいくらで、目標までの残差・直近の伸びはどうか
+- 進捗が芳しくない目標は「来週への調整ポイント」に具体アクションとして反映
 
 ### 出力形式
 
@@ -112,8 +128,12 @@ python scripts/generate_mind_report_daily.py --week current
 - 曜日パターンや繰り返しの傾向
 - daily journalで繰り返し現れたテーマ
 
+### 中長期目標の進捗
+- monthly/quarterly 目標ごとに「目標値 / 現在値 / 残差 / 直近トレンド」
+- 達成軌道に乗っているか、要調整か
+
 ### 来週への調整ポイント
-具体的なアクション（2-3個）。今週のLessons Learnedを踏まえる。
+具体的なアクション（2-3個）。今週のLessons Learnedと中長期目標の残差を踏まえる。
 ```
 
 レビュー後、ディスカッションを経て記録を残す場合は `/journal` を使用する。

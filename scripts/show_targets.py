@@ -25,9 +25,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="目標一覧を表示")
     parser.add_argument(
         "--interval",
+        nargs="+",
         choices=["weekly", "monthly", "quarterly"],
         default=None,
-        help="表示するreview頻度（未指定で全件）",
+        help="表示するreview頻度（複数可、未指定で全件）",
     )
     args = parser.parse_args()
 
@@ -36,13 +37,14 @@ def main() -> int:
     targets = data.get("targets", [])
 
     if args.interval:
-        targets = [t for t in targets if t.get("review") == args.interval]
+        targets = [t for t in targets if t.get("review") in args.interval]
 
+    label = ",".join(args.interval) if args.interval else "all"
     if not targets:
-        print(f"対象なし (interval={args.interval})")
+        print(f"対象なし (interval={label})")
         return 0
 
-    print(f"## 目標一覧 ({args.interval or 'all'})\n")
+    print(f"## 目標一覧 ({label})\n")
     print("| key | target | unit | direction | review | note |")
     print("|---|---|---|---|---|---|")
     for t in targets:
