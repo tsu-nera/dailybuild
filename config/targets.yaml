@@ -1,0 +1,32 @@
+# 数値目標管理ファイル
+#
+# 各 target:
+#   key:       評価キー（src/lib/targets.py の EVALUATORS と一致）
+#   target:    目標値
+#   unit:      表示単位
+#   direction: up   = 大きいほど良い（残差 = target - current）
+#              down = 小さいほど良い（残差 = current - target）
+#              zero = 0が目標（残差 = current）
+#   review:    weekly / monthly / quarterly
+#   note:      補足
+targets:
+  - key: ffmi
+    target: 21.0
+    unit: ""
+    direction: up
+    review: monthly
+    note: "除脂肪体重指数。身長170cm前提（src/lib/analytics/body.py DEFAULT_HEIGHT_CM）"
+
+  - key: sleep_debt_h
+    target: 0
+    unit: h
+    direction: zero
+    review: weekly
+    note: "Oura方式の累積睡眠負債（src/lib/analytics/sleep/sleep_debt_clean.py）"
+
+  - key: zone2_min_weekly
+    target: 150
+    unit: min
+    direction: up
+    review: weekly
+    note: "WHO推奨。Fitbit fatBurnActiveZoneMinutes の月-日合計"

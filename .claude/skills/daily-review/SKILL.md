@@ -68,6 +68,15 @@ python scripts/generate_mind_report_daily.py --days 14
 python scripts/show_manual.py --days 7
 ```
 
+さらに、週次目標の宣言値を読み込む（`config/targets.yaml` の `review: weekly`）:
+
+```bash
+python scripts/show_targets.py --interval weekly
+```
+
+このスクリプトは目標値・方向（up/down/zero）の一覧を返すだけで、現在値や残差は算出しない。
+**現在値はレポートから読み取って自分で評価すること**（Zone2の残り分、睡眠負債の現在値など）。
+
 このスクリプトは `config/manual_metrics_def.yaml` を参照し、
 - active=true な指標のみ表示（unit付きヘッダ）
 - 全NaN列は自動非表示
@@ -97,6 +106,12 @@ python scripts/show_manual.py --days 7
 - 安静時心拍数の変動
 - 呼吸数・SpO2の異常検出
 - 運動負荷と回復のバランス
+
+#### 週次目標進捗（Targets）
+- `config/targets.yaml` で宣言された週次目標について、目標値とdirectionを確認
+- 現在値はBody/Sleep/Mindレポートから読み取り、残差・達成状況を自分で判断
+- 例: Zone2が週150min目標に対してbody/workoutレポートのfatBurn週合計と比較してあと何分か、睡眠負債がsleepレポートの現在値で目標0hからどれだけ離れているか
+- 未達の目標があれば「今日のアドバイス」に残り日数で達成可能なアクションを盛り込む
 
 #### 手動記録（Manual）
 - 主観スコア（mind_score / body_score / soreness_score）のトレンド
