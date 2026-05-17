@@ -22,12 +22,14 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import mind
+from lib.analytics import hr_zones
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 from lib.utils.data_loader import load_csv_with_baseline_window, determine_target_period
 
 BASE_DIR = project_root
 HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 HEART_RATE_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
+HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
 SLEEP_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
 SLEEP_LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
 BREATHING_RATE_CSV = BASE_DIR / 'data/fitbit/breathing_rate.csv'
@@ -35,7 +37,6 @@ SPO2_CSV = BASE_DIR / 'data/fitbit/spo2.csv'
 CARDIO_SCORE_CSV = BASE_DIR / 'data/fitbit/cardio_score.csv'
 TEMPERATURE_SKIN_CSV = BASE_DIR / 'data/fitbit/temperature_skin.csv'
 ACTIVITY_CSV = BASE_DIR / 'data/fitbit/activity.csv'
-ACTIVE_ZONE_MINUTES_CSV = BASE_DIR / 'data/fitbit/active_zone_minutes.csv'
 ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 
 
@@ -447,7 +448,7 @@ def plot_comprehensive_trend(responsiveness_data, sleep_patterns_data, save_path
     plt.close()
 
 
-def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days):
+def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days, hr_zone_meta=None):
     """
     3軸メンタルレポート用のコンテキストデータを準備
 
@@ -465,6 +466,8 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
         期間文字列
     days : int
         日数
+    hr_zone_meta : dict, optional
+        心拍ゾーンメタ情報
 
     Returns
     -------
@@ -496,6 +499,9 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
         # 免疫ストレススコア推移表（フォーマット済みテキスト）
         'immune_stress_table': immune_stress_table,
 
+        # 心拍ゾーンメタ情報
+        'hr_zone_meta': hr_zone_meta,
+
         # チャート
         'charts': {
             'hrv_rhr': 'img/hrv_rhr.png',
@@ -507,7 +513,7 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
     return context
 
 
-def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days):
+def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days, hr_zone_meta=None):
     """
     マークダウンレポートを生成（Jinja2テンプレート版）
 
@@ -519,11 +525,12 @@ def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sl
         alerts: アラートリスト
         period_str: 期間文字列
         days: 日数
+        hr_zone_meta: 心拍ゾーンメタ情報
     """
     from lib.templates.renderer import MindReportRenderer
 
     # コンテキストデータ準備
-    context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days)
+    context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days, hr_zone_meta=hr_zone_meta)
 
     # テンプレートレンダリング
     renderer = MindReportRenderer()
@@ -613,13 +620,6 @@ def main():
     if ACTIVITY_CSV.exists():
         data['activity'] = load_csv_with_baseline_window(
             ACTIVITY_CSV, target_start, target_end,
-            baseline_window=0
-        )
-
-    # アクティブゾーン分（ベースライン不要）
-    if ACTIVE_ZONE_MINUTES_CSV.exists():
-        data['active_zone_minutes'] = load_csv_with_baseline_window(
-            ACTIVE_ZONE_MINUTES_CSV, target_start, target_end,
             baseline_window=0
         )
 
@@ -725,11 +725,44 @@ def main():
         df_spo2=data.get('spo2')
     )
 
+    # 心拍ゾーン算出（hr_zones ライブラリ使用）
+    personal_cfg = hr_zones.load_personal_config()
+    df_hr_intraday = pd.read_csv(HEART_RATE_INTRADAY_CSV, index_col='datetime', parse_dates=True) if HEART_RATE_INTRADAY_CSV.exists() else None
+    df_hr_daily_raw = pd.read_csv(HEART_RATE_CSV) if HEART_RATE_CSV.exists() else None
+    hr_zone_meta = None
+    df_zone = None
+    if df_hr_intraday is not None and df_hr_daily_raw is not None:
+        hr_zones_cfg = personal_cfg.get('hr_zones', {})
+        resting_hr_cfg = hr_zones_cfg.get('resting_hr', {})
+        window_days = resting_hr_cfg.get('window_days', 30)
+        fallback = resting_hr_cfg.get('fallback', 48)
+        method = hr_zones_cfg.get('method', 'hrr')
+        import datetime as dt
+        end_dt = target_end.date() if hasattr(target_end, 'date') else target_end
+        max_hr = hr_zones.calc_max_hr(personal_cfg, end_dt)
+        resting_hr = hr_zones.calc_resting_hr(df_hr_daily_raw, end_dt, window_days, fallback)
+        bounds = hr_zones.compute_zone_bounds(max_hr, resting_hr, method)
+        df_zone = hr_zones.calc_daily_zone_minutes(df_hr_intraday, bounds)
+        import datetime as _dt
+        birth_date = personal_cfg.get('birth_date')
+        if isinstance(birth_date, str):
+            birth_date = _dt.date.fromisoformat(birth_date)
+        age = hr_zones.calc_age(birth_date, end_dt)
+        hr_zone_meta = {
+            'max_hr': max_hr,
+            'resting_hr': resting_hr,
+            'age': age,
+            'method': method,
+            'hrr': float(max_hr - resting_hr),
+            'bounds': bounds,
+            'window_days': window_days,
+        }
+
     exertion_balance_daily = mind.prepare_exertion_balance_daily_data(
         start_date=target_start,
         end_date=target_end,
         df_activity=data.get('activity'),
-        df_azm=data.get('active_zone_minutes')
+        df_zone=df_zone
     )
 
     sleep_patterns_daily = mind.prepare_sleep_patterns_daily_data(
@@ -768,7 +801,7 @@ def main():
     # レポート生成
     print()
     print('レポート生成中...')
-    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, len(responsiveness_daily))
+    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta)
 
     print()
     print('='*60)

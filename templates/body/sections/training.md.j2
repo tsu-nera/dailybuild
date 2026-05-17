@@ -1,13 +1,13 @@
 ## 🏋️ トレーニング
 
 {% if aerobic_data %}
-> 歩数と活動強度の記録。Active Zoneは心拍数ベースの運動強度（週150分推奨）。
-> Zone内訳: Z2（50-69% HRmax）、Z3-4（70-84%）、Z5（85%+）
+> 歩数と活動強度の記録。心拍ゾーン（%HRR カルボーネン法, maxHR=Tanaka{{ hr_zone_meta.max_hr }}/RHR{{ hr_zone_meta.resting_hr|number_format(0) }}）: Z1回復 Z2有酸素 Z3テンポ Z4閾値 Z5VO2max
+> 境界(bpm): Z1≥{{ hr_zone_meta.bounds.Z1|number_format(0) }} / Z2≥{{ hr_zone_meta.bounds.Z2|number_format(0) }} / Z3≥{{ hr_zone_meta.bounds.Z3|number_format(0) }} / Z4≥{{ hr_zone_meta.bounds.Z4|number_format(0) }} / Z5≥{{ hr_zone_meta.bounds.Z5|number_format(0) }}
 
-| 日付 | 歩数 | Zone合計 | Z2 | Z3-4 | Z5 | VO2 Max |
-|------|------|----------|----|------|-----|---------|
+| 日付 | 歩数 | Zone合計 | Z1 | Z2 | Z3 | Z4 | Z5 | VO2 Max |
+|------|------|----------|----|----|----|----|-----|---------|
 {% for row in aerobic_data %}
-| {{ row.date | date_format }} | {{ row.steps | number_format(0) }} | {{ row.active_zone | number_format(0) }} | {{ row.fat_burn | number_format(0) }} | {{ row.cardio | number_format(0) }} | {{ row.peak | number_format(0) }} | {{ row.vo2max | number_format(0) }} |
+| {{ row.date | date_format }} | {{ row.steps | number_format(0) }} | {{ row.total_zone_min | number_format(0) }} | {{ row.z1_min | number_format(0) }} | {{ row.z2_min | number_format(0) }} | {{ row.z3_min | number_format(0) }} | {{ row.z4_min | number_format(0) }} | {{ row.z5_min | number_format(0) }} | {{ row.vo2max | number_format(0) }} |
 {% endfor %}
 {% endif %}
 
