@@ -9,3 +9,13 @@ hr_zones:
     window_days: 30           # レポート終了日基準の直近N日中央値で固定
     fallback: 48              # 窓内にデータが無い場合の代替
   method: hrr                 # hrr(カルボーネン%HRR) | lthr | pmax（将来拡張）
+
+zone2:
+  # いわゆる "Zone2"（LT1直下の有酸素スイートスポット）の計測設定。
+  # 心拍ゾーンは LT1（有酸素閾値）を個人実測でアンカーするのが正道。
+  # 詳細・経緯: issues/013_zone/report.md, GitHub issue #21
+  lt1:
+    method: maf               # maf(180-age 暫定) | manual（将来: dfa = R-R DFA-α1 自動同定）
+    maf_base: 180             # MAF式 base - age。暫定デフォルト（低体力者ではLT1過大傾向に注意）
+    manual_bpm:               # Talk Test/DFA 実測値。設定時は method 問わず最優先で上書き
+  band_width_bpm: 15          # Zone2 = [lt1 - band_width_bpm, lt1) の心拍帯（狭義/San Millán的）

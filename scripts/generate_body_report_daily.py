@@ -22,6 +22,7 @@ sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import sleep, hrv, body, nutrition, activity, training
 from lib.analytics import hr_zones
+from lib.analytics import zone2
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir, filter_dataframe_by_period
 from lib.utils.data_loader import determine_target_period
 
@@ -402,6 +403,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
 
     # hr_zone_meta を取得（_prepare_aerobic_data 実行後にセットされる）
     hr_zone_meta = getattr(_prepare_aerobic_data, 'hr_zone_meta', None)
+    zone2_meta = getattr(_prepare_aerobic_data, 'zone2_meta', None)
 
     # コンテキスト構築
     context = {
@@ -421,6 +423,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
         'calorie_analysis_data': calorie_analysis_data,
         'recovery_data': recovery_data,
         'hr_zone_meta': hr_zone_meta,
+        'zone2_meta': zone2_meta,
         'detail_data': {
             'trend_image': 'img/trend.png',
             'daily_table': body.format_daily_table(
@@ -482,6 +485,17 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
     if df_hr_intraday is not None:
         df_zone = hr_zones.calc_daily_zone_minutes(df_hr_intraday, bounds)
 
+    # Zone2（LT1アンカー）日別分。%HRR ゾーンとは別目的（issue #21）
+    zone2_by_date = {}
+    zone2_meta = None
+    if df_hr_intraday is not None:
+        z2_daily, zone2_meta = zone2.prepare_zone2_daily_data(
+            start_date.date() if hasattr(start_date, 'date') else start_date,
+            end_date.date() if hasattr(end_date, 'date') else end_date,
+            df_hr_intraday, personal_cfg, ref_date=end_dt
+        )
+        zone2_by_date = {d['date']: d['zone2_min'] for d in z2_daily}
+
     # VO2 Max データ
     df_vo2max = None
     if CARDIO_SCORE_CSV.exists():
@@ -524,6 +538,9 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
             row['z5_min'] = None
             row['total_zone_min'] = None
 
+        # Zone2（LT1アンカー）分
+        row['zone2_min'] = zone2_by_date.get(date)
+
         # VO2 Maxデータ
         if df_vo2max is not None:
             vo2max_day = df_vo2max[df_vo2max['date'] == date]
@@ -550,6 +567,7 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
         'bounds': bounds,
         'window_days': window_days,
     }
+    _prepare_aerobic_data.zone2_meta = zone2_meta
 
     return aerobic_data
 
