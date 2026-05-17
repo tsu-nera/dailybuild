@@ -23,6 +23,7 @@ sys.path.insert(0, str(project_root / 'src'))
 from lib.analytics import sleep, hrv, body, nutrition, activity, training
 from lib.analytics import hr_zones
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir, filter_dataframe_by_period
+from lib.utils.data_loader import determine_target_period
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
@@ -289,7 +290,8 @@ def calc_strength_stats_for_period(start_date, end_date):
 
 
 def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
-                        hrv_stats=None, nutrition_stats=None, eat_stats=None):
+                        hrv_stats=None, nutrition_stats=None, eat_stats=None,
+                        target_end=None):
     """
     テンプレートに渡すレポートコンテキストを準備
 
@@ -309,6 +311,9 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
         栄養統計
     eat_stats : dict, optional
         EAT統計
+    target_end : pd.Timestamp, optional
+        レポート引数の終了日（今日など）。hr_zones の RHR 計算基準日として使う。
+        healthplanet 最終測定日（= dates.max()）でなく必ずこちらを渡すこと。
 
     Returns
     -------
@@ -375,8 +380,8 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     strength_data = None
     if activity_stats:
         training_data = {}
-        # 有酸素運動データの準備
-        aerobic_data = _prepare_aerobic_data(start_date, end_date, activity_stats)
+        # 有酸素運動データの準備（ref_date=target_end で RHR 基準日を統一）
+        aerobic_data = _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=target_end)
     cycling_stats = calc_cycling_stats_for_period(start_date, end_date)
     strength_stats = calc_strength_stats_for_period(start_date, end_date)
     cycling_data = cycling_stats['daily'] if cycling_stats else None
@@ -429,8 +434,22 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     return context
 
 
-def _prepare_aerobic_data(start_date, end_date, activity_stats):
-    """有酸素運動データを準備（hr_zones ベースのゾーン分類）"""
+def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
+    """有酸素運動データを準備（hr_zones ベースのゾーン分類）
+
+    Parameters
+    ----------
+    start_date : pd.Timestamp
+        表示期間開始日（healthplanet 測定日由来）
+    end_date : pd.Timestamp
+        表示期間終了日（healthplanet 測定日由来）
+    activity_stats : dict
+        アクティビティ統計
+    ref_date : datetime.date, optional
+        RHR ウィンドウ計算の基準日。未指定時は end_date を使用するが、
+        必ず target_end（レポート引数の終了日=今日など）を渡すこと。
+        mind と境界を一致させる設計要件のため。
+    """
     import datetime as _dt
 
     # hr_zones 算出
@@ -441,7 +460,11 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats):
     fallback = resting_hr_cfg.get('fallback', 48)
     method = hr_zones_cfg.get('method', 'hrr')
 
-    end_dt = end_date.date() if hasattr(end_date, 'date') else end_date
+    # ref_date: RHR ウィンドウ計算の基準日は必ず target_end を使う（healthplanet 最終日でなく）
+    if ref_date is not None:
+        end_dt = ref_date.date() if hasattr(ref_date, 'date') else ref_date
+    else:
+        end_dt = end_date.date() if hasattr(end_date, 'date') else end_date
 
     df_hr_daily_raw = None
     if HEART_RATE_MASTER_CSV.exists():
@@ -610,7 +633,7 @@ def _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats):
     return recovery_data
 
 
-def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None, nutrition_stats=None, eat_stats=None):
+def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None, nutrition_stats=None, eat_stats=None, target_end=None):
     """マークダウンレポートを生成（Jinja2テンプレート版）"""
     from lib.templates.renderer import BodyReportRenderer
 
@@ -618,7 +641,8 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
 
     # データ準備
     context = prepare_report_data(df, stats, sleep_stats, activity_stats,
-                                  hrv_stats, nutrition_stats, eat_stats)
+                                  hrv_stats, nutrition_stats, eat_stats,
+                                  target_end=target_end)
 
     # テンプレートレンダリング
     renderer = BodyReportRenderer()
@@ -640,6 +664,12 @@ def main():
 
     # Parse period arguments
     week, month, year = parse_period_args(args)
+
+    # target_end: hr_zones の RHR 計算基準日（mind と統一するため明示的に取得）
+    try:
+        _, target_end = determine_target_period(week, month, year, args.days)
+    except ValueError:
+        target_end = None
 
     # Load data
     df = pd.read_csv(DATA_CSV, index_col='date', parse_dates=True)
@@ -701,7 +731,7 @@ def main():
     plot_main_chart(df, img_dir / 'trend.png')
 
     # Generate report
-    generate_report(output_dir, df, stats, sleep_stats, activity_stats, hrv_stats, nutrition_stats, eat_stats)
+    generate_report(output_dir, df, stats, sleep_stats, activity_stats, hrv_stats, nutrition_stats, eat_stats, target_end=target_end)
 
     return 0
 
