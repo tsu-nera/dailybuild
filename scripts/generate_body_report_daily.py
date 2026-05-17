@@ -21,6 +21,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import sleep, hrv, body, nutrition, activity, training
+from lib.analytics import hr_zones
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir, filter_dataframe_by_period
 
 BASE_DIR = project_root
@@ -30,8 +31,8 @@ ACTIVITY_MASTER_CSV = BASE_DIR / 'data/fitbit/activity.csv'
 ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 HRV_MASTER_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 HEART_RATE_MASTER_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
+HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
 NUTRITION_MASTER_CSV = BASE_DIR / 'data/fitbit/nutrition.csv'
-ACTIVE_ZONE_CSV = BASE_DIR / 'data/fitbit/active_zone_minutes.csv'
 CARDIO_SCORE_CSV = BASE_DIR / 'data/fitbit/cardio_score.csv'
 
 
@@ -394,6 +395,9 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     # 回復セクションのデータ準備
     recovery_data = _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats)
 
+    # hr_zone_meta を取得（_prepare_aerobic_data 実行後にセットされる）
+    hr_zone_meta = getattr(_prepare_aerobic_data, 'hr_zone_meta', None)
+
     # コンテキスト構築
     context = {
         'report_title': 'フィットネスデイリーレポート',
@@ -411,6 +415,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
         'nutrition_data': nutrition_section_data,
         'calorie_analysis_data': calorie_analysis_data,
         'recovery_data': recovery_data,
+        'hr_zone_meta': hr_zone_meta,
         'detail_data': {
             'trend_image': 'img/trend.png',
             'daily_table': body.format_daily_table(
@@ -425,13 +430,36 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
 
 
 def _prepare_aerobic_data(start_date, end_date, activity_stats):
-    """有酸素運動データを準備"""
-    # Active ZoneとVO2 Maxデータを読み込み
-    df_active_zone = None
-    if ACTIVE_ZONE_CSV.exists():
-        df_active_zone = pd.read_csv(ACTIVE_ZONE_CSV)
-        df_active_zone['date'] = pd.to_datetime(df_active_zone['date'])
+    """有酸素運動データを準備（hr_zones ベースのゾーン分類）"""
+    import datetime as _dt
 
+    # hr_zones 算出
+    personal_cfg = hr_zones.load_personal_config()
+    hr_zones_cfg = personal_cfg.get('hr_zones', {})
+    resting_hr_cfg = hr_zones_cfg.get('resting_hr', {})
+    window_days = resting_hr_cfg.get('window_days', 30)
+    fallback = resting_hr_cfg.get('fallback', 48)
+    method = hr_zones_cfg.get('method', 'hrr')
+
+    end_dt = end_date.date() if hasattr(end_date, 'date') else end_date
+
+    df_hr_daily_raw = None
+    if HEART_RATE_MASTER_CSV.exists():
+        df_hr_daily_raw = pd.read_csv(HEART_RATE_MASTER_CSV)
+
+    df_hr_intraday = None
+    if HEART_RATE_INTRADAY_CSV.exists():
+        df_hr_intraday = pd.read_csv(HEART_RATE_INTRADAY_CSV, index_col='datetime', parse_dates=True)
+
+    max_hr = hr_zones.calc_max_hr(personal_cfg, end_dt)
+    resting_hr = hr_zones.calc_resting_hr(df_hr_daily_raw, end_dt, window_days, fallback) if df_hr_daily_raw is not None else float(fallback)
+    bounds = hr_zones.compute_zone_bounds(max_hr, resting_hr, method)
+
+    df_zone = None
+    if df_hr_intraday is not None:
+        df_zone = hr_zones.calc_daily_zone_minutes(df_hr_intraday, bounds)
+
+    # VO2 Max データ
     df_vo2max = None
     if CARDIO_SCORE_CSV.exists():
         df_vo2max = pd.read_csv(CARDIO_SCORE_CSV)
@@ -451,24 +479,27 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats):
         else:
             row['steps'] = None
 
-        # Active Zoneデータ
-        if df_active_zone is not None:
-            zone_day = df_active_zone[df_active_zone['date'] == date]
-            if len(zone_day) > 0:
-                row['active_zone'] = zone_day['activeZoneMinutes'].iloc[0]
-                row['fat_burn'] = zone_day['fatBurnActiveZoneMinutes'].iloc[0] if pd.notna(zone_day['fatBurnActiveZoneMinutes'].iloc[0]) else None
-                row['cardio'] = zone_day['cardioActiveZoneMinutes'].iloc[0] if pd.notna(zone_day['cardioActiveZoneMinutes'].iloc[0]) else None
-                row['peak'] = zone_day['peakActiveZoneMinutes'].iloc[0] if pd.notna(zone_day['peakActiveZoneMinutes'].iloc[0]) else None
-            else:
-                row['active_zone'] = None
-                row['fat_burn'] = None
-                row['cardio'] = None
-                row['peak'] = None
+        # 心拍ゾーンデータ
+        if df_zone is not None and date in df_zone.index:
+            val = pd.to_numeric(df_zone.loc[date, 'z1_min'], errors='coerce')
+            row['z1_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z2_min'], errors='coerce')
+            row['z2_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z3_min'], errors='coerce')
+            row['z3_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z4_min'], errors='coerce')
+            row['z4_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z5_min'], errors='coerce')
+            row['z5_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'total_zone_min'], errors='coerce')
+            row['total_zone_min'] = int(val) if pd.notna(val) else None
         else:
-            row['active_zone'] = None
-            row['fat_burn'] = None
-            row['cardio'] = None
-            row['peak'] = None
+            row['z1_min'] = None
+            row['z2_min'] = None
+            row['z3_min'] = None
+            row['z4_min'] = None
+            row['z5_min'] = None
+            row['total_zone_min'] = None
 
         # VO2 Maxデータ
         if df_vo2max is not None:
@@ -481,6 +512,21 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats):
             row['vo2max'] = None
 
         aerobic_data.append(row)
+
+    # meta を返すためにグローバル変数に格納（コンテキストで参照）
+    birth_date = personal_cfg.get('birth_date')
+    if isinstance(birth_date, str):
+        birth_date = _dt.date.fromisoformat(birth_date)
+    age = hr_zones.calc_age(birth_date, end_dt)
+    _prepare_aerobic_data.hr_zone_meta = {
+        'max_hr': max_hr,
+        'resting_hr': resting_hr,
+        'age': age,
+        'method': method,
+        'hrr': float(max_hr - resting_hr),
+        'bounds': bounds,
+        'window_days': window_days,
+    }
 
     return aerobic_data
 

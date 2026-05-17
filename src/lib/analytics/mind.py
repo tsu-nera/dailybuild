@@ -340,7 +340,7 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
     return responsiveness_data
 
 
-def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_azm):
+def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_zone):
     """
     運動バランスの日別データを準備
 
@@ -348,7 +348,7 @@ def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_az
         start_date: 開始日
         end_date: 終了日
         df_activity: アクティビティデータフレーム（index=date）
-        df_azm: アクティブゾーン分データフレーム（index=date）
+        df_zone: calc_daily_zone_minutes() の戻り値（index=正規化日付）
 
     Returns:
         list[dict]: 日別データリスト
@@ -378,130 +378,34 @@ def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_az
             row['fairly_min'] = None
             row['very_min'] = None
 
-        # アクティブゾーン分
-        if df_azm is not None and date in df_azm.index:
-            val = pd.to_numeric(df_azm.loc[date, 'activeZoneMinutes'], errors='coerce')
-            row['active_zone_minutes'] = int(val) if pd.notna(val) else None
-            val = pd.to_numeric(df_azm.loc[date, 'fatBurnActiveZoneMinutes'], errors='coerce')
-            row['fat_burn'] = float(val) if pd.notna(val) else None
-            val = pd.to_numeric(df_azm.loc[date, 'cardioActiveZoneMinutes'], errors='coerce')
-            row['cardio'] = float(val) if pd.notna(val) else None
-            val = pd.to_numeric(df_azm.loc[date, 'peakActiveZoneMinutes'], errors='coerce')
-            row['peak'] = float(val) if pd.notna(val) else None
+        # 心拍ゾーン分（calc_daily_zone_minutes の戻り値から取得）
+        if df_zone is not None and date in df_zone.index:
+            val = pd.to_numeric(df_zone.loc[date, 'z1_min'], errors='coerce')
+            row['z1_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z2_min'], errors='coerce')
+            row['z2_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z3_min'], errors='coerce')
+            row['z3_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z4_min'], errors='coerce')
+            row['z4_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'z5_min'], errors='coerce')
+            row['z5_min'] = int(val) if pd.notna(val) else None
+            val = pd.to_numeric(df_zone.loc[date, 'total_zone_min'], errors='coerce')
+            row['total_zone_min'] = int(val) if pd.notna(val) else None
         else:
-            row['active_zone_minutes'] = None
-            row['fat_burn'] = None
-            row['cardio'] = None
-            row['peak'] = None
+            row['z1_min'] = None
+            row['z2_min'] = None
+            row['z3_min'] = None
+            row['z4_min'] = None
+            row['z5_min'] = None
+            row['total_zone_min'] = None
 
         exertion_data.append(row)
 
     return exertion_data
 
 
-def prepare_sleep_patterns_daily_data(start_date, end_date, df_sleep, df_levels=None):
-    """
-    睡眠パターンの日別データを準備
-
-    Args:
-        start_date: 開始日
-        end_date: 終了日
-        df_sleep: 睡眠データフレーム（dateOfSleep列あり）
-        df_levels: 睡眠レベルデータフレーム（sleep_levels.csv、オプショナル）
-
-    Returns:
-        list[dict]: 日別データリスト（入眠潜時・起床後時間含む）
-    """
-    from lib.analytics.sleep import calc_sleep_timing
-
-    sleep_data = []
-    all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
-
-    # 入眠潜時・起床後時間を計算（df_levelsが提供されている場合）
-    sleep_timing = {}
-    if df_levels is not None and not df_levels.empty:
-        raw_timing = calc_sleep_timing(df_levels)
-        # キーを日付文字列('YYYY-MM-DD')に正規化（calc_sleep_timingはdatetime型キーを返す場合がある）
-        for key, value in raw_timing.items():
-            date_key = pd.to_datetime(key).strftime('%Y-%m-%d')
-            sleep_timing[date_key] = value
-
-    for date in all_dates:
-        row = {'date': date}
-        date_str = date.strftime('%Y-%m-%d')
-
-        # 睡眠データ
-        if df_sleep is not None:
-            sleep_day = df_sleep[df_sleep['dateOfSleep'] == date]
-            if len(sleep_day) > 0:
-                # 就寝時刻
-                if 'startTime' in sleep_day.columns:
-                    start_time = sleep_day.iloc[0]['startTime']
-                    if pd.notna(start_time):
-                        row['bedtime'] = pd.to_datetime(start_time).strftime('%H:%M')
-                    else:
-                        row['bedtime'] = None
-                else:
-                    row['bedtime'] = None
-
-                # 起床時刻
-                if 'endTime' in sleep_day.columns:
-                    end_time = sleep_day.iloc[0]['endTime']
-                    if pd.notna(end_time):
-                        row['waketime'] = pd.to_datetime(end_time).strftime('%H:%M')
-                    else:
-                        row['waketime'] = None
-                else:
-                    row['waketime'] = None
-
-                # 睡眠時間
-                val = sleep_day.iloc[0]['minutesAsleep']
-                row['sleep_hours'] = float(val) / 60 if pd.notna(val) else None
-
-                # 効率
-                val = sleep_day.iloc[0]['efficiency']
-                row['efficiency'] = float(val) if pd.notna(val) else None
-
-                # 覚醒時間（分）
-                if 'minutesAwake' in sleep_day.columns:
-                    val = sleep_day.iloc[0]['minutesAwake']
-                    row['minutes_awake'] = float(val) if pd.notna(val) else None
-                else:
-                    row['minutes_awake'] = None
-
-                # 中途覚醒回数
-                if 'wakeCount' in sleep_day.columns:
-                    val = sleep_day.iloc[0]['wakeCount']
-                    row['wake_count'] = int(val) if pd.notna(val) else None
-                else:
-                    row['wake_count'] = None
-            else:
-                row['bedtime'] = None
-                row['waketime'] = None
-                row['sleep_hours'] = None
-                row['efficiency'] = None
-                row['minutes_awake'] = None
-                row['wake_count'] = None
-        else:
-            row['bedtime'] = None
-            row['waketime'] = None
-            row['sleep_hours'] = None
-            row['efficiency'] = None
-            row['minutes_awake'] = None
-            row['wake_count'] = None
-
-        # 入眠潜時・起床後時間（sleep_timingから取得）
-        if date_str in sleep_timing:
-            timing = sleep_timing[date_str]
-            row['minutes_to_fall_asleep'] = timing.get('minutes_to_fall_asleep')
-            row['minutes_after_wakeup'] = timing.get('minutes_after_wakeup')
-        else:
-            row['minutes_to_fall_asleep'] = None
-            row['minutes_after_wakeup'] = None
-
-        sleep_data.append(row)
-
-    return sleep_data
+from lib.analytics.mind_sleep import prepare_sleep_patterns_daily_data  # noqa: F401
 
 
 # ベースライン計算期間の定義
