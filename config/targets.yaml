@@ -1,7 +1,7 @@
 # 数値目標管理ファイル
 #
 # 各 target:
-#   key:       評価キー（src/lib/targets.py の EVALUATORS と一致）
+#   key:       識別用キー（評価器コードは無い。現在値・残差はレビューAIがレポートを見て判断）
 #   target:    目標値
 #   unit:      表示単位
 #   direction: up   = 大きいほど良い（残差 = target - current）
@@ -25,8 +25,8 @@ targets:
     note: "Oura方式の累積睡眠負債（src/lib/analytics/sleep/sleep_debt_clean.py）"
 
   - key: zone2_min_weekly
-    target: 150
+    target: 90
     unit: min
     direction: up
     review: weekly
-    note: "WHO推奨。Fitbit fatBurnActiveZoneMinutes の月-日合計"
+    note: "現行目標90=頻度づくり(週3回×30分)の漸進目標。最終目標は150(WHO推奨=体力増強/ミトコンドリア新生)で較正後に引き上げる。指標はMAF Zone2(LT1アンカー[LT1-15,LT1))の週合計＝body日次レポート トレーニング欄Zone2列を週積算(旧Fitbit fatBurnから移行)。単一真実=config/personal.yaml zone2。LT1=141は未較正MAF暫定のため、較正(Talk Test→manual_bpm)まではレビューAIは絶対達成率でなく直近トレンドで評価する(較正前に高い値を絶対視するとLT1超え踏みを誘発)。経緯:issues/013_zone2/"
