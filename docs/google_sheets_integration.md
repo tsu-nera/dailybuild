@@ -44,14 +44,14 @@ config/gcp_service_account.json    # GCP認証情報（要作成）
 ### 3. ローカルテスト
 
 ```bash
-# gspreadインストール
-pip install -r requirements.txt
+# 依存インストール
+uv sync
 
 # CSVのみモード
-python scripts/fetch_sleep_to_sheets.py --csv-only
+uv run scripts/fetch_sleep_to_sheets.py --csv-only
 
 # Sheets書き込みテスト
-SPREADSHEET_ID=xxxxx python scripts/fetch_sleep_to_sheets.py
+SPREADSHEET_ID=xxxxx uv run scripts/fetch_sleep_to_sheets.py
 ```
 
 ### 4. GitHub Secrets設定

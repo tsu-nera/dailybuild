@@ -8,21 +8,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Environment
 
-```bash
-# venv環境のセットアップ
-python3 -m venv .venv
-source .venv/bin/activate
+[uv](https://docs.astral.sh/uv/) で依存とPython（3.12系）を管理する。
 
-# 依存パッケージのインストール
-pip install -r requirements.txt
+```bash
+# 環境のセットアップ・復元（pyproject.toml + uv.lock から .venv を再構築）
+uv sync
 ```
+
+別マシンへ移行した際も `uv sync` 一発で `.venv` を復元できる。
 
 ## Running Scripts
 
 ```bash
-# プロジェクトルートから実行
-python scripts/fetch_sleep.py        # Fitbit睡眠データ取得
-python scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
+# プロジェクトルートから実行（uv run なら .venv の有効化不要）
+uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
+uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 ```
 
 ## Project Structure
@@ -112,3 +112,6 @@ df_filtered = filter_dataframe_by_period(
 認証情報は`config/`ディレクトリにJSONファイルとして配置:
 - `fitbit_creds.json` / `fitbit_token.json` - Fitbit API
 - `healthplanet_creds.json` - HealthPlanet API（login_id, password必須）
+- `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
+
+Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
