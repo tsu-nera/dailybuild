@@ -3,12 +3,12 @@
 
 - metric: core_temperature
   unit: "°C"
-  description: 起床直後の実測体温
+  description: 起床直後の実測体温。37.0超は発熱、35台は低体温の疑い。客観の皮膚温Δと併読
   active: true
 
 - metric: hrv_morning
   unit: ms
-  description: 朝のHRV（手動計測）
+  description: 朝のHRV手動計測。低下=疲労蓄積/高=回復良好。Fitbit HRV(客観)との乖離を確認
   active: true
 
 - metric: keto_morning
@@ -18,27 +18,27 @@
 
 - metric: mind_score
   unit: "1-5"
-  description: 主観メンタルスコア（就寝前）
+  description: 主観メンタルスコア（就寝前、高=良好）。HRV/RHR等の客観回復指標との一致・乖離を見る
   active: true
 
 - metric: body_score
   unit: "1-5"
-  description: 主観身体スコア（倦怠感・炎症感）
+  description: 主観身体スコア（倦怠感・炎症感、高=良好）。客観回復指標と乖離する場合は末梢疲労や睡眠負債を疑う
   active: true
 
-- metric: soreness_score
+- metric: sickness_score
   unit: "1-5"
-  description: 筋肉痛・身体疲労スコア
+  description: 筋肉痛・身体疲労スコア（高=良好/疲労少）。HRVに現れない局所疲労の追跡用
   active: true
 
 - metric: sleep_score
   unit: "1-5"
-  description: 主観睡眠スコア
+  description: 主観睡眠スコア（高=良好）。fitbit_sleep_score（客観）と乖離する場合は要注目
   active: true
 
 - metric: comment
   unit: ""
-  description: 日次コメント・メモ
+  description: 日次コメント・自覚症状・特記事項。数値に出ない文脈の最重要ソース
   active: true
 
 - metric: fitbit_sleep_score
@@ -53,7 +53,7 @@
 
 - metric: rise_sleep_dept
   unit: ""
-  description: Rise アプリの睡眠負債
+  description: Rise アプリの睡眠負債(h)。睡眠負債評価はsleepレポートのアルゴリズム値よりこちらを優先
   active: true
 
 - metric: muse_paf

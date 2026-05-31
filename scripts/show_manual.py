@@ -65,6 +65,27 @@ def render_comments(df):
     return '\n'.join(lines)
 
 
+def render_legend(df, metrics_def):
+    """出力に現れた active 指標の説明（unit / description）を列挙。
+
+    metric 名はスキル側に列挙せず、定義の単一の真実である
+    manual_metrics_def.yaml をそのまま提示する。
+    """
+    active = [d for d in metrics_def if d.get('active')]
+    lines = []
+    for d in active:
+        m = d['metric']
+        if m not in df.columns or df[m].dropna().empty:
+            continue
+        unit = d.get('unit', '')
+        unit_str = f" ({unit})" if unit else ""
+        desc = d.get('description', '')
+        lines.append(f"- **{m}**{unit_str}: {desc}")
+    if not lines:
+        return "（表示中の指標なし）"
+    return '\n'.join(lines)
+
+
 def render_inactive_warning(df, metrics_def):
     """active=true なのにデータが無い指標を警告"""
     active_metrics = [d['metric'] for d in metrics_def
@@ -103,6 +124,10 @@ def main():
 
     print("## コメント\n")
     print(render_comments(df_recent))
+    print()
+
+    print("## 指標の説明\n")
+    print(render_legend(df_recent, metrics_def))
     print()
 
     warning = render_inactive_warning(df_recent, metrics_def)
