@@ -26,11 +26,6 @@
   description: 主観身体スコア（倦怠感・炎症感、高=良好）。客観回復指標と乖離する場合は末梢疲労や睡眠負債を疑う
   active: true
 
-- metric: sickness_score
-  unit: "1-5"
-  description: 筋肉痛・身体疲労スコア（高=良好/疲労少）。HRVに現れない局所疲労の追跡用
-  active: true
-
 - metric: sleep_score
   unit: "1-5"
   description: 主観睡眠スコア（高=良好）。fitbit_sleep_score（客観）と乖離する場合は要注目
@@ -62,6 +57,11 @@
   active: true
 
 # 以下は廃止
+- metric: sickness_score
+  unit: "1-5"
+  description: 筋肉痛・身体疲労スコア（高=良好/疲労少）。HRVに現れない局所疲労の追跡用
+  active: false
+
 - metric: fitbit_stress_score
   unit: ""
   description: Fitbitストレススコア（API取得済み）
