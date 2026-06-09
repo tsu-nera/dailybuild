@@ -44,8 +44,8 @@ date '+%Y-%m-%d %H:%M %A'
 
 ```bash
 cd /home/tsu-nera/repo/dailybuild
-python scripts/generate_report.py body --fetch <N> --days 1
-python scripts/fetch_manual.py
+uv run python scripts/generate_report.py body --fetch <N> --days 1
+uv run python scripts/fetch_manual.py
 ```
 
 ## Step 2: レポート生成
@@ -54,13 +54,13 @@ python scripts/fetch_manual.py
 
 ```bash
 # 体組成レポート（直近7日）-- --only body または指定なしの場合
-python scripts/generate_body_report_daily.py --days 7
+uv run python scripts/generate_body_report_daily.py --days 7
 
 # 睡眠レポート（直近30日）-- --only sleep または指定なしの場合
-python scripts/generate_sleep_report_daily.py --days 30
+uv run python scripts/generate_sleep_report_daily.py --days 30
 
 # メンタルレポート（直近14日）-- --only mind または指定なしの場合
-python scripts/generate_mind_report_daily.py --days 14
+uv run python scripts/generate_mind_report_daily.py --days 14
 ```
 
 エラーがあれば報告する。
@@ -76,13 +76,13 @@ python scripts/generate_mind_report_daily.py --days 14
 加えて、手動記録データの直近7日分を読み込む（`--no-fetch` の場合も含む）:
 
 ```bash
-python scripts/show_manual.py --days 7
+uv run python scripts/show_manual.py --days 7
 ```
 
 さらに、週次目標の宣言値を読み込む（`config/targets.yaml` の `review: weekly`）:
 
 ```bash
-python scripts/show_targets.py --interval weekly
+uv run python scripts/show_targets.py --interval weekly
 ```
 
 このスクリプトは目標値・方向（up/down/zero）の一覧を返すだけで、現在値や残差は算出しない。

@@ -33,13 +33,13 @@ GTDのMonthly Reviewに合わせて月末に実施する。月内の事実確認
 cd /home/tsu-nera/repo/dailybuild
 
 # 体組成（月次詳細）
-python scripts/generate_body_report_daily.py --month current
+uv run python scripts/generate_body_report_daily.py --month current
 
 # 睡眠（月次詳細）
-python scripts/generate_sleep_report_daily.py --month current
+uv run python scripts/generate_sleep_report_daily.py --month current
 
 # メンタル（月次詳細）
-python scripts/generate_mind_report_daily.py --month current
+uv run python scripts/generate_mind_report_daily.py --month current
 ```
 
 出力先: `reports/{body,sleep,mind}/monthly/YYYY-MM/REPORT.md`
@@ -50,13 +50,13 @@ python scripts/generate_mind_report_daily.py --month current
 
 ```bash
 # 体組成（8週トレンド）
-python scripts/generate_body_report_interval.py --weeks 8
+uv run python scripts/generate_body_report_interval.py --weeks 8
 
 # 睡眠（8週トレンド）
-python scripts/generate_sleep_report_interval.py --weeks 8
+uv run python scripts/generate_sleep_report_interval.py --weeks 8
 
 # メンタル（8週トレンド）
-python scripts/generate_mind_report_interval.py --weeks 8
+uv run python scripts/generate_mind_report_interval.py --weeks 8
 ```
 
 出力先: `reports/{body,sleep,mind}/interval/REPORT.md`（上書き）

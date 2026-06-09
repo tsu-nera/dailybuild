@@ -31,13 +31,13 @@ GTDのWeekly Reviewに合わせて日曜に実施する。今週分のデータ�
 cd /home/tsu-nera/repo/dailybuild
 
 # 体組成
-python scripts/generate_body_report_daily.py --week current
+uv run python scripts/generate_body_report_daily.py --week current
 
 # 睡眠
-python scripts/generate_sleep_report_daily.py --week current
+uv run python scripts/generate_sleep_report_daily.py --week current
 
 # メンタル
-python scripts/generate_mind_report_daily.py --week current
+uv run python scripts/generate_mind_report_daily.py --week current
 ```
 
 出力先: `reports/{body,sleep,mind}/weekly/YYYY-Wxx/REPORT.md`
@@ -64,7 +64,7 @@ python scripts/generate_mind_report_daily.py --week current
 週次レビューは中長期目標への進捗確認に向くため、weekly目標は対象外（daily-reviewで毎日見ているため）。
 
 ```bash
-python scripts/show_targets.py --interval monthly quarterly
+uv run python scripts/show_targets.py --interval monthly quarterly
 ```
 
 このスクリプトは目標値・directionを返すだけ。現在値はBody/Sleep/Mindレポートから読み取って評価する。
