@@ -22,3 +22,6 @@ config/*.json
 tmp/
 
 data/mf
+
+# CBT 思考記録（機微情報。ローカル限定・GitHub には載せない）
+reports/cbt/
