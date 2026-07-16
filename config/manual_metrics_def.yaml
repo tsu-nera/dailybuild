@@ -56,6 +56,16 @@
   description: Muse PAF（Peak Alpha Frequency）
   active: true
 
+- metric: caffeine_mg
+  unit: mg
+  description: カフェイン摂取量（飲まない日は0）。コーヒー1杯≈80-100mg。睡眠・入眠潜時・HRV・主観との観察的関連を見る（非ランダム化=因果は弱い、逆因果に注意）
+  active: true
+
+- metric: caffeine_time
+  unit: ""
+  description: 最終カフェイン摂取時刻（HH:MM）。半減期約5時間、夜への影響を左右する最重要交絡。摂取した日のみ記録
+  active: true
+
 # 以下は廃止
 - metric: sickness_score
   unit: "1-5"
