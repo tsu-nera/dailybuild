@@ -44,18 +44,15 @@ uv run python scripts/generate_mind_report_daily.py --week current
 
 エラーがあれば報告する。
 
-## Step 2: 今週のdaily journalを読み込み
+## Step 2: 今週のjournalを読み込み
 
-その週（月〜日）に該当する `reports/daily/YYYY-MM-DD.md` を全て読み込む。存在する分のみ。
+その週の `reports/journal/YYYY-Wxx.md` を読む（`date '+%G-W%V'`、`--week` 指定時はその週）。日次エントリは `## YYYY-MM-DD (曜)` として同一ファイル内にある。
 
-```bash
-# 今週の月曜〜日曜を計算（--week 指定時はその週）
-# 該当する reports/daily/*.md を Read で全て取得
-```
+前週の調整が効いたかを見るため、前週ファイルの Next Week's Adjustments も読む。
 
-これらは Step 3 のレビューで「定性的な文脈」として参照する：
-- 各日のDiscussion・Action Plan・Lessons Learned
-- Action Plan の達成状況（Evening Check-inがあれば）
+Step 3 のレビューで「定性的な文脈」として参照する：
+- 各日の Discussion・Action Plan
+- Action Plan の達成状況（Evening Check-in があれば）
 - 週内の気づきの推移
 
 ## Step 2.5: 中長期目標の読み込み

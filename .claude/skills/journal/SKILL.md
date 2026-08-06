@@ -1,308 +1,182 @@
 ---
 name: journal
-description: ヘルスジャーナル（日次/週次レビュー + ディスカッション記録）を生成・保存する
-argument-hint: [YYYY-MM-DD | --weekly [YYYY-Wxx] | --monthly [YYYY-MM]]
+description: ヘルスジャーナル（日次/週次/月次レビュー + ディスカッション記録）を reports/journal/ に蓄積する
+argument-hint: "[YYYY-MM-DD | --weekly [YYYY-Wxx] | --monthly [YYYY-MM]]"
 user-invocable: true
-allowed-tools: Bash, Read, Write
+allowed-tools: Bash, Read, Write, Edit
 ---
 
 # Journal Skill
 
-daily-review または weekly-review の結果とディスカッションを元に、ヘルスジャーナルエントリーを生成・保存する。
+daily-review / weekly-review / monthly-review の結果とディスカッションを `reports/journal/` に蓄積する。
+
+## 保存構造
+
+```
+reports/journal/
+  JOURNAL.md      索引。新しい順の表。要約が検索キー
+  YYYY-Wxx.md     週ファイル。Weekly Summary + 日次エントリ（## YYYY-MM-DD (曜)）
+  YYYY-MM.md      月次サマリ
+```
+
+`reports/{daily,weekly,monthly}/` は2026-08-07に journal へ移行した**凍結アーカイブ**。読む必要も書き込む必要もない（内容は週ファイルに全て入っている）。
+
+**読み手はユーザーではなく将来のagent**。人が読み返す前提で書かない。後からagentが「いつ何が起きたか」を索引→1ファイルで辿れる密度を優先する。
+
+**恒久的な知見はジャーナルに書かない**。体質・運用方針・指標の落とし穴など今後も効く事実は memory に置き、ジャーナルには経過だけ残す（同じ知見を毎週書き直さない）。振り分けに迷ったら「来月も参照するか」で判断する。
 
 ## モード判定
 
-引数および会話コンテキストから判定する：
+- `--monthly`、または直前に monthly-review → **monthly**
+- `--weekly`、または直前に weekly-review → **weekly**
+- それ以外 → **daily**
 
-- `--monthly` 指定、または直前に monthly-review が実行されている → **monthlyモード**
-- `--weekly` 指定、または直前に weekly-review が実行されている → **weeklyモード**
-- それ以外 → **dailyモード**（現行動作）
+日付・週・月の指定がなければ現在日時から決める。曜日は `date +%A` で確認する（コンテキストの日付から曜日を推測しない）。
 
-## 引数パース
-
-### dailyモード
-- 引数があればその日付を使用（YYYY-MM-DD 形式）
-- 引数がなければ今日の日付を使用
-
-### weeklyモード
-- `--weekly YYYY-Wxx` 形式で週を指定
-- `--weekly` のみなら今週（ISO週）
-
-### monthlyモード
-- `--monthly YYYY-MM` 形式で月を指定
-- `--monthly` のみなら今月
+```bash
+date '+%Y-%m-%d %A'; date '+%G-W%V'   # 今日 / 今週のISO週
+```
 
 ---
 
-## dailyモード
+## daily
 
-### Step 1: 日付決定
+### Step 1: 週ファイルを特定
 
-引数または今日の日付から `YYYY-MM-DD` を決定する。
+その日付のISO週から `reports/journal/YYYY-Wxx.md` を決める。ファイルが無ければ新規作成し、H1 は `# YYYY-Wxx (MM/DD - MM/DD)`（月曜〜日曜）。
 
-### Step 2: モード判定（新規/追記）
+### Step 2: 追記 or 追補を判定
 
-`reports/daily/YYYY-MM-DD.md` が既に存在するか確認する。
+週ファイル内に `## YYYY-MM-DD` セクションが既にあるか確認する。
 
-- **存在しない** → **新規モード**（Step 3a へ）
-- **存在する** → **追記モード**（Step 3b へ）
+- **無い** → Step 3a（新規エントリ）
+- **ある** → Step 3b（Evening Check-in 追補）
 
-### Step 3a: 新規モード — Journal エントリー生成
+### Step 3a: 新規エントリ
 
-現在の会話コンテキスト（daily-review 結果 + ディスカッション内容）から、以下のフォーマットで journal エントリーを生成する。
-
-**フォーマット**:
+週ファイルの末尾に、日付順を保って追記する。
 
 ```markdown
-# Health Journal YYYY-MM-DD
+## YYYY-MM-DD (曜)
 
-## Review
+**状態**: 良好 / 注意 / 要改善 — 一行で理由
 
-### 総合コンディション
-[良好 / 注意 / 要改善]
+| 指標 | 値 |
+|---|---|
+| 睡眠 | 6.7h / 効率94% |
+| HRV / RHR | 31.9ms / 53bpm |
+| 体重 | 欠測(29日) |
 
-### Body（体組成）
-- 現状サマリー
-- 良い点 / 注意点
+- **Body**: 現状と注意点
+- **Sleep**: 現状と注意点
+- **Mind**: 現状と注意点
+- **主観 vs 客観**: 一致か乖離か、乖離ならどの構成概念の差か
 
-### Sleep（睡眠）
-- 現状サマリー
-- 良い点 / 注意点
+**Action Plan**
+1. 具体的なアクション
+2. …
 
-### Mind（メンタル・回復）
-- 現状サマリー
-- 良い点 / 注意点
-
-## Discussion
-
-- [ディスカッションで得た気づき・深掘りした内容]
-
-## Action Plan
-
-- [具体的なアクション（2-3個）]
-
-## Lessons Learned
-
-- [判断の根拠となった気づき・次回に活かすべき教訓]
+**Discussion**: レビュー後の会話で深掘りした内容。無ければ省略
 ```
 
-**生成ルール**:
-- Review は daily-review のレビュー結果を反映
-- Discussion はレビュー後の会話で深掘りした内容を記載。なければ省略可
-- Action Plan はディスカッションを踏まえた具体的なアクション
-- Lessons Learned は「なぜこうなったか」「次回どうするか」の振り返り。なければ省略可
-- 情報が不足している場合はユーザーに確認する
+- 指標テーブルには**その日の判断を左右した数値だけ**入れる。全項目を機械的に並べない
+- 欠測は「欠測(N日)」と明示する。欠測の存在自体が後から効く情報
+- daily-review の出力をそのまま貼らない。判断と根拠に圧縮する
+- 情報が足りなければユーザーに確認する
 
-→ Step 4 へ
+### Step 3b: Evening Check-in 追補
 
-### Step 3b: 追記モード — 振り返り追記
-
-日中の実行結果や追加の気づきを、既存の journal ファイルの末尾に追記する。
-
-**追記フォーマット**:
+該当日セクションの末尾に追記する。
 
 ```markdown
-
-## Evening Check-in
-
-### Action Plan の実行結果
+**Evening Check-in**
 
 | アクション | 結果 | 備考 |
-|------------|------|------|
-| 22時台就寝 | 達成 | 22:15に就寝 |
-| 中強度トレーニング | 未実施 | 残業で時間なし |
+|---|---|---|
+| 22時台就寝 | 達成 | 22:15 |
+| 体重測定 | 未実施 | 帰宅が遅く失念 |
 
-### 追加の気づき
-
-- [日中に気づいたこと・体調の変化など]
+- 日中に気づいたこと
 ```
 
-**生成ルール**:
-- 既存ファイルを Read で読み込み、末尾に追記する
-- Action Plan の各項目について、計画と実際の結果を対比する
-- 既に `## Evening Check-in` セクションが存在する場合は上書きせず、ユーザーに確認する
+既に Evening Check-in がある場合は上書きせずユーザーに確認する。
 
 → Step 4 へ
 
-### Step 4: ファイル保存
+---
 
-`reports/daily/YYYY-MM-DD.md` に保存する。ディレクトリが存在しない場合は作成する。
+## weekly
 
-### Step 5: GitHub Issueへの投稿
+同じ週ファイルの H1 直下に `## Weekly Summary` を置く（既にあれば書き換える）。日次エントリはその下にそのまま残す。
 
-`weekly-review` ラベルが付いたOpenなIssueを検索し、Step 4 で保存したファイルの内容をコメントとして投稿する。
+```markdown
+## Weekly Summary
 
-```bash
-ISSUE_NUMBER=$(gh issue list --label "weekly-review" --state open --json number --jq '.[0].number')
-gh issue comment "$ISSUE_NUMBER" --body "$(cat reports/daily/YYYY-MM-DD.md)"
+**状態**: 安定 / 軽度乱れ / 要調整 — 一行で理由
+
+- **Body**: 週間変化量と評価
+- **Sleep**: 規則性の評価
+- **Mind**: 自律神経バランスの評価
+
+**Highlights**: 特に良かった日/悪かった日と要因、曜日パターン、週内の構造変化
+
+**Next Week's Adjustments**
+1. 来週への調整ポイント
+2. …
+
+**Discussion**: 深掘りした内容。無ければ省略
 ```
 
-- Issueが見つからない場合: `bash scripts/create_weekly_issue.sh` で新規作成してから投稿
-- 投稿後、IssueのURLを表示する
+先週の週ファイルの Next Week's Adjustments を読み、達成状況に触れる。
+
+→ Step 4 へ
 
 ---
 
-## weeklyモード
+## monthly
 
-dailyの集積を週末に締めくくり、週次サマリーとして週次Issueに投稿してIssueをcloseする。
-
-### Step 1: 週決定
-
-引数 `--weekly YYYY-Wxx` または今週のISO週から `YYYY-Wxx` を決定する。
-
-```bash
-# 今週のISO週を取得
-YEAR=$(date +%G)
-WEEK=$(date +%V)
-WEEK_LABEL="${YEAR}-W${WEEK}"
-```
-
-### Step 2: Weekly Journal エントリー生成
-
-会話コンテキスト（weekly-review の結果 + ディスカッション内容）から、以下のフォーマットで生成する。
-
-**フォーマット**:
+`reports/journal/YYYY-MM.md` に保存する。その月の週ファイル（月をまたぐ週は月内の日数が多い方）の Weekly Summary を読んでから書く。
 
 ```markdown
-# Weekly Health Journal YYYY-Wxx (MM/DD - MM/DD)
+# YYYY-MM
+
+**状態**: 順調 / 停滞 / 不安定 / 改善傾向 — 一行で理由
 
 ## Review
+- **Body**: 月間変化量と目標達成度、8週トレンドの形状
+- **Sleep**: 月間の質と規則性、8週トレンドの変化
+- **Mind**: 月内の安定性と転換点
 
-### 今週の総合コンディション
-[安定 / 軽度乱れ / 要調整 など]
-
-### Body（体組成）
-- 週内推移と週間変化量
-- 良い点 / 注意点
-
-### Sleep（睡眠）
-- 規則性の評価
-- 良い点 / 注意点
-
-### Mind（メンタル・回復）
-- 自律神経バランスの評価
-- 良い点 / 注意点
-
-## Weekly Highlights
-
-- 特に良かった日 / 悪かった日とその要因
-- 曜日パターンや繰り返しの傾向
-- 今週の構造変化（生活パターンの変化など）
-
-## Discussion
-
-- [ディスカッションで深掘りした内容]
-
-## Next Week's Adjustments
-
-- [来週への調整ポイント（2-3個）]
-
-## Lessons Learned
-
-- [今週の気づき・次週以降に活かすべき教訓]
-```
-
-**生成ルール**:
-- Review は weekly-review のレビュー結果を反映
-- Highlights は週内の特徴的な日や傾向を抽出
-- Next Week's Adjustments はディスカッションを踏まえた具体的な調整
-- 情報が不足している場合はユーザーに確認する
-
-### Step 3: ファイル保存
-
-`reports/weekly/YYYY-Wxx.md` に保存する。ディレクトリが存在しない場合は作成する。
-
-### Step 4: 週次Issueへの投稿とclose
-
-該当週の `weekly-review` ラベルOpen Issueに「週次サマリー」コメントとして投稿し、Issueをcloseする。
-
-```bash
-ISSUE_NUMBER=$(gh issue list --label "weekly-review" --state open --json number --jq '.[0].number')
-gh issue comment "$ISSUE_NUMBER" --body "$(cat reports/weekly/YYYY-Wxx.md)"
-gh issue close "$ISSUE_NUMBER" --comment "週次レビュー完了。次週のIssueは別途作成。"
-```
-
-- Issueが見つからない場合: 該当週のIssueがすでにcloseされているか、未作成の可能性。ユーザーに確認する
-- 投稿・close後、IssueのURLを表示する
-
----
-
-## monthlyモード
-
-月末に weekly の積み上げを締めくくり、月次サマリーとして保存する。
-
-### Step 1: 月決定
-
-引数 `--monthly YYYY-MM` または今月から `YYYY-MM` を決定する。
-
-```bash
-# 今月を取得
-MONTH_LABEL=$(date +%Y-%m)
-```
-
-### Step 2: Monthly Journal エントリー生成
-
-会話コンテキスト（monthly-review の結果 + ディスカッション内容）から、以下のフォーマットで生成する。
-
-**フォーマット**:
-
-```markdown
-# Monthly Health Journal YYYY-MM
-
-## Review
-
-### 今月の総合コンディション
-[順調 / 停滞 / 不安定 / 改善傾向 など]
-
-### Body（体組成）
-- 月間変化量と目標達成度
-- 8週トレンドの形状
-- 良い点 / 課題
-
-### Sleep（睡眠）
-- 月間の質と規則性
-- 8週トレンドの変化
-- 良い点 / 課題
-
-### Mind（メンタル・回復）
-- 月内の安定性と転換点
-- 8週推移の評価
-- 良い点 / 課題
-
-## Monthly Highlights
-
-- 特に良かった週 / 悪かった週とその要因
+## Highlights
+- 良かった週 / 悪かった週と要因
 - 月内に起きた構造変化
-- weekly journal で繰り返し現れたテーマ
+- 週次で繰り返し現れたテーマ
 
 ## Weekly Adjustments の効果
-
-- 効いた調整 / 効かなかった調整
-- 持ち越されたテーマ
-
-## Discussion
-
-- [ディスカッションで深掘りした内容]
+- 効いた調整 / 効かなかった調整 / 持ち越したテーマ
 
 ## Next Month's Strategy
-
-- [来月の戦略的調整ポイント（2-3個）]
-- 継続すべき習慣 / 見直すべき習慣
-
-## Lessons Learned
-
-- [今月の気づき・次月以降に活かすべき教訓]
+1. 週次では解決しなかった課題への戦略的アプローチ
+2. 継続すべき習慣 / 見直すべき習慣
 ```
 
-**生成ルール**:
-- Review は monthly-review のレビュー結果を反映
-- Highlights は月内の特徴的な週や繰り返しテーマを抽出
-- Weekly Adjustments の効果は、その月の weekly journal の Next Week's Adjustments を追跡できた範囲で評価
-- Next Month's Strategy は週次レベルでは解決できなかった課題への戦略的アプローチを記載
-- 情報が不足している場合はユーザーに確認する
+→ Step 4 へ
 
-### Step 3: ファイル保存
+---
 
-`reports/monthly/YYYY-MM.md` に保存する。ディレクトリが存在しない場合は作成する。
+## Step 4: JOURNAL.md の索引を更新
 
-保存後、ファイルパスをユーザーに提示する（GitHub Issueへの投稿はmonthlyモードでは行わない）。
+保存したファイルに対応する行を `reports/journal/JOURNAL.md` に追加、または既存行の要約を書き換える。**この索引の要約がagentの唯一の検索面**なので、汎用的な語（「注意」「良好」だけ）で終わらせず、後から引くための固有名詞・数値を入れる。
+
+```markdown
+| 08/03-08/09 | [2026-W32](2026-W32.md) | 睡眠6.7-7.0hに改善も主観2/5据え置きで乖離継続。体重計29日欠測。Zone2目標を廃止 |
+```
+
+- 新しい週/月ほど上。年ごとに `## YYYY` 見出しで区切る
+- daily 追記のたびに、その週の行の要約を最新化する（週の途中でも索引だけで状況が分かる状態を保つ）
+
+## Step 5: 恒久知見の振り分け
+
+そのセッションで「今後も効く事実」が出ていれば memory に書き、ジャーナルからは省く。事後に1-2文で報告する（確認は不要）。
+
+保存後、ファイルパスと索引の更新内容をユーザーに提示する。GitHub Issue への投稿は行わない。

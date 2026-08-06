@@ -63,10 +63,10 @@ uv run python scripts/generate_mind_report_interval.py --weeks 8
 
 ## Step 3: 今月のweekly journalを読み込み
 
-その月に該当する `reports/weekly/YYYY-Wxx.md` を全て読み込む。月をまたぐ週は、月内の日数が多い方の月に含める。存在する分のみ。
+`reports/journal/JOURNAL.md` の索引から今月の週を特定し、該当する `reports/journal/YYYY-Wxx.md` を読む。月をまたぐ週は、月内の日数が多い方の月に含める。各ファイル先頭の Weekly Summary が主対象で、日次エントリは必要に応じて掘る。
 
 これらは Step 4 のレビューで「定性的な文脈」として参照する：
-- 各週の Weekly Highlights・Discussion
+- 各週の Highlights・Discussion
 - Next Week's Adjustments の達成状況（次週以降のjournalで追跡可能なら）
 - 月内の気づきの推移・繰り返しテーマ
 
