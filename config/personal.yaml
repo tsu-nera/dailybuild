@@ -19,3 +19,10 @@ zone2:
     maf_base: 180             # MAF式 base - age。暫定デフォルト（低体力者ではLT1過大傾向に注意）
     manual_bpm:               # Talk Test/DFA 実測値。設定時は method 問わず最優先で上書き
   band_width_bpm: 15          # Zone2 = [lt1 - band_width_bpm, lt1) の心拍帯（狭義/San Millán的）
+
+weather:
+  # 気象データの夜間帯集計範囲。date D の夜間値 = D-1 の night_start 時 ～ D の night_end 時
+  # （Fitbit の dateOfSleep が起床日基準のため、同じ date で突合できる）
+  # 既定値は実測の平均就寝22:38 / 平均起床05:44 に合わせている
+  night_start_hour: 22
+  night_end_hour: 6
