@@ -5,7 +5,10 @@ from astral.sun import sunrise, sunset
 import datetime
 import zoneinfo
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_LOCATION = {
     "name": "Tokyo",
@@ -15,11 +18,16 @@ DEFAULT_LOCATION = {
 }
 
 def load_location_config():
-    """設定ファイルから位置情報を読み込み"""
-    config_path = Path(__file__).resolve().parents[4] / 'config' / 'location.json'
+    """設定ファイルから位置情報を読み込み
+
+    config/location.json が無い場合は DEFAULT_LOCATION を使う。
+    config/*.json は gitignore 対象のため、新しい環境では存在しない。
+    """
+    config_path = Path(__file__).resolve().parents[3] / 'config' / 'location.json'
     if config_path.exists():
         with open(config_path) as f:
             return json.load(f)
+    logger.warning("config/location.json が見つからないため既定座標(%s)を使用", DEFAULT_LOCATION['name'])
     return DEFAULT_LOCATION
 
 def get_sun_times(date, location=None):
