@@ -81,6 +81,15 @@ def fetch_latest_data(days: int = 2) -> bool:
         print("日出・日入取得エラー")
         return False
 
+    print("\n=== 気象データ取得 ===")
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_DIR / 'fetch_weather.py'), '--days', '14'],
+        cwd=str(PROJECT_ROOT)
+    )
+    if result.returncode != 0:
+        print("気象データ取得エラー")
+        return False
+
     print("\n=== 完了 ===\n")
     return True
 
