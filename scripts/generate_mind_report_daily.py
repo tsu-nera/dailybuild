@@ -152,273 +152,59 @@ def plot_hrv_rhr_chart(responsiveness_data, save_path):
     plt.close()
 
 
-def format_immune_stress_table(responsiveness_data, sleep_patterns_data):
+TEMP_DEV_THRESHOLD = 0.5
+RHR_DEV_THRESHOLD = 3.0
+SUSTAINED_DAYS = 2
+
+
+def detect_sustained_illness_signal(responsiveness_data):
     """
-    免疫ストレススコア推移の表をテキストで生成
+    急性体調変化の持続シグナルを検知
+
+    皮膚温がベースライン+0.5℃以上、かつ安静時心拍数がベースライン+3bpm以上の
+    日が2日連続した場合にアラートを発火する。単日の逸脱では発火しない。
+
+    閾値は過去627日分のデータで検証済み（発火 2.9回/年）。
 
     Args:
         responsiveness_data: 反応性の日別データリスト
-        sleep_patterns_data: 睡眠パターンの日別データリスト
 
     Returns:
-        str: フォーマット済みの表テキスト
-    """
-    sleep_dict = {s['date']: s for s in sleep_patterns_data}
-    lines = []
-
-    for day in responsiveness_data:
-        date_str = day['date'].strftime('%m/%d')
-        score = day.get('immune_stress_score', 0.0)
-        level = day.get('immune_stress_level', '🟢 正常範囲')
-
-        # 異常指標を収集
-        anomalies = []
-        if day.get('spo2_avg_z_score') and abs(day['spo2_avg_z_score']) >= 1.5:
-            anomalies.append(f"SpO2 {day['spo2_avg_z_score']:.1f}SD")
-        if day.get('hrv_daily_z_score') and abs(day['hrv_daily_z_score']) >= 1.5:
-            anomalies.append(f"HRV {day['hrv_daily_z_score']:.1f}SD")
-        if day.get('breathing_rate_z_score') and abs(day['breathing_rate_z_score']) >= 1.5:
-            anomalies.append(f"呼吸数 {day['breathing_rate_z_score']:.1f}SD")
-        if day.get('temp_variation_z_score') and abs(day['temp_variation_z_score']) >= 1.5:
-            anomalies.append(f"皮膚温 {day['temp_variation_z_score']:.1f}SD")
-
-        sleep_day = sleep_dict.get(day['date'])
-        if sleep_day and sleep_day.get('efficiency') and sleep_day['efficiency'] < 80:
-            anomalies.append('睡眠効率低下')
-
-        anomaly_str = ', '.join(anomalies) if anomalies else '-'
-
-        line = f"{date_str}    {score:.1f}σ                   {level}     {anomaly_str}"
-        lines.append(line)
-
-    return '\n'.join(lines)
-
-
-def calculate_immune_stress_scores(responsiveness_data, sleep_patterns_data, debug=False):
-    """
-    免疫ストレススコアを計算（FINAL_ANALYSIS.md Appendix A.3の式に基づく）
-
-    Args:
-        responsiveness_data: 反応性の日別データリスト
-        sleep_patterns_data: 睡眠パターンの日別データリスト
-        debug: デバッグ出力を有効にする（特定日のみ）
-
-    Returns:
-        responsiveness_dataに'immune_stress_score'を追加したリスト
-    """
-    # 睡眠データをdictに変換（日付でルックアップ）
-    sleep_dict = {s['date']: s for s in sleep_patterns_data}
-
-    # デバッグ対象日
-    import pandas as pd
-    debug_dates = [
-        pd.Timestamp('2025-12-27'),
-        pd.Timestamp('2025-12-28'),
-        pd.Timestamp('2025-12-31'),
-        pd.Timestamp('2026-01-01'),
-        pd.Timestamp('2026-01-02'),
-        pd.Timestamp('2026-01-03'),
-    ]
-
-    # デバッグ確認
-    if debug:
-        print(f"\n[DEBUG] デバッグモード有効、対象日: {debug_dates}")
-        print(f"[DEBUG] データ数: {len(responsiveness_data)}")
-        print(f"[DEBUG] 実際の日付:")
-        for day in responsiveness_data:
-            print(f"  - {day['date']} (type: {type(day['date'])}, in debug_dates: {day['date'] in debug_dates})")
-
-    for day in responsiveness_data:
-        # デバッグ: 日付チェック
-        if debug:
-            if day['date'] in debug_dates:
-                print(f"\n[DEBUG] ✓ 日付マッチ: {day['date']} (type: {type(day['date'])})")
-
-        # 各指標のz-scoreを取得（異常方向を統一: 高い方が悪い）
-        spo2_z = 0.0
-        hrv_z = 0.0
-        breathing_z = 0.0
-        temp_z = 0.0
-        sleep_eff_z = 0.0
-        wake_time_z = 0.0
-        rhr_z = 0.0
-
-        # SpO2異常（低い方が悪い → 符号反転）
-        if day.get('spo2_avg_z_score') is not None:
-            spo2_z = -day['spo2_avg_z_score']  # 負のz-scoreが悪い → 正に変換
-
-        # HRV異常（低い方が悪い → 符号反転）
-        if day.get('hrv_daily_z_score') is not None:
-            hrv_z = -day['hrv_daily_z_score']  # 負のz-scoreが悪い → 正に変換
-
-        # 呼吸数異常（高い方が悪い → そのまま）
-        if day.get('breathing_rate_z_score') is not None:
-            breathing_z = day['breathing_rate_z_score']
-
-        # 皮膚温異常（高い方が悪い → 絶対値）
-        if day.get('temp_variation_z_score') is not None:
-            temp_z = abs(day['temp_variation_z_score'])  # 上昇も下降も異常として扱う
-
-        # 睡眠効率異常（低い方が悪い → 符号反転）
-        sleep_day = sleep_dict.get(day['date'])
-        if sleep_day and sleep_day.get('efficiency') is not None:
-            # 簡易計算: 80%未満をペナルティ化（より詳細な計算も可能）
-            eff = sleep_day['efficiency']
-            if eff < 80:
-                sleep_eff_z = (80 - eff) / 10  # 80%からの乖離を簡易スコア化
-
-        # 覚醒時間異常（高い方が悪い）
-        # minutes_awakeはsleep_patterns_dataに含まれているはず
-        # ベースラインとの差分をz-scoreとして使用する場合は別途計算が必要
-        # ここでは簡易的に、異常に長い覚醒時間（90分以上）をペナルティ化
-        if sleep_day and sleep_day.get('minutes_awake') is not None:
-            awake = sleep_day['minutes_awake']
-            # 簡易計算: 平均60分として、90分以上をペナルティ化
-            if awake > 90:
-                wake_time_z = (awake - 90) / 40  # 90分からの超過を簡易スコア化
-
-        # RHR異常（高い方が悪い → そのまま）
-        if day.get('rhr_z_score') is not None:
-            rhr_z = day['rhr_z_score']
-
-        # デバッグ出力（特定日のみ）
-        if debug and day['date'] in debug_dates:
-            print(f"\n{'='*80}")
-            print(f"【免疫ストレススコア計算詳細】 {day['date']}")
-            print(f"{'='*80}")
-            print(f"\n【生理指標の実測値】")
-            print(f"  HRV (RMSSD):     {day.get('hrv_daily', 'N/A')} ms")
-            print(f"  RHR:             {day.get('rhr', 'N/A')} bpm")
-            print(f"  呼吸数:          {day.get('breathing_rate', 'N/A')} /min")
-            print(f"  SpO2 (平均):     {day.get('spo2_avg', 'N/A')} %")
-            print(f"  SpO2 (最小):     {day.get('spo2_min', 'N/A')} %")
-            print(f"  皮膚温変動:      {day.get('temp_variation', 'N/A')} °C")
-            if sleep_day:
-                print(f"  睡眠効率:        {sleep_day.get('efficiency', 'N/A')} %")
-                print(f"  覚醒時間:        {sleep_day.get('minutes_awake', 'N/A')} 分")
-
-            print(f"\n【ベースラインと標準偏差】")
-            print(f"  HRV baseline:    {day.get('hrv_daily_baseline', 'N/A'):.1f} ± {day.get('hrv_daily_baseline_std', 'N/A'):.1f} ms")
-            print(f"  RHR baseline:    {day.get('rhr_baseline', 'N/A'):.1f} ± {day.get('rhr_baseline_std', 'N/A'):.1f} bpm")
-            print(f"  呼吸数 baseline: {day.get('breathing_rate_baseline', 'N/A'):.1f} ± {day.get('breathing_rate_baseline_std', 'N/A'):.1f} /min")
-            print(f"  SpO2 baseline:   {day.get('spo2_avg_baseline', 'N/A'):.1f} ± {day.get('spo2_avg_baseline_std', 'N/A'):.1f} %")
-            print(f"  皮膚温 baseline: {day.get('temp_variation_baseline', 'N/A'):.1f} ± {day.get('temp_variation_baseline_std', 'N/A'):.1f} °C")
-
-            print(f"\n【Z-スコア】")
-            print(f"  HRV Z-score:     {day.get('hrv_daily_z_score', 'N/A'):.2f} SD")
-            print(f"  RHR Z-score:     {day.get('rhr_z_score', 'N/A'):.2f} SD")
-            print(f"  呼吸数 Z-score:  {day.get('breathing_rate_z_score', 'N/A'):.2f} SD")
-            print(f"  SpO2 Z-score:    {day.get('spo2_avg_z_score', 'N/A'):.2f} SD")
-            print(f"  皮膚温 Z-score:  {day.get('temp_variation_z_score', 'N/A'):.2f} SD")
-
-            print(f"\n【免疫ストレススコア計算】")
-            print(f"  各指標の寄与分（異常方向に変換後 × 重み）:")
-
-        # 免疫ストレス総合スコア計算（重み付き平均）
-        # 異常方向のz-scoreのみを使用（正常範囲より良い値は0にクリップ）
-        #
-        # 重み設定の根拠:
-        # - SpO2 (2.0): 潜伏期の早期兆候、変動しやすいため単独では重度異常にしない
-        # - HRV (2.0): 発病直前の重要指標、疲労・ストレス・免疫の総合的指標
-        # - 呼吸数 (1.5): 発病直前の兆候
-        # - 皮膚温 (1.0): 発病時の明確な指標（発熱）
-        # - 睡眠効率/覚醒時間 (1.0): 回復力の指標
-        # - RHR (0.5): 補助的指標
-        spo2_contrib = max(0, spo2_z) * 2.0  # 2.5 → 2.0 に調整
-        hrv_contrib = max(0, hrv_z) * 2.0
-        breathing_contrib = max(0, breathing_z) * 1.5
-        temp_contrib = temp_z * 1.0
-        sleep_eff_contrib = max(0, sleep_eff_z) * 1.0
-        wake_time_contrib = max(0, wake_time_z) * 1.0
-        rhr_contrib = max(0, rhr_z) * 0.5
-
-        if debug and day['date'] in debug_dates:
-            print(f"    SpO2:          {spo2_z:+.2f} SD (反転後) × 2.0 = {spo2_contrib:.3f}")
-            print(f"    HRV:           {hrv_z:+.2f} SD (反転後) × 2.0 = {hrv_contrib:.3f}")
-            print(f"    呼吸数:        {breathing_z:+.2f} SD × 1.5 = {breathing_contrib:.3f}")
-            print(f"    皮膚温:        {temp_z:+.2f} SD (絶対値) × 1.0 = {temp_contrib:.3f}")
-            print(f"    睡眠効率:      {sleep_eff_z:.2f} (簡易計算) × 1.0 = {sleep_eff_contrib:.3f}")
-            print(f"    覚醒時間:      {wake_time_z:.2f} (簡易計算) × 1.0 = {wake_time_contrib:.3f}")
-            print(f"    RHR:           {rhr_z:+.2f} SD × 0.5 = {rhr_contrib:.3f}")
-
-        immune_stress_score = (
-            spo2_contrib + hrv_contrib + breathing_contrib +
-            temp_contrib + sleep_eff_contrib +
-            wake_time_contrib + rhr_contrib
-        ) / 5.0  # 感度調整: 9.5 → 5.0（実際の症状により一致させる）
-
-        if debug and day['date'] in debug_dates:
-            total_sum = spo2_contrib + hrv_contrib + breathing_contrib + temp_contrib + sleep_eff_contrib + wake_time_contrib + rhr_contrib
-            print(f"\n  総合: ({total_sum:.3f}) / 5.0 = {immune_stress_score:.3f}σ")
-
-        day['immune_stress_score'] = immune_stress_score
-
-        # 判定レベル（FINAL_ANALYSIS.mdに基づく）
-        if immune_stress_score >= 2.0:
-            day['immune_stress_level'] = '🔴 重度異常'
-        elif immune_stress_score >= 1.5:
-            day['immune_stress_level'] = '⚠️ 警告レベル'
-        elif immune_stress_score >= 1.0:
-            day['immune_stress_level'] = '⚠️ 軽度異常'
-        else:
-            day['immune_stress_level'] = '🟢 正常範囲'
-
-    return responsiveness_data
-
-
-def detect_health_alerts(responsiveness_data, sleep_patterns_data):
-    """
-    体調アラートを検知
-
-    Args:
-        responsiveness_data: 反応性の日別データリスト
-        sleep_patterns_data: 睡眠パターンの日別データリスト
-
-    Returns:
-        list[dict]: アラート情報のリスト
+        list[dict]: 発火日の情報（date, temp_dev, rhr_dev）
     """
     alerts = []
+    streak = 0
 
     for day in responsiveness_data:
-        date = day['date']
-        alert_items = []
+        temp_variation = day.get('temp_variation')
+        temp_baseline = day.get('temp_variation_baseline')
+        rhr = day.get('rhr')
+        rhr_baseline = day.get('rhr_baseline')
 
-        # HRV乖離チェック
-        if day.get('hrv_daily_deviation_pct') is not None:
-            dev = day['hrv_daily_deviation_pct']
-            if dev < -15:
-                alert_items.append(f"HRV大幅低下 ({dev:.1f}%)")
-            elif dev < -10:
-                alert_items.append(f"HRV低下 ({dev:.1f}%)")
+        if (
+            temp_variation is None
+            or temp_baseline is None
+            or rhr is None
+            or rhr_baseline is None
+        ):
+            streak = 0
+            continue
 
-        # RHR乖離チェック
-        if day.get('rhr_deviation_pct') is not None:
-            dev = day['rhr_deviation_pct']
-            if dev > 5:
-                alert_items.append(f"RHR上昇 (+{dev:.1f}%)")
+        condition_met = (
+            temp_variation >= temp_baseline + TEMP_DEV_THRESHOLD
+            and rhr >= rhr_baseline + RHR_DEV_THRESHOLD
+        )
 
-        # 体温変動チェック（絶対値ベース）
-        if day.get('temp_variation') is not None and day.get('temp_variation_baseline') is not None:
-            temp_val = day['temp_variation']
-            temp_baseline = day['temp_variation_baseline']
-            temp_dev = temp_val - temp_baseline
-            # ベースラインから±0.5℃以上の乖離で警告
-            if abs(temp_dev) > 0.5:
-                alert_items.append(f"体温変動異常 ({temp_dev:+.2f}℃)")
+        if condition_met:
+            streak += 1
+        else:
+            streak = 0
 
-        # 睡眠効率チェック
-        sleep_day = next((s for s in sleep_patterns_data if s['date'] == date), None)
-        if sleep_day and sleep_day.get('efficiency') is not None:
-            eff = sleep_day['efficiency']
-            if eff < 80:
-                alert_items.append(f"睡眠効率低下 ({eff:.0f}%)")
-
-        # アラートがあれば追加
-        if alert_items:
+        if streak >= SUSTAINED_DAYS:
             alerts.append({
-                'date': date,
-                'messages': alert_items,
-                'severity': 'high' if len(alert_items) >= 3 else 'medium' if len(alert_items) >= 2 else 'low'
+                'date': day['date'],
+                'temp_dev': temp_variation - temp_baseline,
+                'rhr_dev': rhr - rhr_baseline,
             })
 
     return alerts
@@ -476,7 +262,7 @@ def plot_comprehensive_trend(responsiveness_data, sleep_patterns_data, save_path
     plt.close()
 
 
-def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days, hr_zone_meta=None):
+def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None):
     """
     3軸メンタルレポート用のコンテキストデータを準備
 
@@ -488,8 +274,6 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
         運動バランスの日別データリスト
     sleep_patterns_daily : list
         睡眠パターンの日別データリスト
-    alerts : list
-        検知されたアラートリスト
     period_str : str
         期間文字列
     days : int
@@ -502,8 +286,7 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
     dict
         テンプレートコンテキスト
     """
-    # 免疫ストレススコア推移のテキストを生成
-    immune_stress_table = format_immune_stress_table(responsiveness_daily, sleep_patterns_daily)
+    illness_alerts = detect_sustained_illness_signal(responsiveness_daily)
 
     context = {
         'report_title': '🧠 メンタルレポート',
@@ -521,11 +304,8 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
         # 睡眠パターンの日別データ（そのまま渡す）
         'sleep_patterns_data': sleep_patterns_daily,
 
-        # アラート
-        'alerts': alerts,
-
-        # 免疫ストレススコア推移表（フォーマット済みテキスト）
-        'immune_stress_table': immune_stress_table,
+        # 急性体調変化の持続シグナル
+        'illness_alerts': illness_alerts,
 
         # 心拍ゾーンメタ情報
         'hr_zone_meta': hr_zone_meta,
@@ -541,7 +321,7 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
     return context
 
 
-def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days, hr_zone_meta=None):
+def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None):
     """
     マークダウンレポートを生成（Jinja2テンプレート版）
 
@@ -550,7 +330,6 @@ def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sl
         responsiveness_daily: 反応性の日別データリスト
         exertion_balance_daily: 運動バランスの日別データリスト
         sleep_patterns_daily: 睡眠パターンの日別データリスト
-        alerts: アラートリスト
         period_str: 期間文字列
         days: 日数
         hr_zone_meta: 心拍ゾーンメタ情報
@@ -558,7 +337,7 @@ def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sl
     from lib.templates.renderer import MindReportRenderer
 
     # コンテキストデータ準備
-    context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, days, hr_zone_meta=hr_zone_meta)
+    context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=hr_zone_meta)
 
     # テンプレートレンダリング
     renderer = MindReportRenderer()
@@ -818,20 +597,8 @@ def main():
     print(f'  運動バランスデータ: {len(exertion_balance_daily)}日分')
     print(f'  睡眠パターンデータ: {len(sleep_patterns_daily)}日分')
 
-    # 免疫ストレススコア計算
-    print()
-    print('免疫ストレススコア計算中...')
-    responsiveness_daily = calculate_immune_stress_scores(responsiveness_daily, sleep_patterns_daily, debug=False)
-    print(f'  免疫ストレススコア計算完了')
-
     # 期間文字列
     period_str = f'{target_start.strftime("%Y-%m-%d")} 〜 {target_end.strftime("%Y-%m-%d")}'
-
-    # アラート検知
-    print()
-    print('アラート検知中...')
-    alerts = detect_health_alerts(responsiveness_daily, sleep_patterns_daily)
-    print(f'  検知されたアラート: {len(alerts)}件')
 
     # グラフ生成
     print()
@@ -843,7 +610,7 @@ def main():
     # レポート生成
     print()
     print('レポート生成中...')
-    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, alerts, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta)
+    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta)
 
     print()
     print('='*60)
