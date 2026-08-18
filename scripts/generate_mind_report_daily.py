@@ -38,9 +38,36 @@ CARDIO_SCORE_CSV = BASE_DIR / 'data/fitbit/cardio_score.csv'
 TEMPERATURE_SKIN_CSV = BASE_DIR / 'data/fitbit/temperature_skin.csv'
 ACTIVITY_CSV = BASE_DIR / 'data/fitbit/activity.csv'
 BLOOD_PRESSURE_CSV = BASE_DIR / 'data/healthplanet_bp.csv'
+CORE_TEMPERATURE_CSV = BASE_DIR / 'data/fitbit/temperature_core.csv'
 ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 
 
+
+
+def load_core_temperature(csv_path, target_start, target_end):
+    """深部体温（Fitbitへの手動記録）を日次に丸めて読み込む
+
+    Fitbitは時刻付きで1日に複数回記録できるため、その日の最初の測定
+    （起床直後の想定）を採用する。
+    """
+    if not csv_path.exists():
+        return pd.DataFrame()
+
+    df = pd.read_csv(csv_path, parse_dates=['date_time'])
+    if df.empty:
+        return pd.DataFrame()
+
+    df = df.sort_values('date_time')
+    df['date'] = df['date_time'].dt.normalize()
+    df = df[(df['date'] >= target_start) & (df['date'] <= target_end)]
+    if df.empty:
+        return pd.DataFrame()
+
+    first = df.groupby('date').first()
+    return pd.DataFrame({
+        'core_temperature': first['temperature'],
+        'core_temperature_time': first['date_time'].dt.strftime('%H:%M'),
+    })
 
 
 def plot_hrv_chart(responsiveness_data, save_path):
@@ -617,6 +644,11 @@ def main():
             baseline_window=mind.BASELINE_WINDOWS['temp_variation']
         )
 
+    # 深部体温（手動記録、ベースライン不要）
+    data['core_temperature'] = load_core_temperature(
+        CORE_TEMPERATURE_CSV, target_start, target_end
+    )
+
     # 血圧（ベースライン不要、表示期間のみ）
     if BLOOD_PRESSURE_CSV.exists():
         data['blood_pressure'] = load_csv_with_baseline_window(
@@ -731,7 +763,8 @@ def main():
         df_breathing=data.get('breathing_rate'),
         df_temp=data.get('temperature_skin'),
         df_spo2=data.get('spo2'),
-        df_bp=data.get('blood_pressure')
+        df_bp=data.get('blood_pressure'),
+        df_core_temp=data.get('core_temperature')
     )
 
     # 心拍ゾーン算出（hr_zones ライブラリ使用）

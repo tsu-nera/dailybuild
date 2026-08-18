@@ -3,8 +3,8 @@
 
 - metric: core_temperature
   unit: "°C"
-  description: 起床直後の実測体温。37.0超は発熱、35台は低体温の疑い。客観の皮膚温Δと併読
-  active: true
+  description: 起床直後の実測体温（Fitbitアプリへの記録に移行。mindレポートの「深部体温」列を参照）
+  active: false
 
 - metric: hrv_morning
   unit: ms
