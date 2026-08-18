@@ -11,4 +11,8 @@ echo "=== HealthPlanet体組成計データ取得 ==="
 python scripts/fetch_healthplanet.py "$@"
 
 echo ""
+echo "=== Togglタイムエントリ取得 ==="
+python scripts/fetch_toggl.py "$@"
+
+echo ""
 echo "=== 完了 ==="
