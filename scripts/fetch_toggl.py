@@ -36,6 +36,17 @@ CSV_COLUMNS = [
     'project_id', 'project_name', 'workspace_id', 'tags',
 ]
 
+# project_id は未設定エントリがあると float 化して 1234.0 と出力されるため
+# nullable な整数型に揃える
+INT_COLUMNS = ['id', 'duration_sec', 'project_id', 'workspace_id']
+
+
+def cast_int_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """整数列を nullable Int64 に揃える(CSV に .0 を残さない)"""
+    for col in INT_COLUMNS:
+        df[col] = df[col].astype('Int64')
+    return df
+
 
 def load_creds() -> dict:
     if not CREDS_FILE.exists():
@@ -123,6 +134,8 @@ def main():
     df_merged = csv_utils.merge_csv_by_columns(
         df_new, CSV_FILE, key_columns=['id'], sort_by=['start'],
     )
+
+    df_merged = cast_int_columns(df_merged)
 
     CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
     df_merged.to_csv(CSV_FILE, index=False)
