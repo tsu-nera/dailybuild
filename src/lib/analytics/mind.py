@@ -162,7 +162,7 @@ def format_trend(trend):
     return mapping.get(trend, '→ 安定')
 
 
-def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rate, df_breathing, df_temp, df_spo2=None, df_bp=None):
+def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rate, df_breathing, df_temp, df_spo2=None, df_bp=None, df_core_temp=None):
     """
     反応性の日別データを準備（ベースライン情報含む）
 
@@ -175,6 +175,7 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
         df_temp: 皮膚温データフレーム（index=date、ベースライン計算済み）
         df_spo2: SpO2データフレーム（index=date、ベースライン計算済み）
         df_bp: 血圧データフレーム（index=date、HealthPlanet血圧計）
+        df_core_temp: 深部体温データフレーム（index=date、Fitbitへの手動記録）
 
     Returns:
         list[dict]: 日別データリスト（ベースライン乖離情報含む）
@@ -316,6 +317,14 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
             if df_bp is not None and date in df_bp.index and col in df_bp.columns:
                 val = df_bp.loc[date, col]
                 row[col] = float(val) if pd.notna(val) else None
+            else:
+                row[col] = None
+
+        # 深部体温（実測値。皮膚温Δとは別物なので混同しない）
+        for col in ('core_temperature', 'core_temperature_time'):
+            if df_core_temp is not None and date in df_core_temp.index and col in df_core_temp.columns:
+                val = df_core_temp.loc[date, col]
+                row[col] = val if pd.notna(val) else None
             else:
                 row[col] = None
 
