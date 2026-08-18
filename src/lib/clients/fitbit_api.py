@@ -11,6 +11,12 @@ import json
 import os
 import fitbit
 
+# Fitbit API は Accept-Language ヘッダで単位系が決まる。
+# python-fitbit の既定は en_US で、距離=マイル・体温=華氏で返る。
+# メートル法で受け取るため明示的に上書きする。
+# （python-fitbit の Fitbit.METRIC は 'en_UK' という綴り誤りのため使わない）
+UNIT_SYSTEM = 'en_GB'
+
 
 def load_token(token_file):
     """トークンをファイルから読み込み"""
@@ -45,7 +51,8 @@ def create_client(creds_file, token_file):
         oauth2=True,
         access_token=token_data['access_token'],
         refresh_token=token_data['refresh_token'],
-        refresh_cb=update_token
+        refresh_cb=update_token,
+        system=UNIT_SYSTEM
     )
 
     return client
@@ -87,7 +94,8 @@ def create_client_with_env(creds_file=None, token_file=None):
             oauth2=True,
             access_token=token_data['access_token'],
             refresh_token=token_data['refresh_token'],
-            refresh_cb=update_token
+            refresh_cb=update_token,
+            system=UNIT_SYSTEM
         )
 
         return client, updated_token
@@ -115,7 +123,8 @@ def create_client_with_env(creds_file=None, token_file=None):
         oauth2=True,
         access_token=token_data['access_token'],
         refresh_token=token_data['refresh_token'],
-        refresh_cb=update_token
+        refresh_cb=update_token,
+        system=UNIT_SYSTEM
     )
 
     return client, updated_token
