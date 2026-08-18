@@ -37,6 +37,7 @@ SPO2_CSV = BASE_DIR / 'data/fitbit/spo2.csv'
 CARDIO_SCORE_CSV = BASE_DIR / 'data/fitbit/cardio_score.csv'
 TEMPERATURE_SKIN_CSV = BASE_DIR / 'data/fitbit/temperature_skin.csv'
 ACTIVITY_CSV = BASE_DIR / 'data/fitbit/activity.csv'
+BLOOD_PRESSURE_CSV = BASE_DIR / 'data/healthplanet_bp.csv'
 ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 
 
@@ -616,6 +617,13 @@ def main():
             baseline_window=mind.BASELINE_WINDOWS['temp_variation']
         )
 
+    # 血圧（ベースライン不要、表示期間のみ）
+    if BLOOD_PRESSURE_CSV.exists():
+        data['blood_pressure'] = load_csv_with_baseline_window(
+            BLOOD_PRESSURE_CSV, target_start, target_end,
+            baseline_window=0
+        )
+
     # アクティビティ（ベースライン不要、表示期間のみ）
     if ACTIVITY_CSV.exists():
         data['activity'] = load_csv_with_baseline_window(
@@ -722,7 +730,8 @@ def main():
         df_heart_rate=data.get('heart_rate'),
         df_breathing=data.get('breathing_rate'),
         df_temp=data.get('temperature_skin'),
-        df_spo2=data.get('spo2')
+        df_spo2=data.get('spo2'),
+        df_bp=data.get('blood_pressure')
     )
 
     # 心拍ゾーン算出（hr_zones ライブラリ使用）
