@@ -162,7 +162,7 @@ def format_trend(trend):
     return mapping.get(trend, '→ 安定')
 
 
-def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rate, df_breathing, df_temp, df_spo2=None):
+def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rate, df_breathing, df_temp, df_spo2=None, df_bp=None):
     """
     反応性の日別データを準備（ベースライン情報含む）
 
@@ -174,6 +174,7 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
         df_breathing: 呼吸数データフレーム（index=date、ベースライン計算済み）
         df_temp: 皮膚温データフレーム（index=date、ベースライン計算済み）
         df_spo2: SpO2データフレーム（index=date、ベースライン計算済み）
+        df_bp: 血圧データフレーム（index=date、HealthPlanet血圧計）
 
     Returns:
         list[dict]: 日別データリスト（ベースライン乖離情報含む）
@@ -308,6 +309,15 @@ def prepare_responsiveness_daily_data(start_date, end_date, df_hrv, df_heart_rat
             row['spo2_avg_baseline_std'] = None
             row['spo2_avg_deviation_pct'] = None
             row['spo2_avg_z_score'] = None
+
+        # 血圧（HealthPlanet血圧計、手動測定日のみ）
+        # 記録開始間もなくベースラインが引けないため、実測値のみを持たせる
+        for col in ('bp_systolic', 'bp_diastolic', 'bp_pulse'):
+            if df_bp is not None and date in df_bp.index and col in df_bp.columns:
+                val = df_bp.loc[date, col]
+                row[col] = float(val) if pd.notna(val) else None
+            else:
+                row[col] = None
 
         # 皮膚温変動
         if df_temp is not None and date in df_temp.index:

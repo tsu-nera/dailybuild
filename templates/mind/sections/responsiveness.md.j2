@@ -21,15 +21,16 @@
 
 ### 📅 日別データ
 
-| 日付 | HRV | RHR | BR | SpO2 | 体温Δ |
-|------|-----|-----|----|----|------|
+| 日付 | HRV | RHR | BR | SpO2 | 体温Δ | 血圧 | 脈拍 |
+|------|-----|-----|----|----|------|------|------|
 {% for day in responsiveness_data %}
-| {{ day.date.strftime('%m-%d') }} | {{ day.hrv_daily|number_format(1) if day.hrv_daily else '-' }} | {{ day.rhr|number_format(0) if day.rhr else '-' }} | {{ day.breathing_rate|number_format(1) if day.breathing_rate else '-' }} | {% if day.spo2_min and day.spo2_avg %}{{ day.spo2_min|number_format(1) }}/{{ day.spo2_avg|number_format(1) }}{% else %}-{% endif %} | {{ day.temp_variation|number_format(2) if day.temp_variation else '-' }} |
+| {{ day.date.strftime('%m-%d') }} | {{ day.hrv_daily|number_format(1) if day.hrv_daily else '-' }} | {{ day.rhr|number_format(0) if day.rhr else '-' }} | {{ day.breathing_rate|number_format(1) if day.breathing_rate else '-' }} | {% if day.spo2_min and day.spo2_avg %}{{ day.spo2_min|number_format(1) }}/{{ day.spo2_avg|number_format(1) }}{% else %}-{% endif %} | {{ day.temp_variation|number_format(2) if day.temp_variation else '-' }} | {% if day.bp_systolic and day.bp_diastolic %}{{ day.bp_systolic|number_format(0) }}/{{ day.bp_diastolic|number_format(0) }}{% else %}-{% endif %} | {{ day.bp_pulse|number_format(0) if day.bp_pulse else '-' }} |
 {% endfor %}
 
 **凡例**:
 - **HRV**: 心拍変動（RMSSD, ms） / **RHR**: 安静時心拍数（bpm） / **BR**: 呼吸数（回/分）
 - **SpO2**: 血中酸素飽和度（最小/平均%、95%以上が正常）
 - **体温Δ**: 皮膚温変動（℃）
+- **血圧**: 収縮期/拡張期（mmHg、HealthPlanet血圧計） / **脈拍**: 血圧計の脈拍（拍/分）
 
 ---
