@@ -46,6 +46,7 @@ date '+%Y-%m-%d %H:%M %A'
 cd /home/tsu-nera/repo/dailybuild
 uv run python scripts/generate_report.py body --fetch <N> --days 1
 uv run python scripts/fetch_manual.py
+uv run python scripts/fetch_toggl.py --days <N>
 ```
 
 ## Step 2: レポート生成
