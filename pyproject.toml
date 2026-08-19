@@ -28,3 +28,5 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+# tmp/ は gitignore 対象の作業領域。ベンダーコードのテストを拾わないよう収集対象を限定する
+testpaths = ["tests"]
