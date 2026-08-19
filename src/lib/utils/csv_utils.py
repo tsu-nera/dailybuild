@@ -36,7 +36,7 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
     df_new.index = pd.to_datetime(df_new.index, format='mixed')
     df_old.index = pd.to_datetime(df_old.index, format='mixed')
 
-    # combine_first は重複indexがあると例外になるため先に排除する
+    # reindex は重複indexがあると例外になるため先に排除する
     df_new = df_new[~df_new.index.duplicated(keep='last')]
     df_old = df_old[~df_old.index.duplicated(keep='last')]
 
