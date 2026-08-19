@@ -1,7 +1,10 @@
 """Toggl Track API v9 クライアント
 
 API token による Basic 認証。OAuth のトークンリフレッシュは不要。
-レートリミットは目安 1req/sec だが、日次1回の運用ではリトライ機構は不要。
+2025-09-05 導入のクォータにより、/me 系エンドポイントは全プラン共通で
+30リクエスト/時（ユーザー単位）。本モジュールは1回の取得で /me/time_entries と
+/me の2リクエストのみ使うため、日次1回の運用ではリトライ機構は不要。
+超過時は HTTP 402 が返り、残量は X-Toggl-Quota-Remaining ヘッダで確認できる。
 """
 
 import datetime as dt
