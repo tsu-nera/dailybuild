@@ -8,7 +8,15 @@ import pandas as pd
 
 def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFrame:
     """
-    既存CSVとマージ（インデックス列で重複判定）
+    既存CSVとセル単位でマージ（インデックス列で重複判定）
+
+    df_new を優先しつつ、df_new でNaN、または列ごと存在しないセルは
+    df_old の値で埋める。行単位の上書きではないため、取得しなかった
+    列（非アクティブ指標など）の既存値が消えない。
+
+    combine_first ではなく object dtype 経由の reindex + where でマージする。
+    combine_first は union index への reindex 過程で int64 列を float64 に
+    昇格させるため、19桁の logId のような大きな整数が丸められて壊れる。
 
     Args:
         df_new: 新しいデータ（index設定済み）
@@ -16,7 +24,7 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
         index_col: インデックス列名
 
     Returns:
-        マージ済みDataFrame（重複は新しいデータを優先）
+        マージ済みDataFrame（セルごとにdf_newを優先、df_newがNaNならdf_oldで補完）
     """
     if not csv_path.exists():
         return df_new
@@ -28,10 +36,21 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
     df_new.index = pd.to_datetime(df_new.index, format='mixed')
     df_old.index = pd.to_datetime(df_old.index, format='mixed')
 
-    df_merged = pd.concat([df_old, df_new])
-    df_merged = df_merged[~df_merged.index.duplicated(keep='last')]
-    df_merged = df_merged.sort_index()
-    return df_merged
+    # reindex は重複indexがあると例外になるため先に排除する
+    df_new = df_new[~df_new.index.duplicated(keep='last')]
+    df_old = df_old[~df_old.index.duplicated(keep='last')]
+
+    all_index = df_new.index.union(df_old.index)
+    columns = list(df_old.columns) + [c for c in df_new.columns if c not in df_old.columns]
+
+    # astype(object) を reindex より先に行う。順序を逆にすると欠損補完の過程で
+    # int64 が float64 に昇格し、19桁の logId 等が丸められる
+    old_aligned = df_old.astype(object).reindex(index=all_index, columns=columns)
+    new_aligned = df_new.astype(object).reindex(index=all_index, columns=columns)
+
+    df_merged = new_aligned.where(new_aligned.notna(), old_aligned)
+
+    return df_merged.sort_index()
 
 
 def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
