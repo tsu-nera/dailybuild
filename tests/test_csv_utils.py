@@ -147,3 +147,34 @@ def test_duplicated_index_in_new_data_keeps_last_row(tmp_path: Path):
 
     assert df_merged.loc["2026-01-02", "mind_score"] == 10
     assert len(df_merged) == 2
+
+
+def test_large_integer_ids_are_not_rounded(tmp_path: Path):
+    """19桁の整数ID（logId等）が combine_first のfloat昇格で丸められないこと"""
+    csv_path = tmp_path / "activity_logs.csv"
+    df_old = pd.DataFrame(
+        {"logId": [5667773472718017992, 8694685614035756360]},
+        index=pd.to_datetime(["2026-01-01", "2026-01-02"]),
+    )
+    df_old.index.name = "date"
+    _write_csv(csv_path, df_old)
+
+    df_new = pd.DataFrame(
+        {"logId": [1001717290611444584]},
+        index=pd.to_datetime(["2026-01-03"]),
+    )
+    df_new.index.name = "date"
+
+    df_merged = merge_csv(df_new, csv_path, "date")
+
+    # 文字列比較で桁の丸めが起きていないことを確認
+    assert str(df_merged.loc["2026-01-01", "logId"]) == "5667773472718017992"
+    assert str(df_merged.loc["2026-01-02", "logId"]) == "8694685614035756360"
+    assert str(df_merged.loc["2026-01-03", "logId"]) == "1001717290611444584"
+
+    # CSVに書き出して読み直す往復でも精度が保たれること
+    roundtrip_path = tmp_path / "activity_logs_roundtrip.csv"
+    df_merged.to_csv(roundtrip_path)
+    df_roundtrip = pd.read_csv(roundtrip_path, index_col="date")
+    assert str(df_roundtrip.loc["2026-01-01", "logId"]) == "5667773472718017992"
+    assert str(df_roundtrip.loc["2026-01-02", "logId"]) == "8694685614035756360"

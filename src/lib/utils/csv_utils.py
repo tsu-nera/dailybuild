@@ -14,6 +14,10 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
     df_old の値で埋める。行単位の上書きではないため、取得しなかった
     列（非アクティブ指標など）の既存値が消えない。
 
+    combine_first ではなく object dtype 経由の reindex + where でマージする。
+    combine_first は union index への reindex 過程で int64 列を float64 に
+    昇格させるため、19桁の logId のような大きな整数が丸められて壊れる。
+
     Args:
         df_new: 新しいデータ（index設定済み）
         csv_path: 既存CSVのパス
@@ -36,12 +40,15 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
     df_new = df_new[~df_new.index.duplicated(keep='last')]
     df_old = df_old[~df_old.index.duplicated(keep='last')]
 
-    # df_new を優先しつつ、df_new が NaN / 列ごと欠けているセルは df_old で埋める
-    df_merged = df_new.combine_first(df_old)
-
-    # combine_first は列順を変えるため、既存CSVの列順を維持し新規列を末尾に足す
+    all_index = df_new.index.union(df_old.index)
     columns = list(df_old.columns) + [c for c in df_new.columns if c not in df_old.columns]
-    df_merged = df_merged[columns]
+
+    # astype(object) を reindex より先に行う。順序を逆にすると欠損補完の過程で
+    # int64 が float64 に昇格し、19桁の logId 等が丸められる
+    old_aligned = df_old.astype(object).reindex(index=all_index, columns=columns)
+    new_aligned = df_new.astype(object).reindex(index=all_index, columns=columns)
+
+    df_merged = new_aligned.where(new_aligned.notna(), old_aligned)
 
     return df_merged.sort_index()
 
