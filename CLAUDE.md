@@ -24,6 +24,7 @@ uv sync
 uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/fetch_toggl.py        # Toggl Trackタイムエントリ取得
+uv run scripts/fetch_environment.py  # 室内環境（CO2/温度/湿度）取得
 ```
 
 ## Project Structure
@@ -34,6 +35,7 @@ uv run scripts/fetch_toggl.py        # Toggl Trackタイムエントリ取得
   - `healthplanet_official.py` - HealthPlanet公式OAuth API（体重・体脂肪率のみ）
   - `healthplanet_unofficial.py` - HealthPlanet非公式API（全項目取得可）
   - `toggl_client.py` - Toggl Track API
+  - `tuya_client.py` - Tuya Cloud API（CO2モニター）
   - `templates/` - Jinja2テンプレートとレンダラー
     - `renderer.py` - レポートテンプレートレンダラー
     - `filters.py` - カスタムJinja2フィルタ
@@ -115,6 +117,9 @@ df_filtered = filter_dataframe_by_period(
 - `fitbit_creds.json` / `fitbit_token.json` - Fitbit API
 - `healthplanet_creds.json` - HealthPlanet API（login_id, password必須）
 - `toggl_creds.json` - Toggl Track API（api_token必須）
+- `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id 必須）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
+
+`tuya_creds.json` の取得には Tuya IoT Platform でのセットアップ（Cloud Project作成 → Service API サブスクライブ → Link App Account）が人間の手作業で必要。Cloud Project の Trial アカウントは1ヶ月で期限切れするため、期限が近づいたら管理画面から延長申請すること。また Device Log Service は無料枠で過去7日分しか保持しない恒久仕様（Trialとは別問題）のため、`fetch_environment.py` は日次実行での差分蓄積が必須。
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
