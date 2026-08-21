@@ -132,6 +132,18 @@ def _to_date(civil_date: dict) -> str:
     return f"{civil_date['year']}-{civil_date['month']:02d}-{civil_date['day']:02d}"
 
 
+def _num(value):
+    """
+    数値に正規化する
+
+    Google は同じフィールドを数値で返したり文字列で返したりする
+    （protobuf の int64 / double のシリアライズ差）。
+    """
+    if value is None or value == '':
+        return None
+    return float(value)
+
+
 def _daily_rows(creds, data_type: str, payload_key: str, start_date: dt.date,
                 end_date: dt.date, build) -> list[dict]:
     """
@@ -168,10 +180,10 @@ def fetch_hrv(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
         creds, 'daily-heart-rate-variability', 'dailyHeartRateVariability',
         start_date, end_date,
         lambda v: {
-            'daily_rmssd': v.get('averageHeartRateVariabilityMilliseconds'),
-            'deep_rmssd': v.get(
+            'daily_rmssd': _num(v.get('averageHeartRateVariabilityMilliseconds')),
+            'deep_rmssd': _num(v.get(
                 'deepSleepRootMeanSquareOfSuccessiveDifferencesMilliseconds'
-            ),
+            )),
         },
     )
 
@@ -185,7 +197,7 @@ def fetch_breathing_rate(creds, start_date: dt.date, end_date: dt.date) -> list[
     return _daily_rows(
         creds, 'daily-respiratory-rate', 'dailyRespiratoryRate',
         start_date, end_date,
-        lambda v: {'breathing_rate': v.get('breathsPerMinute')},
+        lambda v: {'breathing_rate': _num(v.get('breathsPerMinute'))},
     )
 
 
@@ -202,12 +214,14 @@ def fetch_temperature_skin(creds, start_date: dt.date, end_date: dt.date) -> lis
     相当するフィールドは Google 側に無い。
     """
     def build(v):
-        nightly = v.get('nightlyTemperatureCelsius')
-        baseline = v.get('baselineTemperatureCelsius')
+        nightly = _num(v.get('nightlyTemperatureCelsius'))
+        baseline = _num(v.get('baselineTemperatureCelsius'))
         if nightly is None or baseline is None:
             return None
+        # +0.0 は負のゼロの正規化。round(-0.04, 1) は -0.0 を返し、
+        # CSV に "-0.0" と書かれて既存の "0.0" と差分になる
         return {
-            'nightly_relative': round(nightly - baseline, 1),
+            'nightly_relative': round(nightly - baseline, 1) + 0.0,
             'log_type': None,
         }
 
