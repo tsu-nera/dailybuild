@@ -2,12 +2,19 @@
 """日用品支出の分析スクリプト"""
 
 import pandas as pd
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
+from lib.utils.private_data import require_private_path
 
 def analyze_daily_items(year: int):
     """日用品の支出パターンを分析"""
 
-    data_path = Path(__file__).parent.parent / f"data/mf/収入・支出詳細_{year}.csv"
+    data_path = require_private_path(
+        Path(__file__).parent.parent / f"data/mf/収入・支出詳細_{year}.csv"
+    )
     df = pd.read_csv(data_path)
     df['日付'] = pd.to_datetime(df['日付'])
 

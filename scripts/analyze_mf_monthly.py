@@ -2,13 +2,20 @@
 """MoneyForward ME 月次家計簿分析スクリプト"""
 
 import pandas as pd
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
+from lib.utils.private_data import require_private_path
 
 def analyze_monthly_budget(year: int, month: int):
     """指定月の家計簿を分析"""
 
     # データ読み込み
-    data_path = Path(__file__).parent.parent / f"data/mf/収入・支出詳細_{year}.csv"
+    data_path = require_private_path(
+        Path(__file__).parent.parent / f"data/mf/収入・支出詳細_{year}.csv"
+    )
     df = pd.read_csv(data_path)
 
     # 日付をdatetime型に変換

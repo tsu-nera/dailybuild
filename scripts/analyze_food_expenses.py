@@ -2,12 +2,19 @@
 """食費分析スクリプト - 定期購入と日常食費を分離"""
 
 import pandas as pd
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
+from lib.utils.private_data import require_private_path
 
 def analyze_food_expenses(year: int):
     """食費の詳細分析（定期購入を分離）"""
 
-    data_path = Path(__file__).parent.parent / f"data/mf/収入・支出詳細_{year}.csv"
+    data_path = require_private_path(
+        Path(__file__).parent.parent / f"data/mf/収入・支出詳細_{year}.csv"
+    )
     df = pd.read_csv(data_path)
     df['日付'] = pd.to_datetime(df['日付'])
 

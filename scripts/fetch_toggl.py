@@ -24,10 +24,12 @@ import pandas as pd
 
 from lib.clients import toggl_client
 from lib.utils import csv_utils
+from lib.utils.private_data import require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config' / 'toggl_creds.json'
-CSV_FILE = BASE_DIR / 'data' / 'toggl' / 'time_entries.csv'
+# dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
+CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv')
 
 JST = dt.timezone(dt.timedelta(hours=9))
 

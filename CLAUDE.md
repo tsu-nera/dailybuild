@@ -6,6 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ライフログデータ収集プロジェクト。Fitbit睡眠データとHealthPlanet体組成計データをAPIから取得してCSVに保存する。
 
+### リポジトリ構成
+
+生活管理は3リポジトリに分かれている。分割の軸は「公開範囲」と「書き手」。
+
+| リポジトリ | 可視性 | 中身 | 書き手 |
+|---|---|---|---|
+| `dailybuild` | **public** | 取得・分析コード、健康データ、健康レポート | スクリプト |
+| `dailybuild-private` | private | お金・時間・気分・CBT思考記録 | スクリプト |
+| `gtd` | private | 予定・タスク・方針（org-mode） | 人 |
+
+`dailybuild` が public であることが制約の起点。公開できないデータは
+`dailybuild-private` が持ち、symlink で `data/` `reports/` 配下にマウントする（後述）。
+
+`gtd`（`~/repo/gtd`）は数年運用してきた org-mode 資産で、このリポジトリには
+取り込まない。参照が必要なときは絶対パスで読む。日次で自動生成される CSV の
+コミットが人の手による履歴を埋めないよう、データは `gtd` に置かない。
+
 ## Development Environment
 
 [uv](https://docs.astral.sh/uv/) で依存とPython（3.12系）を管理する。
@@ -24,6 +41,7 @@ uv sync
 uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/fetch_toggl.py        # Toggl Trackタイムエントリ取得
+uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 ```
 
 ## Project Structure
@@ -118,3 +136,44 @@ df_filtered = filter_dataframe_by_period(
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
+
+## 非公開データ
+
+`dailybuild` は public なので、以下は private リポジトリ `dailybuild-private` が
+実体を持ち、ここには symlink だけを置く（`.gitignore` 済み、symlink 自体も
+コミットしない）。
+
+| パス | 内容 |
+|---|---|
+| `data/mf/` | MoneyForward ME 収入・支出詳細 |
+| `data/toggl/` | Toggl Track タイムエントリ |
+| `data/emotion.csv` | 気分記録（Google Form 回答） |
+| `reports/cbt/` | CBT 思考記録 |
+
+### セットアップ（新マシン・worktree）
+
+```bash
+git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-private
+./scripts/setup_private_links.sh   # 冪等。別の場所に置くなら DAILYBUILD_PRIVATE を設定
+```
+
+**git worktree では symlink が引き継がれない。** worktree を作ったら
+`setup_private_links.sh` を実行すること。
+
+### 新しく非公開データを追加するとき
+
+symlink 未設定の環境では参照先が `dailybuild` 内の実在しないパスに解決され、
+取得スクリプトが「0件」で正常終了して欠測を捏造する。これを防ぐため、
+非公開パスは必ず `require_private_path()` を通してから読み書きする。
+
+```python
+from lib.utils.private_data import require_private_path
+
+CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv')
+```
+
+親ディレクトリの存在では判定していない。`data/emotion.csv` のようにファイル単体を
+symlink する場合、symlink が無くても親の `data/` は実在してチェックをすり抜けるため、
+解決先が `dailybuild-private` 配下にあるかで判定している。
+
+追加時は `scripts/setup_private_links.sh` の `link` 行と `.gitignore` にも追記する。
