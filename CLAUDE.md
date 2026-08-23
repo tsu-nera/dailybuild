@@ -47,6 +47,7 @@ uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 # サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
 uv run scripts/show_toggl.py --days 7        # Toggl 日次サマリ
 uv run scripts/show_toggl.py --unit week     # Toggl 週次サマリ
+uv run scripts/show_toggl.py --list          # 時系列のエントリ一覧（既定は当日）
 uv run scripts/show_toggl.py --update        # 取得してから表示
 ```
 
