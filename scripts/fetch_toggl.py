@@ -7,6 +7,7 @@ Toggl Track API v9 からタイムエントリを取得し、JSTに変換してC
 計測中のエントリ（stop が None、または duration が負値）は除外する。
 
 Usage:
+    python scripts/fetch_toggl.py --update      # CSV の続きから今日まで
     python scripts/fetch_toggl.py --days 7
     python scripts/fetch_toggl.py --start-date 2026-08-01 --end-date 2026-08-18
 """
@@ -32,6 +33,11 @@ CREDS_FILE = BASE_DIR / 'config' / 'toggl_creds.json'
 CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv')
 
 JST = dt.timezone(dt.timedelta(hours=9))
+
+# --update で CSV の最終日から遡って取り直す日数。
+# 過去日のエントリを後から追加・編集することがあるため、最終日ちょうどではなく
+# 少し重ねて取る（マージは id で keep='last' なので編集は上書きされる）
+UPDATE_OVERLAP_DAYS = 2
 
 CSV_COLUMNS = [
     'id', 'start', 'stop', 'duration_sec', 'description',
@@ -60,12 +66,33 @@ def load_creds() -> dict:
         return json.load(f)
 
 
+def last_recorded_date() -> dt.date | None:
+    """CSV に記録済みの最終エントリの開始日。CSV が無い・空なら None"""
+    if not CSV_FILE.exists():
+        return None
+    df = pd.read_csv(CSV_FILE, usecols=['start'], parse_dates=['start'])
+    if df.empty:
+        return None
+    return df['start'].max().date()
+
+
 def resolve_period(args) -> tuple[dt.date, dt.date]:
     """引数から取得期間を決定"""
     end = dt.date.today()
+
     if args.start_date and args.end_date:
         return (dt.datetime.strptime(args.start_date, '%Y-%m-%d').date(),
                 dt.datetime.strptime(args.end_date, '%Y-%m-%d').date())
+
+    if args.update:
+        last = last_recorded_date()
+        if last is None:
+            print(f"CSV に既存データが無いため直近 {args.days} 日を取得する")
+        else:
+            # 期間が長くてもリクエスト数は変わらないので、素直に最終日まで遡る
+            start = last - dt.timedelta(days=UPDATE_OVERLAP_DAYS)
+            return min(start, end), end
+
     return end - dt.timedelta(days=args.days - 1), end
 
 
@@ -113,10 +140,15 @@ def build_dataframe(entries: list[dict], projects: dict[int, str]) -> pd.DataFra
 
 def main():
     parser = argparse.ArgumentParser(description='Toggl Trackタイムエントリ取得')
+    parser.add_argument('--update', action='store_true',
+                        help=f'CSV の最終エントリの{UPDATE_OVERLAP_DAYS}日前から今日まで取得（既存データが無ければ --days）')
     parser.add_argument('--days', type=int, default=7, help='取得日数（今日から遡る）')
     parser.add_argument('--start-date', type=str, help='開始日（YYYY-MM-DD）')
     parser.add_argument('--end-date', type=str, help='終了日（YYYY-MM-DD）')
     args = parser.parse_args()
+
+    if args.update and (args.start_date or args.end_date):
+        parser.error('--update と --start-date/--end-date は同時に指定できない')
 
     creds = load_creds()
 

@@ -41,8 +41,17 @@ uv sync
 uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/fetch_toggl.py        # Toggl Trackタイムエントリ取得
+uv run scripts/fetch_toggl.py --update  # CSVの最終日から今日まで（差分取得）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
+
+# サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
+uv run scripts/show_toggl.py --days 7        # Toggl 日次サマリ
+uv run scripts/show_toggl.py --unit week     # Toggl 週次サマリ
+uv run scripts/show_toggl.py --update        # 取得してから表示
 ```
+
+`show_toggl.py` は取得ログを stderr、markdown を stdout に分けて出す。
+Toggl 側で削除されたエントリは CSV に残り続ける（マージは追加・更新のみ）。
 
 ## Project Structure
 
