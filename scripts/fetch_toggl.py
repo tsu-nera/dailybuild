@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import argparse
 import datetime as dt
 import json
+import logging
 
 import pandas as pd
 
@@ -146,6 +147,9 @@ def main():
     parser.add_argument('--start-date', type=str, help='開始日（YYYY-MM-DD）')
     parser.add_argument('--end-date', type=str, help='終了日（YYYY-MM-DD）')
     args = parser.parse_args()
+
+    # toggl_client がクォータ残量を logger.info で出す。設定しないと握り潰される
+    logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stdout)
 
     if args.update and (args.start_date or args.end_date):
         parser.error('--update と --start-date/--end-date は同時に指定できない')
