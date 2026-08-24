@@ -45,7 +45,7 @@ step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "手動記録"       uv run python scripts/fetch_manual.py
-step "Toggl"         uv run python scripts/fetch_toggl.py --days "$DAYS"
+step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
 step "MoneyForward"  uv run python scripts/fetch_mf.py --refresh
 
