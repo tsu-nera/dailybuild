@@ -26,5 +26,6 @@ tmp/
 data/mf
 data/toggl
 data/emotion.csv
+data/manual.csv
 reports/cbt
 logs/

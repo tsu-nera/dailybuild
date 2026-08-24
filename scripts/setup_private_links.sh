@@ -24,5 +24,6 @@ echo "非公開データの symlink を作成:"
 link data/mf
 link data/toggl
 link data/emotion.csv
+link data/manual.csv
 link reports/cbt
 echo "完了"

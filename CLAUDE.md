@@ -223,6 +223,7 @@ Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `co
 | `data/mf/` | MoneyForward ME 収入・支出詳細 |
 | `data/toggl/` | Toggl Track タイムエントリ |
 | `data/emotion.csv` | 気分記録（Google Form 回答） |
+| `data/manual.csv` | 手動記録（Google Sheets の主観スコア・コメント） |
 | `reports/cbt/` | CBT 思考記録 |
 
 ### セットアップ（新マシン・worktree）

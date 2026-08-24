@@ -14,12 +14,13 @@ import yaml
 import pandas as pd
 from lib.clients import gsheets_client
 from lib.utils import csv_utils
+from lib.utils.private_data import require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 METRICS_DEF_FILE = BASE_DIR / 'config/manual_metrics_def.yaml'
 SPREADSHEET_ID = '1S0SwyRbM2cAATv_IOpkOspor-_Ov49rTygyTFr2gkwA'
 SHEET_NAME = 'manual'
-OUT_FILE = BASE_DIR / 'data/manual.csv'
+OUT_FILE = require_private_path(BASE_DIR / 'data' / 'manual.csv')
 
 
 def load_active_metrics():

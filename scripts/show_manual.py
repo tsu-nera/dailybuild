@@ -16,10 +16,11 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from lib.utils.report_args import filter_dataframe_by_period
+from lib.utils.private_data import require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 METRICS_DEF_FILE = BASE_DIR / 'config/manual_metrics_def.yaml'
-DATA_FILE = BASE_DIR / 'data/manual.csv'
+DATA_FILE = require_private_path(BASE_DIR / 'data' / 'manual.csv')
 
 
 def load_metrics_def():
