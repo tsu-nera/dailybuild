@@ -44,16 +44,17 @@ date '+%Y-%m-%d %H:%M %A'
 
 ```bash
 cd /home/tsu-nera/repo/dailybuild
-uv run python scripts/generate_report.py body --fetch <N> --days 1
-uv run python scripts/fetch_manual.py
-uv run python scripts/fetch_toggl.py --days <N>
-uv run python scripts/fetch_mf.py --refresh
+./scripts/ops/daily-routine.sh --days <N>
 ```
 
-`fetch_mf.py --refresh` は前回キック分の明細を回収してから次回分の一括更新を
-キックする（完了は待たない＝明細は実質1日遅れ）。セッション切れで失敗しても
-他のステップは続行し、`uv run scripts/fetch_mf.py --login` が必要な旨を報告する。
-連携が正常でない口座の警告が出たら、そのまま報告する（その口座の明細は欠測）。
+個々の取得コマンドはこのスクリプトが持つ（cron からも同じものが回る）。
+1ステップ失敗しても後続は続行し、失敗したステップ名が最後にまとめて出て
+非ゼロ終了する。**出力は読み飛ばさず、以下は Step 3 のレビューに持ち込む**:
+
+- 失敗したステップ → どのデータが欠けた状態でレビューしているかを明示する
+- MoneyForward の「連携が正常でない口座」警告 → その口座の明細は CSV から
+  丸ごと欠けている。放置年数が長いものは再認証を促す
+- `fetch_mf.py` のセッション切れ → `uv run scripts/fetch_mf.py --login` が必要
 
 ## Step 2: レポート生成
 
