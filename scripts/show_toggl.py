@@ -192,6 +192,9 @@ def main():
     if args.list:
         print(f"# Toggl エントリ一覧（{start} 〜 {end}）\n")
         print(render_entries(df))
+        print()
+        print("## プロジェクト別合計\n")
+        print(render_project_totals(df))
         return
 
     df = add_bucket(df, args.unit)
