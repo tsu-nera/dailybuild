@@ -47,7 +47,13 @@ cd /home/tsu-nera/repo/dailybuild
 uv run python scripts/generate_report.py body --fetch <N> --days 1
 uv run python scripts/fetch_manual.py
 uv run python scripts/fetch_toggl.py --days <N>
+uv run python scripts/fetch_mf.py --refresh
 ```
+
+`fetch_mf.py --refresh` は前回キック分の明細を回収してから次回分の一括更新を
+キックする（完了は待たない＝明細は実質1日遅れ）。セッション切れで失敗しても
+他のステップは続行し、`uv run scripts/fetch_mf.py --login` が必要な旨を報告する。
+連携が正常でない口座の警告が出たら、そのまま報告する（その口座の明細は欠測）。
 
 ## Step 2: レポート生成
 

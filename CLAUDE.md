@@ -44,6 +44,11 @@ uv run scripts/fetch_toggl.py        # Toggl Trackタイムエントリ取得
 uv run scripts/fetch_toggl.py --update  # CSVの最終日から今日まで（差分取得）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 
+uv run scripts/fetch_mf.py --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
+uv run scripts/fetch_mf.py           # 直近3ヶ月の収入・支出詳細
+uv run scripts/fetch_mf.py --year 2025  # 指定年を丸ごと取り直す
+uv run scripts/fetch_mf.py --refresh # 取得＋一括更新のキック（日次運用）
+
 # サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
 uv run scripts/show_toggl.py --days 7        # Toggl 日次サマリ
 uv run scripts/show_toggl.py --unit week     # Toggl 週次サマリ
@@ -54,6 +59,33 @@ uv run scripts/show_toggl.py --update        # 取得してから表示
 `show_toggl.py` は取得ログを stderr、markdown を stdout に分けて出す。
 Toggl 側で削除されたエントリは CSV に残り続ける（マージは追加・更新のみ）。
 
+### MoneyForward ME
+
+公式 API が無いため、Playwright で保持したログインセッションを使って
+`/cf/csv`（収入・支出詳細のダウンロード用エンドポイント）を月単位で叩く。
+画面のスクレイピングはしない。ハマりどころ:
+
+- レスポンスは `charset=utf-8` を名乗るが実体は **cp932**
+- User-Agent に `HeadlessChrome` が入っていると **403**。通常の Chrome に偽装する
+- セッションが切れると 200 のままログイン画面 HTML が返る。CSV ヘッダで検証して
+  落としているので、欠測を捏造せずエラー終了する（`--login` で取り直す）
+- 明細は MF 側で後から分類・金額を変更されることがある。マージは `ID` 基準の
+  上書きなので取り直せば追従するが、MF 側で削除された明細は CSV に残り続ける
+- セッション切れが日次実行を巻き込むため `fetch_all.sh` には入れていない
+
+CSV に出るのは **MF が金融機関から取り込み済みの明細だけ**。自動更新は1日1回
+程度しか走らないため、叩くだけでは数日古いままになる。`--refresh` は画面の
+「金融機関からのデータ一括更新」と同じ `POST /faggregation_queue2` を叩く。
+
+更新は金融機関ごとに非同期で走り、**カード会社は完了まで10分以上かかる**
+（実測: 楽天カードはキックから8分経っても「更新中」）。同期的に待つのは
+現実的でないため完了は待たず、キックの結果は**次回の取得で回収する**。
+日次で回している限り、明細は実質1日遅れで揃う。
+
+「設定エラー」「要ワンタイムパスワード」等になった連携は一括更新では復旧せず、
+その口座の明細は CSV から丸ごと欠ける。黙って欠測しないよう、取得のたびに
+正常でない口座を警告する（再認証は MF の画面で手作業）。
+
 ## Project Structure
 
 - `scripts/` - 実行スクリプト
@@ -62,6 +94,7 @@ Toggl 側で削除されたエントリは CSV に残り続ける（マージは
   - `healthplanet_official.py` - HealthPlanet公式OAuth API（体重・体脂肪率のみ）
   - `healthplanet_unofficial.py` - HealthPlanet非公式API（全項目取得可）
   - `toggl_client.py` - Toggl Track API
+  - `mf_client.py` - MoneyForward ME（Playwright セッションで月次CSVを取得）
   - `templates/` - Jinja2テンプレートとレンダラー
     - `renderer.py` - レポートテンプレートレンダラー
     - `filters.py` - カスタムJinja2フィルタ
@@ -143,6 +176,7 @@ df_filtered = filter_dataframe_by_period(
 - `fitbit_creds.json` / `fitbit_token.json` - Fitbit API
 - `healthplanet_creds.json` - HealthPlanet API（login_id, password必須）
 - `toggl_creds.json` - Toggl Track API（api_token必須）
+- `mf_state.json` - MoneyForward ME のブラウザセッション（`fetch_mf.py --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。

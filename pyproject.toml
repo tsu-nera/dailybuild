@@ -18,6 +18,7 @@ dependencies = [
     "google-api-python-client>=2.197.0",
     # tabulate が全角文字の表示幅を正しく測るために必要（import されないが必須）
     "wcwidth>=0.8.2",
+    "playwright>=1.62.0",
 ]
 
 [tool.uv]
