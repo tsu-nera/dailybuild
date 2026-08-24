@@ -10,6 +10,7 @@ fetch_toggl.py のレートリミット枠（/me/* 共通 30 req/h）を消費�
 Usage:
     python scripts/show_toggl.py --days 7             # 日次（直近7日）
     python scripts/show_toggl.py --update             # 取得してから表示
+    python scripts/show_toggl.py --list               # 時系列のエントリ一覧
     python scripts/show_toggl.py --unit week --days 56  # 週次
     python scripts/show_toggl.py --week current
     python scripts/show_toggl.py --month 8
@@ -30,6 +31,7 @@ BASE_DIR = Path(__file__).parent.parent
 CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv')
 
 NO_PROJECT = '(no project)'
+WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
 
 
 def run_update() -> None:
@@ -109,6 +111,25 @@ def render_project_matrix(df: pd.DataFrame, unit: str) -> str:
     return pivot.map(format_duration).fillna('-').to_markdown()
 
 
+def render_entries(df: pd.DataFrame) -> str:
+    """エントリを時系列に並べ、日ごとの見出しで区切って出す"""
+    blocks = []
+    for date, day_df in df.groupby('date', sort=True):
+        heading = f"## {date.strftime('%Y-%m-%d')}（{WEEKDAY_JA[date.weekday()]}）"
+
+        rows = pd.DataFrame({
+            '時刻': (day_df['start'].dt.strftime('%H:%M') + ' - '
+                     + day_df['stop'].dt.strftime('%H:%M')),
+            '時間': day_df['duration_sec'].map(format_duration),
+            'プロジェクト': day_df['project_name'],
+            'description': day_df['description'].fillna('').replace('', '-'),
+        })
+        total = format_duration(day_df['duration_sec'].sum())
+        blocks.append(f"{heading}  合計 {total}\n\n{rows.to_markdown(index=False)}")
+
+    return '\n\n'.join(blocks)
+
+
 def render_project_totals(df: pd.DataFrame) -> str:
     """期間全体のプロジェクト別合計と構成比"""
     grouped = df.groupby('project_name')['duration_sec'].sum()
@@ -127,13 +148,15 @@ def main():
     parser.add_argument('--unit', choices=['day', 'week'], default='day',
                         help='集計単位（デフォルト: day）')
     parser.add_argument('--days', type=int, default=None,
-                        help='直近N日（--week/--month 未指定時のデフォルト: day=7, week=28）')
+                        help='直近N日（--week/--month 未指定時のデフォルト: --list=1, day=7, week=28）')
     parser.add_argument('--week', type=str, default=None,
                         help='ISO週番号（例: 34）または "current"')
     parser.add_argument('--month', type=str, default=None,
                         help='月番号（例: 8）または "current"')
     parser.add_argument('--year', type=int, default=None,
                         help='年（--week/--month 指定時に使用）')
+    parser.add_argument('--list', action='store_true',
+                        help='集計せずエントリを時系列で一覧表示する')
     parser.add_argument('--update', action='store_true',
                         help='表示前に fetch_toggl.py --update で最新データを取得する')
     args = parser.parse_args()
@@ -148,7 +171,10 @@ def main():
     week, month, year = parse_period_args(args)
     days = args.days
     if days is None and week is None and month is None:
-        days = 28 if args.unit == 'week' else 7
+        if args.list:
+            days = 1
+        else:
+            days = 28 if args.unit == 'week' else 7
 
     df = load_entries()
     df = filter_dataframe_by_period(
@@ -160,10 +186,16 @@ def main():
         print('該当期間のエントリがありません', file=sys.stderr)
         sys.exit(1)
 
-    df = add_bucket(df, args.unit)
-
     start = df['date'].min().strftime('%Y-%m-%d')
     end = df['date'].max().strftime('%Y-%m-%d')
+
+    if args.list:
+        print(f"# Toggl エントリ一覧（{start} 〜 {end}）\n")
+        print(render_entries(df))
+        return
+
+    df = add_bucket(df, args.unit)
+
     unit_label = '週次' if args.unit == 'week' else '日次'
     print(f"# Toggl サマリ（{unit_label}: {start} 〜 {end}）\n")
 
