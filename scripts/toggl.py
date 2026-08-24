@@ -57,7 +57,7 @@ def load_creds(out: IO[str]) -> dict:
         return json.load(f)
 
 
-def resolve_period(args) -> tuple[dt.date, dt.date]:
+def resolve_period(args, out: IO[str]) -> tuple[dt.date, dt.date]:
     """fetch の引数から取得期間を決定"""
     end = dt.date.today()
 
@@ -68,7 +68,7 @@ def resolve_period(args) -> tuple[dt.date, dt.date]:
     if args.update:
         last = store.last_recorded_date()
         if last is None:
-            print(f"CSV に既存データが無いため直近 {args.days} 日を取得する")
+            print(f"CSV に既存データが無いため直近 {args.days} 日を取得する", file=out)
         else:
             # 期間が長くてもリクエスト数は変わらないので、素直に最終日まで遡る
             start = last - dt.timedelta(days=UPDATE_OVERLAP_DAYS)
@@ -84,7 +84,7 @@ def run_fetch(args, out: IO[str]) -> None:
 
     creds = load_creds(out)
 
-    start, end = resolve_period(args)
+    start, end = resolve_period(args, out)
     print(f"Togglタイムエントリ取得: {start} ～ {end}", file=out)
 
     entries = toggl_client.fetch_time_entries(creds['api_token'], start, end)
@@ -106,6 +106,14 @@ def run_fetch(args, out: IO[str]) -> None:
     print(f"CSVの期間: {period_min} ～ {period_max}", file=out)
 
 
+def fetch_args_for_update() -> argparse.Namespace:
+    """show --update から呼ぶ fetch --update 相当の引数
+
+    days は CSV が空のときのフォールバックにしか使われない（fetch の既定値と揃える）
+    """
+    return argparse.Namespace(update=True, days=7, start_date=None, end_date=None)
+
+
 def cmd_fetch(args) -> None:
     if args.update and (args.start_date or args.end_date):
         args.parser.error('--update と --start-date/--end-date は同時に指定できない')
@@ -114,7 +122,9 @@ def cmd_fetch(args) -> None:
 
 def cmd_show(args) -> None:
     if args.update:
-        run_fetch(args, sys.stderr)
+        # show の parser は fetch のオプションを持たないため、fetch 相当の引数を組み立てる。
+        # 取得ログは stderr に寄せて stdout を markdown 専用に保つ
+        run_fetch(fetch_args_for_update(), sys.stderr)
 
     if not store.CSV_FILE.exists():
         print(f"エラー: {store.CSV_FILE} が存在しません", file=sys.stderr)
