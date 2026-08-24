@@ -44,8 +44,8 @@ uv sync
 # プロジェクトルートから実行（uv run なら .venv の有効化不要）
 uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
-uv run scripts/fetch_toggl.py        # Toggl Trackタイムエントリ取得
-uv run scripts/fetch_toggl.py --update  # CSVの最終日から今日まで（差分取得）
+uv run scripts/toggl.py fetch        # Toggl Trackタイムエントリ取得
+uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（差分取得）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 
 uv run scripts/fetch_mf.py --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
@@ -54,13 +54,13 @@ uv run scripts/fetch_mf.py --year 2025  # 指定年を丸ごと取り直す
 uv run scripts/fetch_mf.py --refresh # 取得＋一括更新のキック（日次運用）
 
 # サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
-uv run scripts/show_toggl.py --days 7        # Toggl 日次サマリ
-uv run scripts/show_toggl.py --unit week     # Toggl 週次サマリ
-uv run scripts/show_toggl.py --list          # 時系列のエントリ一覧（既定は当日）
-uv run scripts/show_toggl.py --update        # 取得してから表示
+uv run scripts/toggl.py show --days 7        # Toggl 日次サマリ
+uv run scripts/toggl.py show --unit week     # Toggl 週次サマリ
+uv run scripts/toggl.py show --list          # 時系列のエントリ一覧（既定は当日）
+uv run scripts/toggl.py show --update        # 取得してから表示
 ```
 
-`show_toggl.py` は取得ログを stderr、markdown を stdout に分けて出す。
+`scripts/toggl.py show` は取得ログを stderr、markdown を stdout に分けて出す。
 Toggl 側で削除されたエントリは CSV に残り続ける（マージは追加・更新のみ）。
 
 ### MoneyForward ME
@@ -98,7 +98,7 @@ CSV に出るのは **MF が金融機関から取り込み済みの明細だけ*
   - `fitbit_api.py` - Fitbit API
   - `healthplanet_official.py` - HealthPlanet公式OAuth API（体重・体脂肪率のみ）
   - `healthplanet_unofficial.py` - HealthPlanet非公式API（全項目取得可）
-  - `toggl_client.py` - Toggl Track API
+  - `toggl/` - Toggl Track（`client.py` API クライアント、`store.py` CSV 読み書き、`render.py` markdown 出力）
   - `mf_client.py` - MoneyForward ME（Playwright セッションで月次CSVを取得）
   - `templates/` - Jinja2テンプレートとレンダラー
     - `renderer.py` - レポートテンプレートレンダラー
