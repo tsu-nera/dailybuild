@@ -51,19 +51,28 @@ uv run scripts/toggl.py push --days 2   # 投入実行（daily-routine.shがfetc
 uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 
-uv run scripts/fetch_mf.py --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
-uv run scripts/fetch_mf.py           # 直近3ヶ月の収入・支出詳細
-uv run scripts/fetch_mf.py --year 2025  # 指定年を丸ごと取り直す
-uv run scripts/fetch_mf.py --refresh # 取得＋一括更新のキック（日次運用）
+uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
+uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
+uv run scripts/mf.py fetch --year 2025  # 指定年を丸ごと取り直す
+uv run scripts/mf.py fetch --refresh # 取得＋一括更新のキック（日次運用）
 
 # サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
 uv run scripts/toggl.py show --days 7        # Toggl 日次サマリ
 uv run scripts/toggl.py show --unit week     # Toggl 週次サマリ
 uv run scripts/toggl.py show --list          # 時系列のエントリ一覧（既定は当日）
 uv run scripts/toggl.py show --update        # 取得してから表示
+
+uv run scripts/mf.py show                    # MF 月次サマリ（直近3ヶ月）
+uv run scripts/mf.py show --month 1 --year 2026  # 指定月
+uv run scripts/mf.py show --unit day --days 14   # 日次
+uv run scripts/mf.py show --list             # 明細一覧
+uv run scripts/mf.py show --update           # 取得してから表示
 ```
 
-`scripts/toggl.py show` は取得ログを stderr、markdown を stdout に分けて出す。
+`scripts/toggl.py` と `scripts/mf.py` は time と money の対で、fetch/show の
+サブコマンド構成も markdown の形式も揃えてある（取得ログは stderr、markdown は
+stdout）。
+
 Toggl 側で削除されたエントリは CSV に残り続ける（マージは追加・更新のみ）。
 
 `scripts/toggl.py push` は Fitbit 睡眠（昼寝含む）を Toggl のタイムエントリとして
@@ -74,6 +83,10 @@ Toggl 側で削除されたエントリは CSV に残り続ける（マージは
 とみなして再投入するが、判定は CSV がカバーする期間内に限る
 （範囲外は「未取得」と区別できず、無限に再投入してしまうため）。
 CSV が古い/無い場合は台帳のみで判定し、手動削除の検出はスキップする旨を警告する。
+
+`mf.py show` は `計算対象=1` の明細だけを集計する。口座間の振替は MF 側で必ず
+`計算対象=0` が付くのでこの絞り込みだけで落ちる。MF は引き落とし予定日の
+**未来明細**を含むため、「直近Nヶ月」は当月末で上限を切っている。
 
 ### MoneyForward ME
 
@@ -111,7 +124,7 @@ CSV に出るのは **MF が金融機関から取り込み済みの明細だけ*
   - `healthplanet_official.py` - HealthPlanet公式OAuth API（体重・体脂肪率のみ）
   - `healthplanet_unofficial.py` - HealthPlanet非公式API（全項目取得可）
   - `toggl/` - Toggl Track（`client.py` API クライアント、`store.py` CSV 読み書き、`render.py` markdown 出力）
-  - `mf_client.py` - MoneyForward ME（Playwright セッションで月次CSVを取得）
+  - `mf/` - MoneyForward ME（`client.py` Playwright セッション、`store.py` CSV 読み書き、`render.py` markdown 出力）
   - `templates/` - Jinja2テンプレートとレンダラー
     - `renderer.py` - レポートテンプレートレンダラー
     - `filters.py` - カスタムJinja2フィルタ
@@ -193,7 +206,7 @@ df_filtered = filter_dataframe_by_period(
 - `fitbit_creds.json` / `fitbit_token.json` - Fitbit API
 - `healthplanet_creds.json` - HealthPlanet API（login_id, password必須）
 - `toggl_creds.json` - Toggl Track API（api_token必須）
-- `mf_state.json` - MoneyForward ME のブラウザセッション（`fetch_mf.py --login` が生成）
+- `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 

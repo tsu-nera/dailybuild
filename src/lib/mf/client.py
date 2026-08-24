@@ -94,7 +94,7 @@ class MoneyForwardSession:
         if not state_file.exists():
             raise NotLoggedInError(
                 f"セッションファイルがありません: {state_file}\n"
-                f"  uv run scripts/fetch_mf.py --login"
+                f"  uv run scripts/mf.py fetch --login"
             )
         self._state_file = state_file
         self._playwright = None
@@ -125,7 +125,7 @@ class MoneyForwardSession:
         if LOGIN_HOST in page.url or response.status != 200:
             raise NotLoggedInError(
                 f"連携口座一覧を開けません (status={response.status}, url={page.url})\n"
-                f"  セッション切れの可能性があります: uv run scripts/fetch_mf.py --login"
+                f"  セッション切れの可能性があります: uv run scripts/mf.py fetch --login"
             )
         token = page.evaluate(
             "() => document.querySelector('meta[name=\"csrf-token\"]')?.content")
@@ -174,7 +174,7 @@ class MoneyForwardSession:
         if LOGIN_HOST in response.url or response.status != 200:
             raise NotLoggedInError(
                 f"CSV を取得できません (status={response.status}, url={response.url})\n"
-                f"  セッション切れの可能性があります: uv run scripts/fetch_mf.py --login"
+                f"  セッション切れの可能性があります: uv run scripts/mf.py fetch --login"
             )
 
         text = response.body().decode(CSV_ENCODING, errors='replace')
@@ -182,7 +182,7 @@ class MoneyForwardSession:
         if EXPECTED_HEADER not in text.split('\n', 1)[0]:
             raise NotLoggedInError(
                 f"CSV ではない応答が返りました ({year}/{month:02d})。"
-                f"セッション切れの可能性があります: uv run scripts/fetch_mf.py --login"
+                f"セッション切れの可能性があります: uv run scripts/mf.py fetch --login"
             )
 
         return text
