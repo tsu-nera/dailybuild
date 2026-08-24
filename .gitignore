@@ -21,11 +21,8 @@ venv/
 config/*.json
 tmp/
 
-# 非公開データ。実体は private リポジトリ dailybuild-private にあり、
+# データとレポートの実体は private リポジトリ dailybuild-private にあり、
 # ここには symlink だけが置かれる（symlink 自体もコミットしない）
-data/mf
-data/toggl
-data/emotion.csv
-data/manual.csv
-reports/cbt
+data
+reports
 logs/

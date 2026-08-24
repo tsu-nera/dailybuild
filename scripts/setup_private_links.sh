@@ -15,15 +15,16 @@ if [ ! -d "$PRIVATE/.git" ]; then
 fi
 
 link() {
-  mkdir -p "$(dirname "$DAILYBUILD/$1")"
+  # 実体ディレクトリが残っていると symlink が中に作られてしまうので拒否する
+  if [ -e "$DAILYBUILD/$1" ] && [ ! -L "$DAILYBUILD/$1" ]; then
+    echo "エラー: $DAILYBUILD/$1 が実体として存在します。private へ退避してから再実行してください" >&2
+    exit 1
+  fi
   ln -sfn "$PRIVATE/$1" "$DAILYBUILD/$1"
-  printf '  %-20s -> %s\n' "$1" "$PRIVATE/$1"
+  printf '  %-10s -> %s\n' "$1" "$PRIVATE/$1"
 }
 
 echo "非公開データの symlink を作成:"
-link data/mf
-link data/toggl
-link data/emotion.csv
-link data/manual.csv
-link reports/cbt
+link data
+link reports
 echo "完了"

@@ -22,6 +22,7 @@ import pandas as pd
 
 from lib.clients import fitbit_api, gsheets_client
 from lib.utils import csv_utils
+from lib.utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent
 # 開発用（ローカル実行時）
@@ -93,7 +94,7 @@ def save_to_csv(df):
     )
 
     # 保存
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(OUT_FILE.parent)
     df_merged.to_csv(OUT_FILE, index=False)
     print(f"CSVに保存: {OUT_FILE} ({len(df_merged)}件)")
 

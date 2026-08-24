@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
+from lib.utils.private_data import ensure_dir
 
 # データファイルパス
 BASE_DIR = project_root
@@ -200,7 +201,7 @@ def main():
 
     # トレンドグラフ生成
     img_dir = args.output.parent / 'img'
-    img_dir.mkdir(parents=True, exist_ok=True)
+    ensure_dir(img_dir)
 
     print('プロット中: HRV/RHRトレンド...')
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
@@ -238,7 +239,7 @@ def main():
 
     # レポート出力
     output_path = args.output
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(output_path.parent)
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(report_content)

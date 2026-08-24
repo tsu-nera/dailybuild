@@ -8,16 +8,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### リポジトリ構成
 
-生活管理は3リポジトリに分かれている。分割の軸は「公開範囲」と「書き手」。
+生活管理は3リポジトリに分かれている。分割の軸は「コードかデータか」と「書き手」。
 
 | リポジトリ | 可視性 | 中身 | 書き手 |
 |---|---|---|---|
-| `dailybuild` | **public** | 取得・分析コード、健康データ、健康レポート | スクリプト |
-| `dailybuild-private` | private | お金・時間・気分・CBT思考記録 | スクリプト |
+| `dailybuild` | **public** | 取得・分析コード（データは持たない） | 人 + agent |
+| `dailybuild-private` | private | 全データと全レポート（健康・お金・時間・気分） | スクリプト |
 | `gtd` | private | 予定・タスク・方針（org-mode） | 人 |
 
-`dailybuild` が public であることが制約の起点。公開できないデータは
-`dailybuild-private` が持ち、symlink で `data/` `reports/` 配下にマウントする（後述）。
+以前は健康データを `dailybuild` 側に置き、非公開のものだけを private へ逃していたが、
+`reports/` の散文が主観メンタルや金銭ストレスを引用しており、パス単位の線引きが
+機能していなかった。データとレポートは**まるごと** private が持ち、`dailybuild`
+には `data` `reports` の symlink だけを置く（後述）。公開判断を毎回しなくてよい形にする。
+
+データ側は日次で機械が書き換わり、コード側は人と agent が書く。両者を分けたことで
+コミット履歴も混ざらない。
 
 `gtd`（`~/repo/gtd`）は数年運用してきた org-mode 資産で、このリポジトリには
 取り込まない。参照が必要なときは絶対パスで読む。日次で自動生成される CSV の
@@ -147,9 +152,9 @@ CSV に出るのは **MF が金融機関から取り込み済みの明細だけ*
     - `base.md.j2`, `daily_report.md.j2`, `interval_report.md.j2`
     - `sections/` - サマリー、効率、ステージ、タイミング、サイクル、週次データのセクション
 - `config/` - API認証情報（gitignore対象）
-- `data/` - 出力CSV
+- `data/` - 出力CSV（`dailybuild-private` への symlink）
 - `notes/` - Jupyter notebooks（実験・分析用）
-- `reports/` - 生成されたレポート
+- `reports/` - 生成されたレポート（`dailybuild-private` への symlink）
 
 ## Report Generation
 
@@ -214,17 +219,12 @@ Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `co
 
 ## 非公開データ
 
-`dailybuild` は public なので、以下は private リポジトリ `dailybuild-private` が
-実体を持ち、ここには symlink だけを置く（`.gitignore` 済み、symlink 自体も
-コミットしない）。
+`dailybuild` は public でコードしか持たない。`data/` と `reports/` は
+`dailybuild-private` への symlink で、実体はすべて private 側にある
+（`.gitignore` 済み、symlink 自体もコミットしない）。
 
-| パス | 内容 |
-|---|---|
-| `data/mf/` | MoneyForward ME 収入・支出詳細 |
-| `data/toggl/` | Toggl Track タイムエントリ |
-| `data/emotion.csv` | 気分記録（Google Form 回答） |
-| `data/manual.csv` | 手動記録（Google Sheets の主観スコア・コメント） |
-| `reports/cbt/` | CBT 思考記録 |
+新しい取得先を足すときも、公開してよいかを判断する必要はない。データは
+無条件に private へ落ちる。
 
 ### セットアップ（新マシン・worktree）
 
@@ -236,20 +236,26 @@ git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-priva
 **git worktree では symlink が引き継がれない。** worktree を作ったら
 `setup_private_links.sh` を実行すること。
 
-### 新しく非公開データを追加するとき
+### マウント忘れの検出
 
-symlink 未設定の環境では参照先が `dailybuild` 内の実在しないパスに解決され、
-取得スクリプトが「0件」で正常終了して欠測を捏造する。これを防ぐため、
-非公開パスは必ず `require_private_path()` を通してから読み書きする。
+symlink が無い環境では `data/` `reports/` 配下が dailybuild 内の実在しない
+パスに解決される。読み取りは「0件」で正常終了し、書き込みは
+`mkdir(parents=True)` が public 側に実体ディレクトリを作って以後の merge 対象を
+見失う。どちらも黙って欠測を捏造するので、多層で落とす。
+
+| 層 | 仕組み |
+|---|---|
+| 日次実行 | `daily-routine.sh` 冒頭で `data` `reports` が symlink か検査して即 exit |
+| ディレクトリ作成 | `ensure_dir()` 経由にする（素の `mkdir(parents=True)` を書かない） |
+| 個別パス | `require_private_path()` で明示検証（fetch スクリプトの出力先など） |
 
 ```python
-from lib.utils.private_data import require_private_path
+from lib.utils.private_data import ensure_dir, require_private_path
 
 CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv')
+ensure_dir(CSV_FILE.parent)
 ```
 
-親ディレクトリの存在では判定していない。`data/emotion.csv` のようにファイル単体を
-symlink する場合、symlink が無くても親の `data/` は実在してチェックをすり抜けるため、
-解決先が `dailybuild-private` 配下にあるかで判定している。
-
-追加時は `scripts/setup_private_links.sh` の `link` 行と `.gitignore` にも追記する。
+判定は「解決先が `dailybuild-private` 配下か」で行う。親ディレクトリの存在では
+判定しない（symlink が無くても public 側のディレクトリは実在しうるため）。
+リポジトリ外のパス（tmp など）は対象外で、テストの一時ファイルは素通りする。

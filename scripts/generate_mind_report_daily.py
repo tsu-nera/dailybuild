@@ -25,6 +25,7 @@ from lib.analytics import mind
 from lib.analytics import hr_zones
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 from lib.utils.data_loader import load_csv_with_baseline_window, determine_target_period
+from lib.utils.private_data import ensure_dir
 
 BASE_DIR = project_root
 HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
@@ -486,7 +487,7 @@ def main():
 
     # 出力ディレクトリ（既に設定済み）
     img_dir = output_dir / 'img'
-    img_dir.mkdir(parents=True, exist_ok=True)
+    ensure_dir(img_dir)
 
     # 3. ベースライン計算
     print()

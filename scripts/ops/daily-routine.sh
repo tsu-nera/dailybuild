@@ -20,6 +20,16 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# data/ reports/ は dailybuild-private への symlink。未設定のまま走らせると
+# 各スクリプトが public 側にディレクトリを作り、既存データを見失う。
+for d in data reports; do
+  if [ ! -L "$d" ] || [ ! -d "$d" ]; then
+    echo "エラー: $d が dailybuild-private にマウントされていません" >&2
+    echo "  ./scripts/setup_private_links.sh を実行してください" >&2
+    exit 1
+  fi
+done
+
 LOG_DIR="logs/daily-routine"
 mkdir -p "$LOG_DIR"
 exec > >(tee -a "$LOG_DIR/$(date +%Y-%m-%d).log") 2>&1

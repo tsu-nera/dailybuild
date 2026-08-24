@@ -15,6 +15,7 @@ import pandas as pd
 from lib.clients import gsheets_client
 from lib.utils import csv_utils
 from lib.utils.private_data import require_private_path
+from lib.utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent
 METRICS_DEF_FILE = BASE_DIR / 'config/manual_metrics_def.yaml'
@@ -57,7 +58,7 @@ def main():
 
     df = normalize(df_raw, active_metrics)
 
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(OUT_FILE.parent)
     df = csv_utils.merge_csv(df, OUT_FILE, 'date')
     df.to_csv(OUT_FILE)
     print(f"保存完了: {OUT_FILE} ({len(df)}件)")

@@ -13,6 +13,7 @@ import pandas as pd
 
 from .clients import fitbit_api
 from .utils import csv_utils
+from .utils.private_data import ensure_dir
 
 
 def _patch_fitbit_exceptions():
@@ -353,7 +354,7 @@ def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = Fa
 
     # 保存
     out_path = get_output_path(endpoint)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(out_path.parent)
 
     if not overwrite:
         # 睡眠データはlogIdで重複判定（同じ日に複数の睡眠ログがあるため）
@@ -487,7 +488,7 @@ def _fetch_endpoint_chunked(client, endpoint: str, start_date: dt.date, end_date
 
     # 保存
     out_path = get_output_path(endpoint)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(out_path.parent)
 
     if not overwrite:
         # 睡眠データはlogIdで重複判定（同じ日に複数の睡眠ログがあるため）

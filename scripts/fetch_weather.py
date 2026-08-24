@@ -31,6 +31,7 @@ from lib.utils.weather import (
     DEFAULT_NIGHT_START_HOUR,
     aggregate_daily,
 )
+from lib.utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent
 CSV_FILE = BASE_DIR / 'data' / 'weather.csv'
@@ -88,7 +89,7 @@ def main():
     else:
         df_combined = df_new
 
-    CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(CSV_FILE.parent)
     df_combined.to_csv(CSV_FILE)
     print(f"保存完了: {CSV_FILE} ({len(df_combined)}行)")
 

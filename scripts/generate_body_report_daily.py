@@ -25,6 +25,7 @@ from lib.analytics import hr_zones
 from lib.analytics import zone2
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir, filter_dataframe_by_period
 from lib.utils.data_loader import determine_target_period
+from lib.utils.private_data import ensure_dir
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
@@ -712,7 +713,7 @@ def main():
     # Output directory
     output_dir = determine_output_dir(BASE_DIR, 'body', args.output, week, month, year)
     img_dir = output_dir / 'img'
-    img_dir.mkdir(parents=True, exist_ok=True)
+    ensure_dir(img_dir)
 
     # Calculate stats
     stats = body.calc_body_stats(df)

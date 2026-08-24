@@ -21,6 +21,7 @@ sys.path.insert(0, str(project_root / 'src'))
 from lib import hevy_csv
 from lib.analytics import workout
 from lib.templates.renderer import WorkoutReportRenderer
+from lib.utils.private_data import ensure_dir
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/hevy/workouts.csv'
@@ -215,7 +216,7 @@ def main():
 
     # 出力
     output_path = args.output
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(output_path.parent)
 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(report_content)

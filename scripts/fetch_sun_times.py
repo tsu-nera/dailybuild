@@ -18,6 +18,7 @@ import datetime as dt
 import pandas as pd
 
 from lib.utils.sun_times import get_sun_times
+from lib.utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent
 CSV_FILE = BASE_DIR / 'data' / 'sun_times.csv'
@@ -67,7 +68,7 @@ def main():
         df_combined = df_new
 
     # 保存
-    CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(CSV_FILE.parent)
     df_combined.to_csv(CSV_FILE, index=False)
     print(f"保存完了: {CSV_FILE} ({len(df_combined)}行)")
 
