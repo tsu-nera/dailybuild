@@ -56,6 +56,8 @@ uv run scripts/toggl.py push --days 2   # 投入実行（daily-routine.shがfetc
 uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 
+uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
+
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
 uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
 uv run scripts/mf.py fetch --year 2025  # 指定年を丸ごと取り直す
@@ -92,6 +94,35 @@ CSV が古い/無い場合は台帳のみで判定し、手動削除の検出は
 `mf.py show` は `計算対象=1` の明細だけを集計する。口座間の振替は MF 側で必ず
 `計算対象=0` が付くのでこの絞り込みだけで落ちる。MF は引き落とし予定日の
 **未来明細**を含むため、「直近Nヶ月」は当月末で上限を切っている。
+
+### 食品マスタ
+
+食事記録の土台となる食品マスタを、文部科学省「日本食品標準成分表（八訂）増補2023年」
+から作る（2,538食品 × 36成分、ビタミン・ミネラル込み）。二次利用可、出典明記が条件。
+**記録の入力手段はまだ決まっていない**（Issue で議論中）。現状はマスタを持つだけ。
+
+成分表の Excel はリポジトリに置かず `tmp/` にキャッシュするだけで、実体は
+`data/nutrition/foods_master.csv` 1本。ハマりどころ:
+
+- **見出しは4行の結合セルで機械可読でない。** 「たんぱく質」が3行目にも4行目にもあり、
+  4行目のそれは別物（アミノ酸組成による）。**12行目の「成分識別子」の行だけ**が
+  1成分1列なので、列の対応はここだけを見る。成分値の間に `*` だけが入る印の列
+  （エネルギー計算に用いた成分の目印）も挟まるが、識別子で拾えば自動的に外れる
+- 同じ栄養素に複数の識別子がある。採ったのは `PROT-`（`PROTCAA` でない）、
+  `NE`（ナイアシン当量）、`VITA_RAE`（レチノール活性当量）、`TOCPHA`（α-トコフェロール）、
+  `CHOCDF-`（差引き法による炭水化物）
+- **成分値の `-` は未測定。0 ではない。** NaN のまま伝播させる。合算で 0 として足すと、
+  測っていない成分を「摂っていない」と偽ることになる。`Tr`（微量）は 0、
+  `(11.3)` は推計値として 11.3 を採る
+- ヨウ素・セレン・クロム・モリブデン・ビオチンは成分表側で**約46%が未測定**。
+  これらを含む集計は日によって母数が変わる
+- ダウンロード URL に日付が入っている（`20260327-mxt_kagsei-...`）。成分表が更新されると
+  **404 で落ちる**ので `mext.py` の `SEIBUN_URL` を手で直す。行番号 `IDENT_ROW` も固定だが、
+  ずれた場合は例外を投げるので静かには壊れない
+
+市販の冷凍食品・加工食品は成分表に無い。パッケージの栄養成分表示から可食部100g当たりで
+`foods_master.csv` に追記する（`source=manual`）。`build-master` は既存 CSV の
+`source != mext` の行を読み戻してから書くので、成分表を取り直しても手入力分は消えない。
 
 ### MoneyForward ME
 
@@ -130,6 +161,7 @@ CSV に出るのは **MF が金融機関から取り込み済みの明細だけ*
   - `healthplanet_unofficial.py` - HealthPlanet非公式API（全項目取得可）
   - `toggl/` - Toggl Track（`client.py` API クライアント、`store.py` CSV 読み書き、`render.py` markdown 出力）
   - `mf/` - MoneyForward ME（`client.py` Playwright セッション、`store.py` CSV 読み書き、`render.py` markdown 出力）
+  - `food/` - 食事記録（`mext.py` 日本食品標準成分表のパーサ）
   - `templates/` - Jinja2テンプレートとレンダラー
     - `renderer.py` - レポートテンプレートレンダラー
     - `filters.py` - カスタムJinja2フィルタ
