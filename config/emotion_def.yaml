@@ -1,0 +1,28 @@
+# 気分記録（Google Form）の定義
+#
+# フォームの回答は既存スプレッドシート（manual と同じブック）の
+# 別タブに落とす。サービスアカウントの共有設定を使い回せるため。
+
+spreadsheet_id: 1S0SwyRbM2cAATv_IOpkOspor-_Ov49rTygyTFr2gkwA
+sheet_name: emotion
+
+# 回答シートの列名 → CSV列名
+# フォームの質問文を変えたら左側も必ず合わせる
+columns:
+  タイムスタンプ: timestamp
+  いまの気持ち: emotions
+  ひとこと: note
+
+# フォームの選択肢。valence（快/不快）× arousal（覚醒度）の4象限を埋める。
+# 陽性側を4つ置いているのは、回復の計器になるのが陰性感情の量ではなく
+# 陽性感情の頻度のため。選択肢が少ないとそこの解像度が落ちる。
+vocabulary:
+  - {label: 楽しい・うれしい, valence: pos, arousal: high}
+  - {label: わくわくする,     valence: pos, arousal: high}
+  - {label: 落ち着いている,   valence: pos, arousal: low}
+  - {label: ほっとした,       valence: pos, arousal: low}
+  - {label: イライラ,         valence: neg, arousal: high}
+  - {label: 不安・焦り,       valence: neg, arousal: high}
+  - {label: 悲しい,           valence: neg, arousal: low}
+  - {label: つらい・重い,     valence: neg, arousal: low}
+  - {label: 何も感じない,     valence: neu, arousal: low}
