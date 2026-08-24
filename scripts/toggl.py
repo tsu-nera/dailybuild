@@ -19,8 +19,12 @@ Usage:
     python scripts/toggl.py show --week current
     python scripts/toggl.py show --month 8
 
+    python scripts/toggl.py push --days 2 --dry-run   # 投入予定を確認（APIを叩かない）
+    python scripts/toggl.py push --days 2             # Fitbit睡眠をTogglへ投入
+    python scripts/toggl.py push --since 2026-08-01   # 過去分の一括投入
+
 show は既定では API を一切叩かないので fetch のレートリミット枠
-（/me/* 共通 30 req/h）を消費しない。
+（/me/* 共通 30 req/h）を消費しない。push の書き込みも同じ枠を消費する前提で扱う。
 """
 
 import argparse
@@ -33,7 +37,11 @@ from typing import IO
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
+import pandas as pd
+
 from lib.toggl import client as toggl_client
+from lib.toggl import push as toggl_push
+from lib.toggl import sources as toggl_sources
 from lib.toggl import store
 from lib.toggl import render
 from lib.utils.report_args import filter_dataframe_by_period, parse_period_args
@@ -176,6 +184,110 @@ def cmd_show(args) -> None:
     print(render.render_project_totals(df))
 
 
+def load_entries_df_for_push() -> pd.DataFrame | None:
+    """push の冪等性判定・鮮度チェック用に time_entries.csv を読む
+
+    show 用の store.load_entries() と違い、CSV が無くても例外にせず None を返す
+    （push は fetch 失敗時でも台帳のみで判定を続ける必要があるため）。
+    id は精度保持のため str のまま読む。
+    """
+    if not store.CSV_FILE.exists():
+        return None
+    return pd.read_csv(store.CSV_FILE, usecols=['id', 'start'], dtype={'id': str}, parse_dates=['start'])
+
+
+PUSH_DEFAULT_DAYS = 2
+
+
+def resolve_push_period(args) -> tuple[dt.date, dt.date]:
+    """push の引数から対象期間を決定。--days と --since は排他"""
+    today = dt.date.today()
+    if args.since:
+        return dt.datetime.strptime(args.since, '%Y-%m-%d').date(), today
+    days = args.days if args.days is not None else PUSH_DEFAULT_DAYS
+    return today - dt.timedelta(days=days - 1), today
+
+
+def cmd_push(args) -> None:
+    if args.since and args.days is not None:
+        args.parser.error('--since と --days は同時に指定できない')
+    run_push(args, sys.stdout)
+
+
+def run_push(args, out: IO[str]) -> None:
+    """push サブコマンドの処理本体"""
+    logging.basicConfig(level=logging.INFO, format='%(message)s', stream=out)
+
+    since, until = resolve_push_period(args)
+    print(f"Toggl push 対象期間: {since} ～ {until}", file=out)
+
+    config = toggl_push.load_push_config()
+    tz = toggl_push.load_timezone()
+
+    intervals: list[toggl_push.Interval] = []
+    for source_name, source_fn in toggl_sources.SOURCES.items():
+        source_config = config.get('sources', {}).get(source_name, {})
+        if not source_config.get('enabled', False):
+            continue
+        intervals.extend(source_fn(since, until, config, tz))
+
+    if not intervals:
+        print("⚠️ 投入対象のソースデータが0件。取得が壊れている可能性がある", file=out)
+        return
+
+    entries_df = load_entries_df_for_push()
+    today = dt.date.today()
+    stale = toggl_push.is_entries_csv_stale(entries_df, today)
+    if stale:
+        print("⚠️ time_entries.csv が無いか古い（前日より前）。"
+              "台帳のみで判定し、Toggl側の手動削除は検出しない", file=out)
+
+    ledger_df = toggl_push.load_ledger()
+
+    api_token = None
+    if not args.dry_run:
+        creds = load_creds(out)
+        api_token = creds['api_token']
+
+    result = toggl_push.push_intervals(
+        intervals=intervals,
+        ledger_df=ledger_df,
+        entries_df=entries_df,
+        max_writes=args.max_writes,
+        dry_run=args.dry_run,
+        api_token=api_token,
+        out=out,
+        check_deleted=not stale,
+    )
+
+    pending = result['pending']
+    skipped = result['skipped']
+    carried_over = result['carried_over']
+
+    if args.dry_run:
+        to_push = result.get('to_push', [])
+        print(f"投入予定: {len(to_push)}件（スキップ {skipped}件 / 上限 {args.max_writes}）", file=out)
+        for interval in to_push:
+            duration = interval.stop - interval.start
+            hours, remainder = divmod(int(duration.total_seconds()), 3600)
+            minutes = remainder // 60
+            print(
+                f"  {interval.start.strftime('%Y-%m-%d %H:%M:%S')} 〜 "
+                f"{interval.stop.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"({hours}h{minutes}m) [{interval.project}] {interval.description} "
+                f"#{interval.source}/{interval.source_id}",
+                file=out,
+            )
+        if carried_over:
+            print(f"⚠️ 上限 {args.max_writes} 件に達した。残り {len(carried_over)} 件を次回に繰り越し", file=out)
+        return
+
+    pushed = result['pushed']
+    print(f"投入: {pushed}件 / スキップ: {skipped}件 / 対象: {len(pending)}件", file=out)
+    if carried_over:
+        print(f"⚠️ 上限 {args.max_writes} 件に達した。残り {len(carried_over)} 件を次回に繰り越し", file=out)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Toggl Track CLI（fetch / show）')
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -205,6 +317,17 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument('--update', action='store_true',
                               help='表示前に fetch --update で最新データを取得する')
     show_parser.set_defaults(func=cmd_show)
+
+    push_parser = subparsers.add_parser('push', help='Fitbit睡眠等をTogglタイムエントリとして投入')
+    push_parser.add_argument('--days', type=int, default=None,
+                              help=f'対象日数（今日から遡る。既定 {PUSH_DEFAULT_DAYS}）')
+    push_parser.add_argument('--since', type=str, default=None,
+                              help='開始日（YYYY-MM-DD）から今日までの一括投入モード')
+    push_parser.add_argument('--max-writes', type=int, default=toggl_push.DEFAULT_MAX_WRITES,
+                              help=f'1実行あたりの書き込み上限（既定 {toggl_push.DEFAULT_MAX_WRITES}）')
+    push_parser.add_argument('--dry-run', action='store_true',
+                              help='投入予定を表示するだけでAPIを叩かない')
+    push_parser.set_defaults(func=cmd_push, parser=push_parser)
 
     return parser
 

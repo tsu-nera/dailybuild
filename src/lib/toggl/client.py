@@ -24,15 +24,19 @@ REQUEST_TIMEOUT = 60
 QUOTA_EXCEEDED_STATUS = 402
 
 
-def _get(api_token: str, path: str, params: dict) -> requests.Response:
+def _request(api_token: str, method: str, path: str,
+              params: dict | None = None, json_body: dict | None = None) -> requests.Response:
     """API を叩き、クォータ残量をログへ出す
 
     クォータ超過は HTTP 402 で返る。Toggl の 402 は決済要求ではなくレート制限で、
     そのままだと「Premium が必要」と読める汎用エラーになるため専用の例外にする。
+    書き込み（POST）も同じ /me 系の枠を共有する前提で扱う。
     """
-    response = requests.get(
+    response = requests.request(
+        method,
         f'{API_BASE}{path}',
         params=params,
+        json=json_body,
         auth=HTTPBasicAuth(api_token, 'api_token'),
         timeout=REQUEST_TIMEOUT,
     )
@@ -50,6 +54,10 @@ def _get(api_token: str, path: str, params: dict) -> requests.Response:
 
     response.raise_for_status()
     return response
+
+
+def _get(api_token: str, path: str, params: dict) -> requests.Response:
+    return _request(api_token, 'GET', path, params=params)
 
 
 def fetch_time_entries(api_token: str, start: dt.date, end: dt.date) -> list[dict]:
@@ -75,6 +83,15 @@ def fetch_time_entries(api_token: str, start: dt.date, end: dt.date) -> list[dic
     return response.json()
 
 
+def fetch_me(api_token: str) -> dict:
+    """/me?with_related_data=true の生レスポンス
+
+    default_workspace_id とプロジェクト一覧の両方をここから取る。
+    """
+    response = _get(api_token, '/me', {'with_related_data': 'true'})
+    return response.json()
+
+
 def fetch_projects(api_token: str) -> dict[int, str]:
     """プロジェクトID → プロジェクト名の対応表を取得
 
@@ -91,7 +108,29 @@ def fetch_projects(api_token: str) -> dict[int, str]:
     dict[int, str]
         {project_id: project_name}
     """
-    response = _get(api_token, '/me', {'with_related_data': 'true'})
-    data = response.json()
+    data = fetch_me(api_token)
     projects = data.get('projects') or []
     return {p['id']: p['name'] for p in projects}
+
+
+def create_time_entry(api_token: str, workspace_id: int, payload: dict) -> dict:
+    """POST /workspaces/{workspace_id}/time_entries でタイムエントリを作成
+
+    Parameters
+    ----------
+    api_token : str
+        Toggl Track の API token
+    workspace_id : int
+        投入先ワークスペースID
+    payload : dict
+        Toggl API の time entry 作成ペイロード（workspace_id を含む）
+
+    Returns
+    -------
+    dict
+        作成されたタイムエントリ
+    """
+    response = _request(
+        api_token, 'POST', f'/workspaces/{workspace_id}/time_entries', json_body=payload,
+    )
+    return response.json()

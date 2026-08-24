@@ -46,6 +46,9 @@ uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/toggl.py fetch        # Toggl Trackタイムエントリ取得
 uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（差分取得）
+uv run scripts/toggl.py push --days 2 --dry-run  # Fitbit睡眠のToggl投入予定を確認（APIを叩かない）
+uv run scripts/toggl.py push --days 2   # 投入実行（daily-routine.shがfetch直後に実行）
+uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
@@ -71,6 +74,15 @@ uv run scripts/mf.py show --update           # 取得してから表示
 stdout）。
 
 Toggl 側で削除されたエントリは CSV に残り続ける（マージは追加・更新のみ）。
+
+`scripts/toggl.py push` は Fitbit 睡眠（昼寝含む）を Toggl のタイムエントリとして
+書き込む。書き込みも `/me` 系と同じ 30req/h 枠を消費する前提で `--max-writes`
+（既定10）で抑え、超過分は捨てずに次回へ繰り越す。冪等性は
+`data/toggl/pushed.csv` の台帳を主に、直前 fetch の `time_entries.csv` を
+突き合わせに使う二段構え。台帳にあるが CSV に居ないエントリは「手動削除された」
+とみなして再投入するが、判定は CSV がカバーする期間内に限る
+（範囲外は「未取得」と区別できず、無限に再投入してしまうため）。
+CSV が古い/無い場合は台帳のみで判定し、手動削除の検出はスキップする旨を警告する。
 
 `mf.py show` は `計算対象=1` の明細だけを集計する。口座間の振替は MF 側で必ず
 `計算対象=0` が付くのでこの絞り込みだけで落ちる。MF は引き落とし予定日の
@@ -196,6 +208,7 @@ df_filtered = filter_dataframe_by_period(
 - `toggl_creds.json` - Toggl Track API（api_token必須）
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
+- `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
 

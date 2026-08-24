@@ -1,4 +1,5 @@
 # 個人プロファイル（手入力の単一真実）。Fitbit/APIから取得できない属性のみ置く。
+timezone: Asia/Tokyo           # Fitbit/Toggl CSVのnaive時刻はこのTZのローカル時刻として扱う
 birth_date: 1986-10-25        # age はシステム日付から都度算出（更新不要）
 # height_cm:                  # 将来用
 
