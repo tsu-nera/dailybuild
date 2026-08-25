@@ -300,8 +300,7 @@ def fetch_sleep_all(creds, start_date: dt.date, end_date: dt.date) -> tuple[list
     """
     points = _list_sleep_points(creds, start_date, end_date)
 
-    sleep_rows = []
-    level_rows = []
+    sessions = []
 
     for point in points:
         sleep = point.get('sleep')
@@ -314,9 +313,6 @@ def fetch_sleep_all(creds, start_date: dt.date, end_date: dt.date) -> tuple[list
         start_local = _localize(interval['startTime'], interval['startUtcOffset'])
         end_local = _localize(interval['endTime'], interval['endUtcOffset'])
         date_of_sleep = end_local.date()
-
-        if not (start_date <= date_of_sleep <= end_date):
-            continue
 
         summary = sleep.get('summary', {})
         metadata = sleep.get('metadata', {})
@@ -340,7 +336,7 @@ def fetch_sleep_all(creds, start_date: dt.date, end_date: dt.date) -> tuple[list
         # name: "users/.../dataTypes/sleep/dataPoints/<ID>"
         log_id = point.get('name', '').rstrip('/').rsplit('/', 1)[-1]
 
-        sleep_rows.append({
+        sleep_row = {
             'dateOfSleep': date_of_sleep.isoformat(),
             'startTime': start_local.strftime('%Y-%m-%dT%H:%M:%S.000'),
             'endTime': end_local.strftime('%Y-%m-%dT%H:%M:%S.000'),
@@ -368,14 +364,79 @@ def fetch_sleep_all(creds, start_date: dt.date, end_date: dt.date) -> tuple[list
             'lightAvg30': None,
             'remAvg30': None,
             'wakeAvg30': None,
+        }
+
+        sessions.append({
+            'sleep_row': sleep_row,
+            'start': start_local,
+            'end': end_local,
+            'length': minutes_in_sleep_period or 0,
+            'log_id': log_id,
+            'date_of_sleep': date_of_sleep,
+            'stages': sleep.get('stages', []) or [],
+            'short_awakenings': sleep.get('shortAwakenings', []) or [],
         })
 
-        for entry in sleep.get('stages', []) or []:
-            level_rows.append(_build_level_row(log_id, date_of_sleep, entry, is_short=False))
-        for entry in sleep.get('shortAwakenings', []) or []:
-            level_rows.append(_build_level_row(log_id, date_of_sleep, entry, is_short=True))
+    # 重なり判定は dateOfSleep でなく実時刻で行うため、期間フィルタより先に
+    # 全セッション（期間外の前後日も含む）を対象に重なりを解消する。
+    # 例: 08-21夜の45分セッションは08-21の本睡眠とは重ならないが、
+    # 08-22（期間外）の本睡眠と重なる。期間フィルタを先にかけると
+    # 08-22側のセッションが候補から消え、この重なりを検出できない
+    kept = _drop_overlapping_sessions(sessions)
+
+    sleep_rows = []
+    level_rows = []
+    for s in kept:
+        # 重なり解消後にクライアント側で期間を絞る（sleep は list の filter が
+        # 使えないため）
+        if not (start_date <= s['date_of_sleep'] <= end_date):
+            continue
+        sleep_rows.append(s['sleep_row'])
+        for entry in s['stages']:
+            level_rows.append(_build_level_row(s['log_id'], s['date_of_sleep'], entry, is_short=False))
+        for entry in s['short_awakenings']:
+            level_rows.append(_build_level_row(s['log_id'], s['date_of_sleep'], entry, is_short=True))
 
     return sleep_rows, level_rows
+
+
+def _drop_overlapping_sessions(sessions: list[dict]) -> list[dict]:
+    """
+    メイン睡眠の時間帯に重なる短いセッションを落とす
+
+    Google の sleep は、メイン睡眠の内側に重なる短いセッションを別の
+    dataPoint として独立に返すことがある（実測: 2022-04〜2026-08 の
+    1,331セッション中105件 = 7.9% が他セッションと時間的に重なる。重なる
+    側の長さは10〜480分）。Fitbit にはこの種のレコードが存在せず、
+    そのまま保存すると1日のセッション数が Fitbit 時代より増え、
+    mind/body レポートの「昼寝をメイン睡眠として拾う」既知の不具合を
+    悪化させる方向に効く。そのため保存前に重なりを解消する。
+
+    どちらを残すかは isMainSleep では決めない。mainSleep が無いセッション
+    の方が長いケース（実測で重なる側の最大480分）が実在するため、
+    isMainSleep をキーにすると短い方を残しかねない。長さ
+    （minutesInSleepPeriod）の降順に見て、既に採用した区間と重ならない
+    セッションだけを採用する貪欲法にする。
+
+    重なり判定: start < 既存end かつ 既存start < end
+    """
+    by_length_desc = sorted(sessions, key=lambda s: s['length'], reverse=True)
+
+    kept = []
+    dropped = 0
+    for s in by_length_desc:
+        overlaps = any(s['start'] < k['end'] and k['start'] < s['end'] for k in kept)
+        if overlaps:
+            dropped += 1
+            continue
+        kept.append(s)
+
+    if dropped:
+        print(f'  ⚠️ メイン睡眠に重なる短いセッションを{dropped}件除外')
+
+    # 元の並び（新しい順）に戻す
+    kept_ids = {id(s) for s in kept}
+    return [s for s in sessions if id(s) in kept_ids]
 
 
 def _build_level_row(log_id: str, date_of_sleep: dt.date, entry: dict, is_short: bool) -> dict:

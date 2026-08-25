@@ -253,3 +253,109 @@ def test_sleep_levels_has_both_short_and_normal_entries(data_dir, fake_sleep):
 
     saved = pd.read_csv(data_dir / 'sleep_levels.csv')
     assert set(saved['isShort'].astype(str).str.lower()) == {'true', 'false'}
+
+
+# =============================================================================
+# 重なりセッションの除外（PRレビュー指摘: メイン睡眠に重なる短いセッションを
+# Google が別 dataPoint として返すことがある。Issue #74）
+# =============================================================================
+
+def _raw_point(point_id: str, start: str, end: str, minutes_in_sleep_period: int,
+               main_sleep: bool | None = None) -> dict:
+    """生 API 相当の sleep dataPoint（UTC・オフセット0固定でテストを単純化）"""
+    metadata = {'stagesStatus': 'SUCCEEDED', 'processed': True}
+    if main_sleep is not None:
+        metadata['mainSleep'] = main_sleep
+    return {
+        'name': f'users/me/dataTypes/sleep/dataPoints/{point_id}',
+        'sleep': {
+            'interval': {
+                'startTime': start, 'startUtcOffset': '0s',
+                'endTime': end, 'endUtcOffset': '0s',
+            },
+            'type': 'STAGES',
+            'metadata': metadata,
+            'summary': {
+                'minutesInSleepPeriod': str(minutes_in_sleep_period),
+                'minutesAsleep': str(minutes_in_sleep_period),
+                'minutesAwake': '0',
+                'minutesAfterWakeUp': '0',
+                'minutesToFallAsleep': '0',
+                'stagesSummary': [],
+            },
+            'stages': [],
+            'shortAwakenings': [],
+        },
+    }
+
+
+@pytest.fixture
+def fake_points(monkeypatch):
+    """_list_sleep_points を差し替えて任意の生 dataPoint 群を返させる"""
+    def install(points):
+        monkeypatch.setattr(googlehealth_api, '_list_sleep_points', lambda creds, s, e: points)
+    return install
+
+
+def test_overlapping_session_only_the_longer_one_survives(fake_points):
+    """重なる2セッションのうち、長い方だけが残ること"""
+    points = [
+        _raw_point('main', '2026-08-19T23:32:00Z', '2026-08-20T06:56:00Z', 444, main_sleep=True),
+        _raw_point('short', '2026-08-19T23:36:00Z', '2026-08-19T23:53:00Z', 17),
+    ]
+    fake_points(points)
+
+    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+        None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
+    )
+
+    log_ids = {r['logId'] for r in sleep_rows}
+    assert log_ids == {'main'}
+
+
+def test_overlap_winner_decided_by_length_not_mainsleep(fake_points):
+    """isMainSleep=True の短いセッションより、mainSleepなしの長いセッションが残ること"""
+    points = [
+        _raw_point('short-main', '2026-08-19T22:00:00Z', '2026-08-19T22:30:00Z',
+                   30, main_sleep=True),
+        _raw_point('long-nomain', '2026-08-19T21:00:00Z', '2026-08-20T05:00:00Z', 480),
+    ]
+    fake_points(points)
+
+    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+        None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
+    )
+
+    log_ids = {r['logId'] for r in sleep_rows}
+    assert log_ids == {'long-nomain'}
+
+
+def test_non_overlapping_sessions_both_kept(fake_points):
+    """重ならない2セッション（本睡眠+昼寝）は両方残ること"""
+    points = [
+        _raw_point('main', '2026-08-19T23:00:00Z', '2026-08-20T07:00:00Z', 480, main_sleep=True),
+        _raw_point('nap', '2026-08-20T12:00:00Z', '2026-08-20T12:45:00Z', 45),
+    ]
+    fake_points(points)
+
+    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+        None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
+    )
+
+    log_ids = {r['logId'] for r in sleep_rows}
+    assert log_ids == {'main', 'nap'}
+
+
+def test_dropped_overlap_count_is_logged(fake_points, capsys):
+    """落とした件数が黙って消えずログに出ること"""
+    points = [
+        _raw_point('main', '2026-08-19T23:32:00Z', '2026-08-20T06:56:00Z', 444, main_sleep=True),
+        _raw_point('short', '2026-08-19T23:36:00Z', '2026-08-19T23:53:00Z', 17),
+    ]
+    fake_points(points)
+
+    googlehealth_api.fetch_sleep_all(None, dt.date(2026, 8, 19), dt.date(2026, 8, 20))
+
+    captured = capsys.readouterr()
+    assert '1件' in captured.out
+    assert '除外' in captured.out
