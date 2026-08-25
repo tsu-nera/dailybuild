@@ -64,9 +64,13 @@ ENDPOINTS = {
         'description': 'アクティブゾーン分',
         'date_column': 'date',
     },
+    # 実測時刻の行と日次固定00:00:00の行が混在するため、キーマージではなく
+    # sleep と同じ期間置換にする（src/lib/clients/googlehealth_api.py の
+    # fetch_temperature_core docstring 参照）
     'temperature_core': {
         'description': '深部体温',
         'date_column': 'date_time',
+        'kind': 'period_replace',
     },
     # 1日に複数行が立つセッション型。既存の Fitbit CSV を書き換えないよう
     # data/googlehealth/ に別ファイルとして持つ（activity_logs.csv との
@@ -176,13 +180,19 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
 def _save_period_replace(endpoint: str, config: dict, result, start_date: dt.date,
                          end_date: dt.date, overwrite: bool) -> dict:
     """
-    sleep 用の保存経路: 1回の取得で得た (主CSV行, 付随CSV行) を
-    それぞれ期間置換で書く（csv_utils.replace_csv_period）
+    キーマージが成立しないエンドポイントの保存経路: 期間置換で書く
+    （csv_utils.replace_csv_period）
+
+    sleep のように 'extra_csv' を持つ型は、fetcher が (主CSV行, 付随CSV行) の
+    タプルを返す。それ以外（temperature_core 等）は行リストをそのまま返す。
 
     overwrite=True の場合は期間置換ではなく、取得した行だけで CSV 全体を
     置き換える（他エンドポイントの overwrite と挙動を揃える）
     """
-    rows, extra_rows = result
+    if config.get('extra_csv'):
+        rows, extra_rows = result
+    else:
+        rows, extra_rows = result, None
     if not rows:
         msg = f'{start_date}〜{end_date} のデータが0件。Google側に無いか取得が壊れている'
         print(f'  ⚠️ {msg}')

@@ -195,19 +195,23 @@ def _daily_rows(creds, data_type: str, payload_key: str, start_date: dt.date,
 
 
 # =============================================================================
-# dailyRollUp 共通呼び出し（activity / active_zone_minutes / temperature_core が使う）
+# dailyRollUp 共通呼び出し（activity / active_zone_minutes が使う）
 # =============================================================================
 
 # 型ごとの最大取得期間（日数）。超えると INVALID_ROLLUP_QUERY_DURATION になるが、
 # メッセージは "Invalid argument in request." としか言わない
 # （実際の上限は error.details[0].metadata.maxDurationDays に入る）。
 # 実測値をハードコードし、この範囲で自動分割する。
+#
+# core-body-temperature はここに含めない: dailyRollUp は日次平均になるが、
+# 既存 CSV の date_time は「日次固定00:00:00の行」と「実測時刻の行」が
+# 混在しており（sampleTime.civilTime が実測時刻を持つ）、平均で埋めると
+# 既存の実測時刻行と二重に入る。list + civilTime を使う（fetch_temperature_core）。
 ROLLUP_MAX_DURATION_DAYS = {
     'steps': 90,
     'distance': 90,
     'sedentary-period': 90,
     'active-zone-minutes': 90,
-    'core-body-temperature': 90,
     'total-calories': 14,
     'active-minutes': 14,
 }
@@ -741,34 +745,70 @@ def fetch_active_zone_minutes(creds, start_date: dt.date, end_date: dt.date) -> 
 # 深部体温 -> data/fitbit/temperature_core.csv
 # =============================================================================
 
+def _civil_time_str(civil: dict) -> str:
+    """civilTime（date + 省略されうる time）を "YYYY-MM-DD HH:MM:SS" にする"""
+    date = civil['date']
+    time = civil.get('time') or {}
+    return (
+        f"{date['year']:04d}-{date['month']:02d}-{date['day']:02d} "
+        f"{time.get('hours', 0):02d}:{time.get('minutes', 0):02d}:{time.get('seconds', 0):02d}"
+    )
+
+
 def fetch_temperature_core(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
     """
     列: date_time, temperature
 
-    既存 CSV は日次で date_time が "<date> 00:00:00" 固定（list で取れる実際の
-    測定時刻は使わない。使うと同じ日について 00:00:00 の既存行と実時刻の新行が
-    二重に入り、既存スキーマと矛盾する）。dailyRollUp の temperatureCelsiusAvg を
-    採用する。
+    dailyRollUp ではなく list を使う（当初 dailyRollUp + 日次平均で実装したが、
+    既存 CSV の date_time は「日次で00:00:00固定の行」と「実測時刻の行」が
+    混在しており（実測: 2026-01-03〜08-16 は00:00:00固定、2026-02-02
+    08:12:49 等は実測時刻）、日次平均で埋めると既にある実測時刻行と同じ日に
+    2行できてしまう。実測で 08-17/18/19/22/23 の5日の二重化を確認したため
+    list + sampleTime.civilTime に切り替えた。civilTime をそのまま使えば
+    既存 CSV と一致する（2026-08-23: Google "2026-08-23 05:49:21, 36.1" ==
+    既存CSV "2026-08-23 05:49:21,36.1"）。
 
-    temperatureCelsiusMin != Max の日は複数回測定を平均したことになるため、
-    黙って平均せず警告を出す。
+    civilTime.time は hours/minutes/seconds が0のとき省略されるため
+    .get(key, 0) で補う。
+
+    保存は googlehealth_fetcher 側で sleep と同じ期間置換
+    （csv_utils.replace_csv_period）を使う。キーマージにすると既存の
+    00:00:00 行と実測時刻行が両方残ってしまうため。
     """
-    by_date = _rollup_by_date(creds, 'core-body-temperature', 'coreBodyTemperature', start_date, end_date)
     rows = []
-    multi_measurement_dates = []
-    for date, payload in sorted(by_date.items()):
-        avg = _num(payload.get('temperatureCelsiusAvg'))
-        if avg is None:
-            continue
-        tmin = _num(payload.get('temperatureCelsiusMin'))
-        tmax = _num(payload.get('temperatureCelsiusMax'))
-        if tmin is not None and tmax is not None and tmin != tmax:
-            multi_measurement_dates.append(date)
-        rows.append({'date_time': f'{date} 00:00:00', 'temperature': avg})
+    token = None
+    while True:
+        params = {'pageToken': token} if token else {}
+        body = _get(creds, f'{USER}/dataTypes/core-body-temperature/dataPoints', params)
+        page = body.get('dataPoints', [])
 
-    if multi_measurement_dates:
-        print(f'  ⚠️ core-body-temperature: 複数回測定を平均した日が{len(multi_measurement_dates)}件: '
-              f'{multi_measurement_dates}')
+        page_rows = []
+        for point in page:
+            payload = point.get('coreBodyTemperature')
+            if not payload:
+                continue
+            civil = (payload.get('sampleTime') or {}).get('civilTime')
+            temperature = _num(payload.get('temperatureCelsius'))
+            if not civil or temperature is None:
+                continue
+            page_rows.append({
+                'date_time': _civil_time_str(civil),
+                'temperature': temperature,
+            })
+
+        rows.extend(
+            r for r in page_rows
+            if start_date.isoformat() <= r['date_time'][:10] <= end_date.isoformat()
+        )
+
+        token = body.get('nextPageToken')
+        if not token:
+            break
+        # 新しい順に返るので、ページ内の最新が start_date より前なら以降も全て古い
+        if page_rows and max(r['date_time'][:10] for r in page_rows) < start_date.isoformat():
+            break
+
+    rows.sort(key=lambda r: r['date_time'])
     return rows
 
 

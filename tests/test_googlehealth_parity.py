@@ -114,7 +114,7 @@ def test_fetchers_respect_date_range(creds):
     for endpoint, fetcher in gh.FETCHERS.items():
         if endpoint == 'sleep':
             continue  # 専用テストで別途検証（戻り値の形が違う）
-        # temperature_core は date_time（"<date> 00:00:00"）、exercise は
+        # temperature_core は date_time（日時、実測時刻を含む）、exercise は
         # start（開始時刻）と、型ごとに date_column が違うので先頭10文字で見る
         column = googlehealth_fetcher.ENDPOINTS[endpoint]['date_column']
         rows = fetcher(creds, start, end)

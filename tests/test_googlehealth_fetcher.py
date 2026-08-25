@@ -362,7 +362,7 @@ def test_dropped_overlap_count_is_logged(fake_points, capsys):
 
 
 # =============================================================================
-# dailyRollUp 経路（activity / active_zone_minutes / temperature_core, Issue #75）
+# dailyRollUp 経路（activity / active_zone_minutes, Issue #75）
 # =============================================================================
 
 def _rollup_point(year, month, day, **payload):
@@ -485,36 +485,157 @@ def test_activity_active_minutes_levels_mapped(fake_post):
     assert row['steps'] == 100.0
 
 
-def test_temperature_core_date_time_is_midnight(fake_post):
-    fake_post(lambda path, body: {'rollupDataPoints': [
-        _rollup_point(2026, 8, 20, coreBodyTemperature={
-            'temperatureCelsiusAvg': 36.4, 'temperatureCelsiusMin': 36.4, 'temperatureCelsiusMax': 36.4,
-        }),
-    ]})
-    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
-    assert rows == [{'date_time': '2026-08-20 00:00:00', 'temperature': 36.4}]
+# =============================================================================
+# temperature_core: dailyRollUp ではなく list + civilTime を使う（PR #84 レビュー
+# 指摘: 既存 CSV に実測時刻の行と00:00:00固定の行が混在しており、日次平均で
+# 埋めると実測時刻行と二重になる。civilTime をそのまま使う）
+# =============================================================================
+
+def _temp_point(point_id, year, month, day, hours=None, minutes=None, seconds=None,
+                temp=36.5):
+    """core-body-temperature の dataPoint 1件相当。time を省略すると0時0分0秒扱い"""
+    civil_time = {'date': {'year': year, 'month': month, 'day': day}}
+    time = {}
+    if hours is not None:
+        time['hours'] = hours
+    if minutes is not None:
+        time['minutes'] = minutes
+    if seconds is not None:
+        time['seconds'] = seconds
+    if time:
+        civil_time['time'] = time
+    return {
+        'name': f'users/me/dataTypes/core-body-temperature/dataPoints/{point_id}',
+        'coreBodyTemperature': {
+            'sampleTime': {
+                'physicalTime': f'{year}-{month:02d}-{day:02d}T00:00:00Z',
+                'utcOffset': '32400s',
+                'civilTime': civil_time,
+            },
+            'temperatureCelsius': temp,
+            'id': point_id,
+        },
+    }
 
 
-def test_temperature_core_warns_on_multiple_measurements(fake_post, capsys):
-    fake_post(lambda path, body: {'rollupDataPoints': [
-        _rollup_point(2026, 8, 21, coreBodyTemperature={
-            'temperatureCelsiusAvg': 36.3, 'temperatureCelsiusMin': 36.1, 'temperatureCelsiusMax': 36.5,
-        }),
-    ]})
-    googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 21), dt.date(2026, 8, 21))
+@pytest.fixture
+def fake_get_pages(monkeypatch):
+    """googlehealth_api._get を差し替えて、ページを順番に返す"""
+    def install(pages):
+        it = iter(pages)
 
-    captured = capsys.readouterr()
-    assert '2026-08-21' in captured.out
-    assert '複数回測定' in captured.out
+        def fake(creds, path, params=None):
+            return next(it)
+
+        monkeypatch.setattr(googlehealth_api, '_get', fake)
+    return install
 
 
-def test_temperature_core_no_warning_when_min_equals_max(fake_post, capsys):
-    fake_post(lambda path, body: {'rollupDataPoints': [
-        _rollup_point(2026, 8, 22, coreBodyTemperature={
-            'temperatureCelsiusAvg': 36.2, 'temperatureCelsiusMin': 36.2, 'temperatureCelsiusMax': 36.2,
-        }),
-    ]})
-    googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 22), dt.date(2026, 8, 22))
+def test_temperature_core_uses_civil_time(fake_get_pages):
+    """civilTime をそのまま date_time にすること"""
+    fake_get_pages([
+        {'dataPoints': [_temp_point('1', 2026, 8, 23, hours=5, minutes=49, seconds=21, temp=36.1)]},
+    ])
+    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    assert rows == [{'date_time': '2026-08-23 05:49:21', 'temperature': 36.1}]
 
-    captured = capsys.readouterr()
-    assert '複数回測定' not in captured.out
+
+def test_temperature_core_missing_time_defaults_to_zero(fake_get_pages):
+    """civilTime.time が省略された（0時0分0秒）場合、00:00:00 として扱うこと"""
+    fake_get_pages([
+        {'dataPoints': [_temp_point('2', 2026, 8, 24, temp=36.0)]},  # time 省略
+    ])
+    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    assert rows == [{'date_time': '2026-08-24 00:00:00', 'temperature': 36.0}]
+
+
+def test_temperature_core_filters_by_date_range(fake_get_pages):
+    fake_get_pages([
+        {'dataPoints': [
+            _temp_point('a', 2026, 8, 19, hours=6, temp=36.2),  # 範囲外
+            _temp_point('b', 2026, 8, 20, hours=6, temp=36.3),  # 範囲内
+        ]},
+    ])
+    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    assert [r['date_time'][:10] for r in rows] == ['2026-08-20']
+
+
+def test_temperature_core_stops_paging_when_page_older_than_start(fake_get_pages):
+    """ページ内の最新日が start_date より古くなった時点で打ち切ること
+    （フィクスチャに2ページしか用意していないため、打ち切らず3ページ目を
+    要求すると StopIteration で失敗する）
+    """
+    fake_get_pages([
+        {'dataPoints': [_temp_point('1', 2026, 8, 24, hours=6, temp=36.2)],
+         'nextPageToken': 'tok1'},
+        {'dataPoints': [_temp_point('2', 2026, 7, 1, hours=6, temp=35.9)],
+         'nextPageToken': 'tok2'},
+    ])
+    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    assert [r['date_time'][:10] for r in rows] == ['2026-08-24']
+
+
+# =============================================================================
+# activity: activityCalories / sedentaryMinutes の merge 挙動（PR #84 レビュー
+# 指摘: 既存の日付は merge_csv の NaN フォールバックで旧値が残り、新しい日付は
+# 空になる。テスト計画に「既存の日付なので旧値が残る」旨を明記する）
+# =============================================================================
+
+@pytest.fixture
+def fake_activity_rows(monkeypatch):
+    """FETCHERS['activity'] を差し替えて任意の行を返させる"""
+    def install(rows):
+        monkeypatch.setitem(
+            googlehealth_api.FETCHERS, 'activity', lambda creds, s, e: rows
+        )
+    return install
+
+
+def test_activity_existing_date_keeps_old_activity_calories_and_sedentary_minutes(
+    data_dir, fake_activity_rows,
+):
+    """merge_csv の NaN フォールバック: 既存の日付は旧値が残ること"""
+    existing = pd.DataFrame(
+        {'caloriesOut': [2000.0], 'activityCalories': [700.0], 'steps': [5000.0],
+         'distance': [3.5], 'sedentaryMinutes': [900.0], 'lightlyActiveMinutes': [120.0],
+         'fairlyActiveMinutes': [30.0], 'veryActiveMinutes': [5.0]},
+        index=pd.to_datetime(['2026-08-15']),
+    )
+    existing.index.name = 'date'
+    existing.to_csv(data_dir / 'activity.csv')
+
+    fake_activity_rows([{
+        'date': '2026-08-15', 'caloriesOut': 1900.0, 'activityCalories': None,
+        'steps': 5100.0, 'distance': 3.6, 'sedentaryMinutes': None,
+        'lightlyActiveMinutes': 121.0, 'fairlyActiveMinutes': 31.0, 'veryActiveMinutes': 6.0,
+    }])
+    ghf.fetch_endpoint(
+        None, 'activity', start_date=dt.date(2026, 8, 15), end_date=dt.date(2026, 8, 15),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'activity.csv')
+    row = saved[saved['date'] == '2026-08-15'].iloc[0]
+    assert row['activityCalories'] == 700.0  # 旧値が残る
+    assert row['sedentaryMinutes'] == 900.0  # 旧値が残る
+    assert row['caloriesOut'] == 1900.0  # 新しい値で上書きされる
+
+
+def test_activity_new_date_has_empty_activity_calories_and_sedentary_minutes(
+    data_dir, fake_activity_rows,
+):
+    """既存 CSV に無い日付では activityCalories/sedentaryMinutes が空になること"""
+    fake_activity_rows([{
+        'date': '2026-08-20', 'caloriesOut': 1900.0, 'activityCalories': None,
+        'steps': 5100.0, 'distance': 3.6, 'sedentaryMinutes': None,
+        'lightlyActiveMinutes': 121.0, 'fairlyActiveMinutes': 31.0, 'veryActiveMinutes': 6.0,
+    }])
+    ghf.fetch_endpoint(
+        None, 'activity', start_date=dt.date(2026, 8, 20), end_date=dt.date(2026, 8, 20),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'activity.csv')
+    row = saved[saved['date'] == '2026-08-20'].iloc[0]
+    assert pd.isna(row['activityCalories'])
+    assert pd.isna(row['sedentaryMinutes'])

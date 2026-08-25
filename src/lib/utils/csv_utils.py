@@ -115,7 +115,7 @@ def replace_csv_period(df_new: pd.DataFrame, csv_path: Path, date_column: str,
     Args:
         df_new: 新しいデータ（date_column を含む）
         csv_path: 既存CSVのパス
-        date_column: 期間判定に使う日付列名
+        date_column: 期間判定に使う日付列名。日時（"YYYY-MM-DD HH:MM:SS"）でもよい
         start_date: 削除・置換する期間の開始日（この日を含む）
         end_date: 削除・置換する期間の終了日（この日を含む）
         sort_by: ソートに使う列名リスト
@@ -128,7 +128,12 @@ def replace_csv_period(df_new: pd.DataFrame, csv_path: Path, date_column: str,
     else:
         df_old = pd.read_csv(csv_path)
         start_s, end_s = str(start_date), str(end_date)
-        outside_period = ~df_old[date_column].astype(str).between(start_s, end_s)
+        # date_column が日時（"YYYY-MM-DD HH:MM:SS"）だと、素の文字列比較では
+        # end_date 当日で時刻付きの値が end_s（時刻無し）より辞書順で大きくなり
+        # 「期間内」から漏れる（例: "2026-08-23 05:49:21" > "2026-08-23"）。
+        # 先頭10文字（日付部分）だけで比較する
+        dates = df_old[date_column].astype(str).str[:10]
+        outside_period = ~dates.between(start_s, end_s)
         df_merged = pd.concat([df_old[outside_period], df_new], ignore_index=True)
 
     # df_new が空（例: 昼寝なしでshortAwakeningsが1件も無い日のsleep_levels）だと
