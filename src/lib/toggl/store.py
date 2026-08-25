@@ -129,6 +129,21 @@ def load_fetch_window() -> tuple[dt.date, dt.date] | None:
         return None
 
 
+def load_fetched_at() -> dt.datetime | None:
+    """直近 fetch を実行した時刻。記録が無い/壊れていれば None
+
+    push の削除検出で使う。この時刻より後に投入したエントリは、まだ一度も
+    fetch していないので CSV に居なくて当たり前（削除された訳ではない）。
+    """
+    if not FETCH_STATE_FILE.exists():
+        return None
+    try:
+        state = json.loads(FETCH_STATE_FILE.read_text(encoding='utf-8'))
+        return dt.datetime.fromisoformat(state['fetched_at'])
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return None
+
+
 def load_entries() -> pd.DataFrame:
     """show 側の CSV 読み込み。project_name の欠損補完と日付列を付与する"""
     df = pd.read_csv(CSV_FILE, parse_dates=['start', 'stop'])
