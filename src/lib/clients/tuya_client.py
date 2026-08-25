@@ -105,7 +105,7 @@ def _check(response) -> dict:
     return response.get('result') or {}
 
 
-class TuyaEnvironmentClient:
+class TuyaIndoorClient:
     """CO2/温度/湿度センサーからの取得に特化した Tuya Cloud クライアント"""
 
     def __init__(self, creds: dict):

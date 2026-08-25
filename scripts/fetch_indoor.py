@@ -4,11 +4,11 @@
 室内環境データ取得スクリプト（Tuya Cloud / CO2・温度・湿度）
 
 Usage:
-    uv run scripts/fetch_environment.py --update        # CSVの最終時刻から今まで（日次運用）
-    uv run scripts/fetch_environment.py --days 1        # 直近1日
-    uv run scripts/fetch_environment.py --start-date 2026-08-25 --end-date 2026-08-26
-    uv run scripts/fetch_environment.py --interval-min 10
-    uv run scripts/fetch_environment.py --raw           # DPコードの一覧を表示
+    uv run scripts/fetch_indoor.py --update        # CSVの最終時刻から今まで（日次運用）
+    uv run scripts/fetch_indoor.py --days 1        # 直近1日
+    uv run scripts/fetch_indoor.py --start-date 2026-08-25 --end-date 2026-08-26
+    uv run scripts/fetch_indoor.py --interval-min 10
+    uv run scripts/fetch_indoor.py --raw           # DPコードの一覧を表示
 
 Tuya のログ API は最大7日しか遡れないため、日次実行で差分を蓄積する前提。
 取得済みの境界は既定でスキップするので、再実行は安く済む（`--force` で取り直す）。
@@ -34,7 +34,7 @@ import pandas as pd
 from lib.clients.tuya_client import (
     CODE_TO_COLUMN,
     WINDOW_SEC,
-    TuyaEnvironmentClient,
+    TuyaIndoorClient,
     TuyaError,
     load_credentials,
 )
@@ -43,7 +43,7 @@ from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config' / 'tuya_creds.json'
-CSV_FILE = require_private_path(BASE_DIR / 'data' / 'environment.csv')
+CSV_FILE = require_private_path(BASE_DIR / 'data' / 'indoor.csv')
 
 COLUMNS = ['datetime'] + list(CODE_TO_COLUMN.values())
 
@@ -89,7 +89,7 @@ def boundaries(start: dt.datetime, end: dt.datetime, interval_min: int) -> list[
     return out
 
 
-def run_raw(client: TuyaEnvironmentClient) -> int:
+def run_raw(client: TuyaIndoorClient) -> int:
     """生ログの code と値のサンプルを表示する（マッピング同定用）"""
     start = dt.datetime.now() - dt.timedelta(minutes=5)
     samples = client.raw_codes(start, width_sec=300)
@@ -126,7 +126,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
     try:
-        client = TuyaEnvironmentClient(load_credentials(CREDS_FILE))
+        client = TuyaIndoorClient(load_credentials(CREDS_FILE))
     except TuyaError as exc:
         print(exc, file=sys.stderr)
         return 1

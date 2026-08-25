@@ -61,8 +61,8 @@ uv run scripts/toggl.py current          # 計測中のエントリを表示
 uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
-uv run scripts/fetch_environment.py --update  # 室内環境（CO2/温度/湿度）差分取得
-uv run scripts/fetch_environment.py --raw     # DPコード一覧（マッピング同定用）
+uv run scripts/fetch_indoor.py --update  # 室内環境（CO2/温度/湿度）差分取得
+uv run scripts/fetch_indoor.py --raw     # DPコード一覧（マッピング同定用）
 
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 
@@ -190,7 +190,12 @@ MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制�
 
 ### 室内環境（CO2/温度/湿度）
 
-就寝中のCO2を測るのが目的。LSENLTY の Tuya 系センサーから `data/environment.csv` に
+**`data/indoor.csv`（室内）と `data/weather.csv`（外気）は別物。** どちらにも温度と
+湿度が入っているので取り違えやすい。室温を見たいときに外気温を読むと結論が変わる
+（睡眠と外気温の関係は既に分析済みで、あれは**外気温であって室温ではない**）。
+ファイル名で内外を判別できるよう `environment` ではなく `indoor` にしてある。
+
+就寝中のCO2を測るのが目的。LSENLTY の Tuya 系センサーから `data/indoor.csv` に
 5分刻みで蓄積する。ハマりどころ:
 
 - **デバイスは値が変化しなくても1秒ごとに送る。** 1日約26万件になり、素直に全件取得

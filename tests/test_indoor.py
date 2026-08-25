@@ -12,7 +12,7 @@ import pytest
 
 from lib.clients.tuya_client import (
     RATE_LIMIT_CODE,
-    TuyaEnvironmentClient,
+    TuyaIndoorClient,
     TuyaError,
     TuyaRateLimitError,
     _check,
@@ -24,15 +24,15 @@ BASE_DIR = Path(__file__).parent.parent
 
 def _load_script():
     """scripts/ 配下はパッケージではないのでファイルから直接ロードする"""
-    path = BASE_DIR / 'scripts' / 'fetch_environment.py'
-    spec = importlib.util.spec_from_file_location('fetch_environment', path)
+    path = BASE_DIR / 'scripts' / 'fetch_indoor.py'
+    spec = importlib.util.spec_from_file_location('fetch_indoor', path)
     module = importlib.util.module_from_spec(spec)
-    sys.modules['fetch_environment'] = module
+    sys.modules['fetch_indoor'] = module
     spec.loader.exec_module(module)
     return module
 
 
-class _FakeClient(TuyaEnvironmentClient):
+class _FakeClient(TuyaIndoorClient):
     """__init__ を飛ばして変換ロジックだけを試す"""
 
     def __init__(self, logs, scales=None):
