@@ -96,7 +96,7 @@ def test_overwrite_replaces_existing_rows(data_dir, fake_rows):
 
 def test_unknown_endpoint_raises():
     with pytest.raises(ValueError, match='Unknown endpoint'):
-        ghf.fetch_endpoint(None, 'sleep', days=3)
+        ghf.fetch_endpoint(None, 'spo2', days=3)
 
 
 def test_history_boundary_blocks_rewrite_by_default(data_dir, fake_rows):
@@ -148,3 +148,108 @@ def test_num_coerces_string_values():
     assert googlehealth_api._num(36.5) == 36.5
     assert googlehealth_api._num(None) is None
     assert googlehealth_api._num('') is None
+
+
+# =============================================================================
+# sleep（期間置換・2セッション/日・efficiency算出・sleep_levels）
+# =============================================================================
+
+def _sleep_row(date_of_sleep, minutes_asleep=300, minutes_in_sleep_period=360,
+              log_id='999', is_main=True):
+    return {
+        'dateOfSleep': date_of_sleep,
+        'startTime': f'{date_of_sleep}T23:00:00.000',
+        'endTime': f'{date_of_sleep}T07:00:00.000',
+        'duration': 28800000,
+        'timeInBed': minutes_in_sleep_period,
+        'efficiency': round(minutes_asleep / minutes_in_sleep_period * 100),
+        'minutesAsleep': minutes_asleep,
+        'minutesAwake': minutes_in_sleep_period - minutes_asleep,
+        'minutesAfterWakeup': 0,
+        'minutesToFallAsleep': 0,
+        'logId': log_id,
+        'logType': None,
+        'type': 'stages',
+        'infoCode': None,
+        'isMainSleep': is_main,
+        'deepMinutes': 30, 'lightMinutes': 200, 'remMinutes': 60, 'wakeMinutes': 10,
+        'deepCount': 3, 'lightCount': 10, 'remCount': 5, 'wakeCount': 2,
+        'deepAvg30': None, 'lightAvg30': None, 'remAvg30': None, 'wakeAvg30': None,
+    }
+
+
+@pytest.fixture
+def fake_sleep(monkeypatch):
+    """FETCHERS['sleep'] を差し替えて (sleep_rows, level_rows) を返させる"""
+    def install(sleep_rows, level_rows=None):
+        monkeypatch.setitem(
+            googlehealth_api.FETCHERS, 'sleep',
+            lambda creds, s, e: (sleep_rows, level_rows or []),
+        )
+    return install
+
+
+def test_sleep_period_replace_drops_only_in_range_rows(data_dir, fake_sleep):
+    """期間置換: 対象期間の既存行は消え、期間外は残ること"""
+    existing = pd.DataFrame([
+        _sleep_row('2026-07-01', log_id='old-1'),  # 期間外 -> 残る
+        _sleep_row('2026-08-01', log_id='old-2'),  # 期間内 -> 消える
+    ])
+    existing.to_csv(data_dir / 'sleep.csv', index=False)
+    pd.DataFrame([], columns=['logId', 'dateOfSleep', 'dateTime', 'level', 'seconds', 'isShort']
+                ).to_csv(data_dir / 'sleep_levels.csv', index=False)
+
+    fake_sleep([_sleep_row('2026-08-01', log_id='new-1')])
+    result = ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 1), end_date=dt.date(2026, 8, 1),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep.csv')
+    assert result['records'] == 2
+    assert set(saved['logId'].astype(str)) == {'old-1', 'new-1'}
+
+
+def test_sleep_two_sessions_same_day_saved_as_two_rows(data_dir, fake_sleep):
+    """1日に複数セッション（昼寝）があるとき2行として保存されること"""
+    fake_sleep([
+        _sleep_row('2026-08-20', log_id='main', is_main=True),
+        _sleep_row('2026-08-20', log_id='nap', minutes_asleep=40,
+                   minutes_in_sleep_period=45, is_main=False),
+    ])
+    ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 20), end_date=dt.date(2026, 8, 20),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep.csv')
+    assert len(saved[saved['dateOfSleep'] == '2026-08-20']) == 2
+
+
+def test_sleep_efficiency_is_computed(data_dir, fake_sleep):
+    row = _sleep_row('2026-08-20', minutes_asleep=300, minutes_in_sleep_period=360)
+    fake_sleep([row])
+    ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 20), end_date=dt.date(2026, 8, 20),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep.csv')
+    assert saved.loc[0, 'efficiency'] == round(300 / 360 * 100)
+
+
+def test_sleep_levels_has_both_short_and_normal_entries(data_dir, fake_sleep):
+    levels = [
+        {'logId': '1', 'dateOfSleep': '2026-08-20', 'dateTime': '2026-08-20 23:10:00',
+         'level': 'light', 'seconds': 600, 'isShort': False},
+        {'logId': '1', 'dateOfSleep': '2026-08-20', 'dateTime': '2026-08-20 23:30:00',
+         'level': 'wake', 'seconds': 60, 'isShort': True},
+    ]
+    fake_sleep([_sleep_row('2026-08-20', log_id='1')], levels)
+    ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 20), end_date=dt.date(2026, 8, 20),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep_levels.csv')
+    assert set(saved['isShort'].astype(str).str.lower()) == {'true', 'false'}

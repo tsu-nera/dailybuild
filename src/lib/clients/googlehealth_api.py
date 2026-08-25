@@ -231,8 +231,172 @@ def fetch_temperature_skin(creds, start_date: dt.date, end_date: dt.date) -> lis
     )
 
 
+# =============================================================================
+# 睡眠 -> data/fitbit/sleep.csv, data/fitbit/sleep_levels.csv
+# =============================================================================
+
+# Google の stages 型ステージ名 -> 既存 CSV の level 値
+# 既存 sleep_levels.csv には Fitbit の classic 睡眠由来の asleep/restless/awake も
+# 混在するが（cut -d, -f4 data/fitbit/sleep_levels.csv で確認）、stages 型の既存行は
+# wake/light/deep/rem のみを使っている（asleep/restless は classic 型専用）。
+# Google は stages 型しか返さないため、この対応で既存の値域に収まる。
+_STAGE_LEVEL = {
+    'AWAKE': 'wake',
+    'LIGHT': 'light',
+    'DEEP': 'deep',
+    'REM': 'rem',
+}
+
+
+def _localize(utc_time: str, utc_offset: str) -> dt.datetime:
+    """UTC の ISO8601 文字列 + オフセット文字列（例 "32400s"）をローカル時刻にする"""
+    t = dt.datetime.fromisoformat(utc_time.replace('Z', '+00:00'))
+    offset_seconds = int(utc_offset.rstrip('s'))
+    return (t + dt.timedelta(seconds=offset_seconds)).replace(tzinfo=None)
+
+
+def _list_sleep_points(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    sleep の dataPoints をページングで取得する
+
+    sleep は list の filter が使えない（sleep.interval.start_time を渡すと
+    INVALID_DATA_POINT_FILTER_DATA_TYPE_MEMBER で 400）ため、新しい順に
+    ページングして、ページ内の全点の起床日が start_date より古くなった時点で
+    打ち切る。取得後に呼び出し側で start_date <= dateOfSleep <= end_date に絞る。
+    """
+    out = []
+    token = None
+    while True:
+        params = {'pageToken': token} if token else {}
+        body = _get(creds, f'{USER}/dataTypes/sleep/dataPoints', params)
+        page = body.get('dataPoints', [])
+        out.extend(page)
+        token = body.get('nextPageToken')
+        if not token:
+            break
+
+        wake_dates = []
+        for p in page:
+            interval = p.get('sleep', {}).get('interval')
+            if not interval:
+                continue
+            wake_dates.append(
+                _localize(interval['endTime'], interval['endUtcOffset']).date()
+            )
+        if wake_dates and max(wake_dates) < start_date:
+            break
+
+    return out
+
+
+def fetch_sleep_all(creds, start_date: dt.date, end_date: dt.date) -> tuple[list[dict], list[dict]]:
+    """
+    sleep の dataPoints を1回取得し、sleep.csv 用と sleep_levels.csv 用の
+    行リストを両方作る（fetch_sleep / fetch_sleep_levels が別々に API を
+    叩くと2倍のリクエストになるため、ここで共有する）
+
+    Returns:
+        (sleep_rows, level_rows)
+    """
+    points = _list_sleep_points(creds, start_date, end_date)
+
+    sleep_rows = []
+    level_rows = []
+
+    for point in points:
+        sleep = point.get('sleep')
+        if not sleep:
+            continue
+        interval = sleep.get('interval')
+        if not interval:
+            continue
+
+        start_local = _localize(interval['startTime'], interval['startUtcOffset'])
+        end_local = _localize(interval['endTime'], interval['endUtcOffset'])
+        date_of_sleep = end_local.date()
+
+        if not (start_date <= date_of_sleep <= end_date):
+            continue
+
+        summary = sleep.get('summary', {})
+        metadata = sleep.get('metadata', {})
+
+        stages = {s['type']: s for s in summary.get('stagesSummary', [])}
+
+        def stage_minutes(stage_type):
+            v = stages.get(stage_type, {}).get('minutes')
+            return _num(v)
+
+        def stage_count(stage_type):
+            v = stages.get(stage_type, {}).get('count')
+            return _num(v)
+
+        minutes_asleep = _num(summary.get('minutesAsleep'))
+        minutes_in_sleep_period = _num(summary.get('minutesInSleepPeriod'))
+        efficiency = None
+        if minutes_asleep is not None and minutes_in_sleep_period:
+            efficiency = round(minutes_asleep / minutes_in_sleep_period * 100)
+
+        # name: "users/.../dataTypes/sleep/dataPoints/<ID>"
+        log_id = point.get('name', '').rstrip('/').rsplit('/', 1)[-1]
+
+        sleep_rows.append({
+            'dateOfSleep': date_of_sleep.isoformat(),
+            'startTime': start_local.strftime('%Y-%m-%dT%H:%M:%S.000'),
+            'endTime': end_local.strftime('%Y-%m-%dT%H:%M:%S.000'),
+            'duration': int((end_local - start_local).total_seconds() * 1000),
+            'timeInBed': minutes_in_sleep_period,
+            'efficiency': efficiency,
+            'minutesAsleep': minutes_asleep,
+            'minutesAwake': _num(summary.get('minutesAwake')),
+            'minutesAfterWakeup': _num(summary.get('minutesAfterWakeUp')),
+            'minutesToFallAsleep': _num(summary.get('minutesToFallAsleep')),
+            'logId': log_id,
+            'logType': None,
+            'type': (sleep.get('type') or '').lower(),
+            'infoCode': None,
+            'isMainSleep': bool(metadata.get('mainSleep', False)),
+            'deepMinutes': stage_minutes('DEEP'),
+            'lightMinutes': stage_minutes('LIGHT'),
+            'remMinutes': stage_minutes('REM'),
+            'wakeMinutes': stage_minutes('AWAKE'),
+            'deepCount': stage_count('DEEP'),
+            'lightCount': stage_count('LIGHT'),
+            'remCount': stage_count('REM'),
+            'wakeCount': stage_count('AWAKE'),
+            'deepAvg30': None,
+            'lightAvg30': None,
+            'remAvg30': None,
+            'wakeAvg30': None,
+        })
+
+        for entry in sleep.get('stages', []) or []:
+            level_rows.append(_build_level_row(log_id, date_of_sleep, entry, is_short=False))
+        for entry in sleep.get('shortAwakenings', []) or []:
+            level_rows.append(_build_level_row(log_id, date_of_sleep, entry, is_short=True))
+
+    return sleep_rows, level_rows
+
+
+def _build_level_row(log_id: str, date_of_sleep: dt.date, entry: dict, is_short: bool) -> dict:
+    start_local = _localize(entry['startTime'], entry['startUtcOffset'])
+    end_local = _localize(entry['endTime'], entry['endUtcOffset'])
+    return {
+        'logId': log_id,
+        'dateOfSleep': date_of_sleep.isoformat(),
+        'dateTime': start_local.strftime('%Y-%m-%d %H:%M:%S'),
+        'level': _STAGE_LEVEL.get(entry['type'], entry['type'].lower()),
+        'seconds': int((end_local - start_local).total_seconds()),
+        'isShort': is_short,
+    }
+
+
+# sleep は 1回の取得で sleep.csv / sleep_levels.csv の2つの行リストを作るため、
+# 他のエンドポイントと違って (sleep_rows, level_rows) のタプルを返す。
+# googlehealth_fetcher 側で戻り値の形を見て分岐する。
 FETCHERS = {
     'hrv': fetch_hrv,
     'breathing_rate': fetch_breathing_rate,
     'temperature_skin': fetch_temperature_skin,
+    'sleep': fetch_sleep_all,
 }
