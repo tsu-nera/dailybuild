@@ -8,12 +8,19 @@ HealthPlanet 非公式 graph.json API
 """
 
 import re
+import time
 
 import requests
 from collections import defaultdict
 
 BASE_URL = "https://www.healthplanet.jp"
 GRAPH_URL = f"{BASE_URL}/graph/graph.json"
+
+# 全期間走査（full=True）用の設定
+PAGE_DAYS = 120  # 日次粒度を保てる最大値（90はバケット集約、365は月次平均になるため使わない）
+EMPTY_PAGE_LIMIT = 8  # 空ページがこの回数連続したら打ち切り（飛び飛びに空くため1回では打ち切らない）
+MAX_PAGES = 60  # 暴走防止のバックストップ
+PAGE_INTERVAL_SEC = 0.3  # ページ間のスリープ（HealthPlanet側のレート制限は未確認のため礼儀として入れる）
 
 # graph.json APIのkind番号と列名のマッピング（体組成計）
 INNERSCAN_KINDS = {
@@ -105,16 +112,19 @@ def create_login_session(login_id, password):
     return session
 
 
-def get_innerscan_data(session, days=60, kinds=None):
+def get_innerscan_data(session, days=60, kinds=None, full=False):
     """体組成計データを取得
 
     Args:
         session: ログイン済みセッション
         days: 取得日数。graph.json は値によって粒度が変わる。
             14/30/60/120 は実測日そのままの日次だが、90 は日付がずれる
-            バケット集約、365 は月次平均になるため使わないこと
+            バケット集約、365 は月次平均になるため使わないこと（full=False時のみ使用）
 
         kinds: 取得するkind番号の辞書 {kind: col_name}。Noneの場合はINNERSCAN_KINDS
+        full: True の場合、day=PAGE_DAYS 固定で page を走査し全期間を取得する。
+            空ページが飛び飛びで現れるため EMPTY_PAGE_LIMIT 連続でのみ打ち切る。
+            False（既定）の場合は従来通り page=1 のみで直近 days 日分を取得する
 
     Returns:
         dict: {date_str: {col_name: value, ...}, ...}
@@ -125,7 +135,7 @@ def get_innerscan_data(session, days=60, kinds=None):
     records = defaultdict(dict)
 
     for kind, col_name in kinds.items():
-        data = _fetch_kind(session, kind, days)
+        data = _fetch_kind_all_pages(session, kind) if full else _fetch_kind(session, kind, days)
         if data is None:
             continue
 
@@ -144,9 +154,9 @@ def _series(data, key):
     return [pair for pair in (data.get(key) or []) if pair]
 
 
-def _fetch_kind(session, kind, days):
+def _fetch_kind(session, kind, days, page=1):
     """graph.json を1 kind分取得。データが無い場合は None"""
-    response = session.get(GRAPH_URL, params={'day': days, 'page': 1, 'kind': kind})
+    response = session.get(GRAPH_URL, params={'day': days, 'page': page, 'kind': kind})
     response.raise_for_status()
 
     data = response.json()
@@ -155,7 +165,46 @@ def _fetch_kind(session, kind, days):
     return data
 
 
-def get_blood_pressure_data(session, days=60):
+def _fetch_kind_all_pages(session, kind):
+    """graph.json を1 kind分、page 1からMAX_PAGESまで走査して全期間分を取得する
+
+    day=PAGE_DAYS（日次粒度を保てる最大値）固定で page を進める。
+    空ページ（code!=0 の場合を含む）は飛び飛びで現れるため、1回空いただけでは
+    打ち切らず EMPTY_PAGE_LIMIT 連続で初めて打ち切る。データのあるページに
+    当たったらカウンタをリセットする。
+
+    kind=10（血圧・収縮期/拡張期）は value_ext も持つため、value1 だけでなく
+    value_ext も集める。
+
+    Returns:
+        dict: {'value1': [...], 'value_ext': [...]}（_fetch_kind の戻り値と同じ形に正規化）
+    """
+    merged = {'value1': [], 'value_ext': []}
+    empty_streak = 0
+
+    for page in range(1, MAX_PAGES + 1):
+        data = _fetch_kind(session, kind, PAGE_DAYS, page=page)
+
+        page_has_data = False
+        if data is not None:
+            for key in ('value1', 'value_ext'):
+                merged[key].extend(data.get(key) or [])
+                if _series(data, key):
+                    page_has_data = True
+
+        if page_has_data:
+            empty_streak = 0
+        else:
+            empty_streak += 1
+            if empty_streak >= EMPTY_PAGE_LIMIT:
+                break
+
+        time.sleep(PAGE_INTERVAL_SEC)
+
+    return merged
+
+
+def get_blood_pressure_data(session, days=60, full=False):
     """血圧計データ（収縮期・拡張期・脈拍）を取得
 
     kind=10 は value1 に収縮期、value_ext に拡張期が入るペア構造で返るため、
@@ -163,21 +212,24 @@ def get_blood_pressure_data(session, days=60):
 
     Args:
         session: ログイン済みセッション
-        days: 取得日数（get_innerscan_data と同じ粒度の制約がある）
+        days: 取得日数（get_innerscan_data と同じ粒度の制約がある、full=False時のみ使用）
+        full: True の場合、day=PAGE_DAYS 固定で page を走査し全期間を取得する。
+            空ページが飛び飛びで現れるため EMPTY_PAGE_LIMIT 連続でのみ打ち切る。
+            False（既定）の場合は従来通り page=1 のみで直近 days 日分を取得する
 
     Returns:
         dict: {date_str: {'bp_systolic': .., 'bp_diastolic': .., 'bp_pulse': ..}, ...}
     """
     records = defaultdict(dict)
 
-    pressure = _fetch_kind(session, BP_KIND_PRESSURE, days)
+    pressure = _fetch_kind_all_pages(session, BP_KIND_PRESSURE) if full else _fetch_kind(session, BP_KIND_PRESSURE, days)
     if pressure is not None:
         for date_str, value in _series(pressure, 'value1'):
             records[date_str]['bp_systolic'] = value
         for date_str, value in _series(pressure, 'value_ext'):
             records[date_str]['bp_diastolic'] = value
 
-    pulse = _fetch_kind(session, BP_KIND_PULSE, days)
+    pulse = _fetch_kind_all_pages(session, BP_KIND_PULSE) if full else _fetch_kind(session, BP_KIND_PULSE, days)
     if pulse is not None:
         for date_str, value in _series(pulse, 'value1'):
             records[date_str]['bp_pulse'] = value
