@@ -57,6 +57,7 @@ step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "手動記録"       uv run python scripts/fetch_manual.py
+step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
 # 5分刻みで1点1リクエスト・レート制限つきなので、範囲は --days ではなく
 # CSVの最終時刻からの差分に限る（--update）
 step "室内環境"       uv run python scripts/fetch_indoor.py --update

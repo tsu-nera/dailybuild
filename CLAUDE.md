@@ -60,7 +60,8 @@ uv run scripts/toggl.py stop             # 計測中のエントリを停止
 uv run scripts/toggl.py current          # 計測中のエントリを表示
 uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
-uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
+uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得
+uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
 uv run scripts/fetch_indoor.py --update  # 室内環境（CO2/温度/湿度）差分取得
 uv run scripts/fetch_indoor.py --raw     # DPコード一覧（マッピング同定用）
 
@@ -221,6 +222,18 @@ MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制�
 デバイスは建物提供Wi-Fi（WPA2/WPA3混在 + 802.11ax）に association できない。
 WiMAXルータ経由で常時接続している。詳細は Issue #42。
 
+### 気分記録
+
+Google Form で入力し、Forms API で直接読む（回答先スプレッドシートは作らない。
+Forms API にリンク設定が無く、そこだけ手作業として残るため）。
+
+- **サービスアカウントでは作れない。** Drive の `storageQuota.limit` が 0 で
+  ファイルを所有できず、`forms.create` が **500 Internal** になる（quota だと
+  分かるエラーは返らない）。OAuth で本人が所有する
+- **フォームを画面で編集しない。** 語彙の正は `config/emotion_def.yaml` で、
+  `setup-form --update` が画面の内容を上書きする
+- 削除された回答は CSV に残り続ける（マージは追加・更新のみ）
+
 ### MoneyForward ME
 
 公式 API が無いため、Playwright で保持したログインセッションを使って
@@ -343,6 +356,7 @@ df_filtered = filter_dataframe_by_period(
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
+- `gforms_token.json` - 気分記録フォームのトークン（`emotion.py` が生成。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。

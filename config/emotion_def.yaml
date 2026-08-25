@@ -1,17 +1,18 @@
 # 気分記録（Google Form）の定義
 #
-# フォームの回答は既存スプレッドシート（manual と同じブック）の
-# 別タブに落とす。サービスアカウントの共有設定を使い回せるため。
+# フォームは scripts/emotion.py setup-form が この定義から生成する。
+# 選択肢を足す/変えるときは vocabulary を直して setup-form --update を回す。
+# 画面を手で直すと yaml とズレるので触らない。
 
-spreadsheet_id: 1S0SwyRbM2cAATv_IOpkOspor-_Ov49rTygyTFr2gkwA
-sheet_name: emotion
+# setup-form が書き戻す。空なら未作成
+form_id: 12H4gK9DnVl0tphr2DUBx5jgfXZmdkqYkaD8GArRBrus
+form_title: 気分記録
 
-# 回答シートの列名 → CSV列名
-# フォームの質問文を変えたら左側も必ず合わせる
-columns:
-  タイムスタンプ: timestamp
-  いまの気持ち: emotions
-  ひとこと: note
+# 質問タイトル。回答は questionId で引くので、ここを変えたら
+# setup-form --update でフォーム側も合わせること
+questions:
+  emotions: いまの気持ち
+  note: ひとこと
 
 # フォームの選択肢。valence（快/不快）× arousal（覚醒度）の4象限を埋める。
 # 陽性側を4つ置いているのは、回復の計器になるのが陰性感情の量ではなく
