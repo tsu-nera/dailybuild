@@ -28,7 +28,14 @@ DATA_DIR = BASE_DIR / 'data' / 'fitbit'
 HISTORY_BOUNDARY = dt.date(2026, 6, 1)
 
 # 値が既存 CSV と完全一致することを実測で確認済みのエンドポイントのみ（Issue #49）。
-# sleep と spo2 は未解決の定義差があるため未対応。
+# spo2 は未解決の定義差があるため未対応。
+#
+# sleep は他と違い:
+#   - 'kind': 'period_replace' -> 期間置換（logId 空間が Fitbit と Google で
+#     別物のため、キーマージではなく取得期間の既存行を丸ごと置換する。
+#     src/lib/utils/csv_utils.py:replace_csv_period の docstring 参照）
+#   - 'extra_csv': sleep.csv に加えて sleep_levels.csv も同じ戦略で書く
+#   - date_column が index にならない（logId 系と同じく複数行/日があるため）
 ENDPOINTS = {
     'hrv': {
         'description': 'HRV（心拍変動）',
@@ -41,6 +48,12 @@ ENDPOINTS = {
     'temperature_skin': {
         'description': '皮膚温（睡眠中）',
         'date_column': 'date',
+    },
+    'sleep': {
+        'description': '睡眠',
+        'date_column': 'dateOfSleep',
+        'kind': 'period_replace',
+        'extra_csv': 'sleep_levels',
     },
 }
 
@@ -92,11 +105,15 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
     print(f"{config['description']}を取得中... ({start_date} ~ {end_date})")
 
     try:
-        rows = googlehealth_api.FETCHERS[endpoint](creds, start_date, end_date)
+        result = googlehealth_api.FETCHERS[endpoint](creds, start_date, end_date)
     except googlehealth_api.GoogleHealthError as e:
         print(f'  エラー: {e}')
         return {'records': 0, 'path': None, 'error': str(e)}
 
+    if config.get('kind') == 'period_replace':
+        return _save_period_replace(endpoint, config, result, start_date, end_date, overwrite)
+
+    rows = result
     if not rows:
         # 取得系の沈黙故障と区別できないため、空を成功として扱わない
         msg = f'{start_date}〜{end_date} のデータが0件。Google側に無いか取得が壊れている'
@@ -117,6 +134,55 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
     df.to_csv(out_path)
     print(f'  保存: {out_path} ({len(df)}件)')
     return {'records': len(df), 'path': out_path}
+
+
+def _save_period_replace(endpoint: str, config: dict, result, start_date: dt.date,
+                         end_date: dt.date, overwrite: bool) -> dict:
+    """
+    sleep 用の保存経路: 1回の取得で得た (主CSV行, 付随CSV行) を
+    それぞれ期間置換で書く（csv_utils.replace_csv_period）
+
+    overwrite=True の場合は期間置換ではなく、取得した行だけで CSV 全体を
+    置き換える（他エンドポイントの overwrite と挙動を揃える）
+    """
+    rows, extra_rows = result
+    if not rows:
+        msg = f'{start_date}〜{end_date} のデータが0件。Google側に無いか取得が壊れている'
+        print(f'  ⚠️ {msg}')
+        return {'records': 0, 'path': None, 'error': msg}
+
+    date_col = config['date_column']
+    out_path = get_output_path(endpoint)
+    ensure_dir(out_path.parent)
+
+    df = pd.DataFrame(rows)
+    if overwrite:
+        df.to_csv(out_path, index=False)
+    else:
+        df = csv_utils.replace_csv_period(
+            df, out_path, date_col, start_date, end_date, sort_by=[date_col],
+        )
+        df.to_csv(out_path, index=False)
+    print(f'  保存: {out_path} ({len(df)}件)')
+    result_dict = {'records': len(df), 'path': out_path}
+
+    extra_key = config.get('extra_csv')
+    if extra_key:
+        extra_out_path = get_output_path(extra_key)
+        ensure_dir(extra_out_path.parent)
+        df_extra = pd.DataFrame(extra_rows)
+        if overwrite:
+            df_extra.to_csv(extra_out_path, index=False)
+        else:
+            df_extra = csv_utils.replace_csv_period(
+                df_extra, extra_out_path, date_col, start_date, end_date,
+                sort_by=[date_col],
+            )
+            df_extra.to_csv(extra_out_path, index=False)
+        print(f'  保存: {extra_out_path} ({len(df_extra)}件)')
+        result_dict[extra_key] = {'records': len(df_extra), 'path': extra_out_path}
+
+    return result_dict
 
 
 def fetch_all(creds, days: int = None, overwrite: bool = False,

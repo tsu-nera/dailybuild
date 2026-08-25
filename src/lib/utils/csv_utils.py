@@ -89,3 +89,51 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         df_merged.sort_values(sort_by, inplace=True)
 
     return df_merged
+
+
+def replace_csv_period(df_new: pd.DataFrame, csv_path: Path, date_column: str,
+                       start_date, end_date,
+                       sort_by: list[str] | None = None) -> pd.DataFrame:
+    """
+    既存CSVの指定期間の行を丸ごと削除し、df_new に置き換える（キーマージしない）
+
+    merge_csv / merge_csv_by_columns はどちらも「キー（index や logId 等）が
+    一致した行を上書きする」設計だが、それが成立しない移行元切り替え
+    （Fitbit -> Google Health の sleep 等）では使えない:
+
+    - キー空間が別物: logId は取得元ごとに独立した採番で、同じ夜でも
+      Fitbit と Google で一致しない。キーにすると同じ夜が2行として
+      積み上がり、レポートが二重計上する
+    - 時刻も一致しない: 開始時刻が取得元間で最大30分ずれることがあり、
+      時刻をキーにしても一致しない
+
+    そこで「取得元を切り替えた期間は、その期間の既存行を無条件に捨てて
+    新データで置き換える」戦略を取る。1日に複数セッション（昼寝等）が
+    あってもキー衝突が起きず、取得元混在によるレポートの二重計上も
+    起きない。
+
+    Args:
+        df_new: 新しいデータ（date_column を含む）
+        csv_path: 既存CSVのパス
+        date_column: 期間判定に使う日付列名
+        start_date: 削除・置換する期間の開始日（この日を含む）
+        end_date: 削除・置換する期間の終了日（この日を含む）
+        sort_by: ソートに使う列名リスト
+
+    Returns:
+        置換後のDataFrame（期間外の既存行 + df_new）
+    """
+    if not csv_path.exists():
+        df_merged = df_new.copy()
+    else:
+        df_old = pd.read_csv(csv_path)
+        start_s, end_s = str(start_date), str(end_date)
+        outside_period = ~df_old[date_column].astype(str).between(start_s, end_s)
+        df_merged = pd.concat([df_old[outside_period], df_new], ignore_index=True)
+
+    # df_new が空（例: 昼寝なしでshortAwakeningsが1件も無い日のsleep_levels）だと
+    # 列が無く sort_values が KeyError になるため、その場合はソートを飛ばす
+    if sort_by and all(c in df_merged.columns for c in sort_by):
+        df_merged.sort_values(sort_by, inplace=True)
+
+    return df_merged
