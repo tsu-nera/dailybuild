@@ -14,6 +14,8 @@ parse_* に相当する処理まで内包する（Google 側はレスポンス�
 """
 
 import datetime as dt
+import re
+import time
 from pathlib import Path
 
 import requests
@@ -79,16 +81,26 @@ def authorize(interactive: bool = True) -> Credentials:
     return creds
 
 
+# 長いページングの途中で 500 が返ることがある（exercise の全履歴242ページで実測）。
+# 1ページ落ちるだけで取得全体が捨たるので、5xx に限って短く粘る
+RETRY_STATUSES = (500, 502, 503, 504)
+MAX_RETRIES = 3
+RETRY_WAIT_SEC = 2
+
+
 def _get(creds: Credentials, path: str, params: dict = None) -> dict:
-    r = requests.get(
-        f'{API_BASE}/{path}',
-        headers={'Authorization': f'Bearer {creds.token}'},
-        params=params or {},
-        timeout=60,
-    )
-    if r.status_code != 200:
-        raise GoogleHealthError(f'GET {path} -> HTTP {r.status_code}: {r.text[:300]}')
-    return r.json()
+    for attempt in range(MAX_RETRIES + 1):
+        r = requests.get(
+            f'{API_BASE}/{path}',
+            headers={'Authorization': f'Bearer {creds.token}'},
+            params=params or {},
+            timeout=60,
+        )
+        if r.status_code == 200:
+            return r.json()
+        if r.status_code not in RETRY_STATUSES or attempt == MAX_RETRIES:
+            raise GoogleHealthError(f'GET {path} -> HTTP {r.status_code}: {r.text[:300]}')
+        time.sleep(RETRY_WAIT_SEC * (attempt + 1))
 
 
 def list_data_points(creds: Credentials, data_type: str, max_points: int = 10000,
@@ -229,6 +241,99 @@ def fetch_temperature_skin(creds, start_date: dt.date, end_date: dt.date) -> lis
         creds, 'daily-sleep-temperature-derivations',
         'dailySleepTemperatureDerivations', start_date, end_date, build,
     )
+
+
+# =============================================================================
+# 運動セッション -> data/googlehealth/exercise.csv
+# =============================================================================
+
+EXERCISE_COLUMNS = [
+    'id', 'start', 'end', 'duration_sec', 'exercise_type', 'display_name',
+    'platform', 'recording_method', 'calories', 'distance_m',
+    'average_heart_rate', 'active_zone_minutes', 'steps', 'has_gps',
+]
+
+# 秒未満が9桁で返ることがあり、fromisoformat は6桁までしか受け付けない
+_FRACTION_RE = re.compile(r'\.(\d{6})\d*')
+
+
+def _parse_instant(value: str) -> dt.datetime:
+    """RFC3339（UTC, 末尾 Z）を tz-aware datetime にする"""
+    return dt.datetime.fromisoformat(
+        _FRACTION_RE.sub(r'.\1', value).replace('Z', '+00:00')
+    )
+
+
+def _offset_tz(value: str) -> dt.timezone:
+    """"32400s" 形式の UTC オフセットを tzinfo にする"""
+    return dt.timezone(dt.timedelta(seconds=int(str(value).rstrip('s') or 0)))
+
+
+def _exercise_row(point: dict) -> dict | None:
+    """dataPoint 1件を CSV 1行にする。時刻が欠けていれば None"""
+    exercise = point.get('exercise') or {}
+    interval = exercise.get('interval') or {}
+    if not interval.get('startTime') or not interval.get('endTime'):
+        return None
+
+    start = _parse_instant(interval['startTime']).astimezone(
+        _offset_tz(interval.get('startUtcOffset', '0s')))
+    stop = _parse_instant(interval['endTime']).astimezone(
+        _offset_tz(interval.get('endUtcOffset', interval.get('startUtcOffset', '0s'))))
+
+    metrics = exercise.get('metricsSummary') or {}
+    source = point.get('dataSource') or {}
+    distance = _num(metrics.get('distanceMillimeters'))
+
+    return {
+        'id': point['name'].rsplit('/', 1)[-1],
+        'start': start.isoformat(sep=' '),
+        'end': stop.isoformat(sep=' '),
+        'duration_sec': int((stop - start).total_seconds()),
+        'exercise_type': exercise.get('exerciseType'),
+        'display_name': exercise.get('displayName'),
+        'platform': source.get('platform'),
+        'recording_method': source.get('recordingMethod'),
+        'calories': _num(metrics.get('caloriesKcal')),
+        'distance_m': distance if distance is None else distance / 1000,
+        'average_heart_rate': _num(metrics.get('averageHeartRateBeatsPerMinute')),
+        'active_zone_minutes': _num(metrics.get('activeZoneMinutes')),
+        'steps': _num(metrics.get('steps')),
+        'has_gps': (exercise.get('exerciseMetadata') or {}).get('hasGps'),
+    }
+
+
+def fetch_exercise(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    運動セッションを期間で取得する（列は EXERCISE_COLUMNS）
+
+    exercise 型は dailyRollUp に対応せず list のみ。全履歴は242ページあるため、
+    ページ内の最新セッションが start_date より古くなった時点で打ち切る。
+
+    同じ運動が複数プラットフォームから重複して届く（Fitbit の Charge 6 と
+    Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セッションと
+    して返す）。ここでは落とさずそのまま行にし、重複解決は利用側で行う。
+    """
+    rows = []
+    token = None
+    while True:
+        params = {'pageToken': token} if token else {}
+        body = _get(creds, f'{USER}/dataTypes/exercise/dataPoints', params)
+        page = body.get('dataPoints', [])
+
+        page_rows = [r for r in (_exercise_row(p) for p in page) if r is not None]
+        rows.extend(r for r in page_rows
+                    if start_date.isoformat() <= r['start'][:10] <= end_date.isoformat())
+
+        token = body.get('nextPageToken')
+        if not token:
+            break
+        # 新しい順に返るので、ページ内の最新が start_date より前なら以降も全て古い
+        if page_rows and max(r['start'][:10] for r in page_rows) < start_date.isoformat():
+            break
+
+    rows.sort(key=lambda r: r['start'])
+    return rows
 
 
 # =============================================================================
@@ -466,4 +571,5 @@ FETCHERS = {
     'breathing_rate': fetch_breathing_rate,
     'temperature_skin': fetch_temperature_skin,
     'sleep': fetch_sleep_all,
+    'exercise': fetch_exercise,
 }

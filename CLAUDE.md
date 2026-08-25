@@ -51,7 +51,7 @@ uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/toggl.py fetch        # Toggl Trackタイムエントリ取得
 uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（差分取得）
-uv run scripts/toggl.py push --days 2 --dry-run  # Fitbit睡眠のToggl投入予定を確認（APIを叩かない）
+uv run scripts/toggl.py push --days 2 --dry-run  # 睡眠・運動のToggl投入予定を確認（APIを叩かない）
 uv run scripts/toggl.py push --days 2   # 投入実行（daily-routine.shがfetch直後に実行）
 uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）
 uv run scripts/toggl.py start 読書       # プロジェクトを指定して計測開始（部分一致可）
@@ -101,9 +101,9 @@ Toggl 側で削除されたエントリは CSV に残り続ける（マージは
 stop を呼ばない。計測結果は CSV には直接書かず、次回の fetch で入る
 （`store.build_dataframe` は duration が負の行を除外する）。
 
-`scripts/toggl.py push` は Fitbit 睡眠（昼寝含む）を Toggl のタイムエントリとして
-書き込む。書き込みも `/me` 系と同じ 30req/h 枠を消費する前提で `--max-writes`
-（既定10）で抑え、超過分は捨てずに次回へ繰り越す。冪等性は
+`scripts/toggl.py push` は Fitbit 睡眠（昼寝含む）と Google Health の運動セッション
+（サイクリング・筋トレ・瞑想）を Toggl のタイムエントリとして書き込む。書き込みも
+`/me` 系と同じ 30req/h 枠を消費する前提で `--max-writes`（既定10）で抑え、超過分は捨てずに次回へ繰り越す。冪等性は
 `data/toggl/pushed.csv` の台帳を主に、直前 fetch の `time_entries.csv` を
 突き合わせに使う二段構え。台帳にあるが CSV に居ないエントリは「手動削除された」
 とみなして再投入するが、判定は**直近 fetch が実際に取りに行った期間**
@@ -121,6 +121,32 @@ CSV が古い/無い場合、`fetch_state.json` が無い場合、fetch 窓が p
 
 なお削除されたエントリは CSV に残り続けるため、**一度 CSV に入った投入済みエントリの
 手動削除は原理的に検出できない**。検出が効くのは CSV にまだ入っていないものだけ。
+
+投入先プロジェクトが Toggl 側に無い場合は投入せず次回に回す。project 無しで
+投入してしまうと、台帳に「投入済み」として残り、後からプロジェクトを作っても
+直せなくなるため。
+
+### 運動セッションの Toggl 反映
+
+ソースは `data/googlehealth/exercise.csv`（`fetch_googlehealth.py` の `exercise`
+エンドポイント）。`exerciseType` → プロジェクトの対応は `config/toggl_push.yaml`
+の `googlehealth_exercise.categories` に持たせてある。ここに載っていない型
+（WALKING / RUNNING / YOGA 等）は投入しない。
+
+**同じ運動が複数プラットフォームから重複して届く。** Fitbit の Charge 6 と、
+Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セッションとして
+返す（2026年の実測で74組。`WEIGHTS`/FITBIT と `STRENGTH_TRAINING`/HEALTH_CONNECT、
+`OUTDOOR_BIKE`/FITBIT と `BIKING`/HEALTH_CONNECT）。素通しすると Toggl に同じ
+運動が2本入るため、時間が重なったら `platform_priority` の先頭に近い方だけを残す。
+
+優先度は**重なりの解決にのみ**使う。重なっていないセッションは platform に関係なく
+残すので、Fitbit Web API 廃止後に Fitbit 側が途切れても Health Connect 側で
+穴が埋まる。
+
+`exercise` は `dailyRollUp` 非対応で `list` のページングだけ（全履歴242ページ）。
+既存の `data/fitbit/activity_logs.csv` とはスキーマを揃えていない別ファイルで、
+統合は Issue #77 の担当。マージのキーは日付でなく `id`（19桁の整数なので
+読み戻しは `dtype=str` 必須。int で読むと新旧のキーが一致せず二重に残る）。
 
 MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制限は無い。2015-01 以前は
 0 件 = MF 側に記録が無い）。`--unit year` の既定期間はこの最古年から当月までで、
