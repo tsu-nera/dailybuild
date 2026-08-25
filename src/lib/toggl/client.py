@@ -95,7 +95,8 @@ def fetch_me(api_token: str) -> dict:
 PROJECTS_PAGE_SIZE = 200
 
 
-def fetch_projects(api_token: str, workspace_id: int | None = None) -> dict[int, str]:
+def fetch_projects(api_token: str, workspace_id: int | None = None,
+                   active_only: bool = False) -> dict[int, str]:
     """プロジェクトID → プロジェクト名の対応表を取得
 
     /me?with_related_data=true の projects は **private プロジェクトを含まない**。
@@ -115,6 +116,10 @@ def fetch_projects(api_token: str, workspace_id: int | None = None) -> dict[int,
         Toggl Track の API token
     workspace_id : int | None
         対象ワークスペース。None なら /me の default_workspace_id を使う
+    active_only : bool
+        True なら archive 済みを除く。既定（False）は archived も含む全件。
+        過去エントリの project_name 解決には archived が要るので fetch/push は
+        全件、時間を記録できる先だけが要る start/projects は True を使う
 
     Returns
     -------
@@ -127,8 +132,10 @@ def fetch_projects(api_token: str, workspace_id: int | None = None) -> dict[int,
     projects: dict[int, str] = {}
     page = 1
     while True:
-        response = _get(api_token, f'/workspaces/{workspace_id}/projects',
-                        {'per_page': PROJECTS_PAGE_SIZE, 'page': page})
+        params = {'per_page': PROJECTS_PAGE_SIZE, 'page': page}
+        if active_only:
+            params['active'] = 'true'
+        response = _get(api_token, f'/workspaces/{workspace_id}/projects', params)
         batch = response.json() or []
         projects.update({p['id']: p['name'] for p in batch})
         if len(batch) < PROJECTS_PAGE_SIZE:
@@ -156,5 +163,34 @@ def create_time_entry(api_token: str, workspace_id: int, payload: dict) -> dict:
     """
     response = _request(
         api_token, 'POST', f'/workspaces/{workspace_id}/time_entries', json_body=payload,
+    )
+    return response.json()
+
+
+def fetch_current_entry(api_token: str) -> dict | None:
+    """GET /me/time_entries/current で計測中のエントリを取得
+
+    計測中のものが無い場合、Toggl は 200 で JSON の null を返す（404 ではない）。
+    """
+    response = _get(api_token, '/me/time_entries/current', {})
+    return response.json() or None
+
+
+def start_time_entry(api_token: str, workspace_id: int, payload: dict) -> dict:
+    """計測中のタイムエントリを開始する
+
+    作成 API は stop 済みエントリと同じ POST だが、duration に負値を入れると
+    「計測中」になる（v9 は -1 を受け付ける）。stop は渡さない。
+
+    既に計測中のエントリがある状態で開始すると、Toggl 側が古い方を
+    自動で停止する（クライアント側で stop を呼ぶ必要はない）。
+    """
+    return create_time_entry(api_token, workspace_id, payload)
+
+
+def stop_time_entry(api_token: str, workspace_id: int, entry_id: int) -> dict:
+    """PATCH /workspaces/{workspace_id}/time_entries/{entry_id}/stop で計測を止める"""
+    response = _request(
+        api_token, 'PATCH', f'/workspaces/{workspace_id}/time_entries/{entry_id}/stop',
     )
     return response.json()

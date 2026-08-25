@@ -54,6 +54,12 @@ uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（�
 uv run scripts/toggl.py push --days 2 --dry-run  # Fitbit睡眠のToggl投入予定を確認（APIを叩かない）
 uv run scripts/toggl.py push --days 2   # 投入実行（daily-routine.shがfetch直後に実行）
 uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）
+uv run scripts/toggl.py start 読書       # プロジェクトを指定して計測開始（部分一致可）
+uv run scripts/toggl.py start 読書 -d "SICP" -t deep
+uv run scripts/toggl.py stop             # 計測中のエントリを停止
+uv run scripts/toggl.py current          # 計測中のエントリを表示
+uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
+uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
 
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
@@ -83,6 +89,17 @@ uv run scripts/mf.py show --update           # 取得してから表示
 stdout）。
 
 Toggl 側で削除されたエントリは CSV に残り続ける（マージは追加・更新のみ）。
+
+`scripts/toggl.py start/stop` は手動計測。プロジェクト名は完全一致 → 大文字小文字
+無視 → 部分一致の順に解決し、複数候補に当たったら黙って1つ選ばず候補を出して落とす。
+名前 → ID の解決は `data/toggl/projects.json` のキャッシュで行い、**キャッシュに
+無い名前を引いたときだけ**取り直す（`--refresh-projects` で明示更新）。start のたびに
+一覧を取ると /me 系 30req/h の枠を fetch と食い合って日次取得が落ちるため。
+
+計測中のエントリは duration が負値で表現される（stop を含めない POST）。既に計測中の
+ものがある状態で start すると Toggl 側が古い方を自動で停止するので、こちらからは
+stop を呼ばない。計測結果は CSV には直接書かず、次回の fetch で入る
+（`store.build_dataframe` は duration が負の行を除外する）。
 
 `scripts/toggl.py push` は Fitbit 睡眠（昼寝含む）を Toggl のタイムエントリとして
 書き込む。書き込みも `/me` 系と同じ 30req/h 枠を消費する前提で `--max-writes`

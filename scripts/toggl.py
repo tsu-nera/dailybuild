@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Toggl Track CLI（fetch / show）
+Toggl Track CLI（fetch / show / push / start / stop）
 
 Toggl Track API v9 からタイムエントリを取得して CSV に蓄積する fetch と、
 data/toggl/time_entries.csv（dailybuild-private への symlink）を読んで
@@ -23,6 +23,14 @@ Usage:
     python scripts/toggl.py push --days 2             # Fitbit睡眠をTogglへ投入
     python scripts/toggl.py push --since 2026-08-01   # 過去分の一括投入
 
+    python scripts/toggl.py start 読書                # プロジェクトを指定して計測開始
+    python scripts/toggl.py start 読書 -d "SICP" -t deep
+    python scripts/toggl.py stop                      # 計測中のエントリを停止
+    python scripts/toggl.py current                   # 計測中のエントリを表示
+    python scripts/toggl.py projects                  # プロジェクト名の一覧（キャッシュ）
+    python scripts/toggl.py open                      # Toggl の Web 画面を開く
+    python scripts/toggl.py open projects             # プロジェクト管理画面
+
 show は既定では API を一切叩かないので fetch のレートリミット枠
 （/me/* 共通 30 req/h）を消費しない。push の書き込みも同じ枠を消費する前提で扱う。
 """
@@ -32,6 +40,7 @@ import datetime as dt
 import json
 import logging
 import sys
+import webbrowser
 from pathlib import Path
 from typing import IO
 
@@ -44,6 +53,7 @@ from lib.toggl import push as toggl_push
 from lib.toggl import sources as toggl_sources
 from lib.toggl import store
 from lib.toggl import render
+from lib.toggl import timer as toggl_timer
 from lib.utils.report_args import filter_dataframe_by_period, parse_period_args
 
 BASE_DIR = Path(__file__).parent.parent
@@ -304,8 +314,149 @@ def run_push(args, out: IO[str]) -> None:
         print(f"⚠️ 上限 {args.max_writes} 件に達した。残り {len(carried_over)} 件を次回に繰り越し", file=out)
 
 
+def load_projects_for_timer(api_token: str, out: IO[str],
+                            refresh: bool = False) -> tuple[int, dict[int, str], bool]:
+    """(workspace_id, {project_id: name}, キャッシュ由来か)
+
+    キャッシュがあればAPIを叩かない。取り直すと /me と /projects で2リクエスト
+    使い、fetch と同じ 30req/h の枠を削る。
+    """
+    if not refresh:
+        cached = toggl_timer.load_project_cache()
+        if cached is not None:
+            return cached[0], cached[1], True
+
+    workspace_id = toggl_client.fetch_me(api_token).get('default_workspace_id')
+    # archive 済みには時間を記録できないので候補に出さない（部分一致のノイズになる）。
+    # 過去エントリの名前解決が要る fetch/push 側は全件のまま
+    projects = toggl_client.fetch_projects(api_token, workspace_id, active_only=True)
+    toggl_timer.save_project_cache(workspace_id, projects)
+    print(f"プロジェクト一覧を更新: {len(projects)}件（archive 済みを除く） "
+          f"({toggl_timer.PROJECTS_CACHE_FILE})", file=out)
+    return workspace_id, projects, False
+
+
+def parse_tags(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(tag.strip() for tag in value.split(',') if tag.strip())
+
+
+def cmd_start(args) -> None:
+    # 進捗・クォータ残量は stderr。stdout には結果の1行だけを出す
+    logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
+
+    api_token = load_creds(sys.stderr)['api_token']
+
+    workspace_id, projects, from_cache = load_projects_for_timer(
+        api_token, sys.stderr, refresh=args.refresh_projects)
+    try:
+        project_id, project_name = toggl_timer.resolve_project(args.project, projects)
+    except toggl_timer.ProjectResolutionError as e:
+        # キャッシュが古くて新規プロジェクトを知らないだけの可能性がある。
+        # 一度だけ取り直して再試行する（候補が複数のときは取り直しても解決しない）
+        if not from_cache:
+            print(f"エラー: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"{e}。プロジェクト一覧を取り直す", file=sys.stderr)
+        workspace_id, projects, _ = load_projects_for_timer(api_token, sys.stderr, refresh=True)
+        try:
+            project_id, project_name = toggl_timer.resolve_project(args.project, projects)
+        except toggl_timer.ProjectResolutionError as e2:
+            print(f"エラー: {e2}", file=sys.stderr)
+            sys.exit(1)
+
+    start = dt.datetime.now(store.JST)
+    payload = toggl_timer.build_start_payload(
+        workspace_id=workspace_id,
+        project_id=project_id,
+        description=args.description or project_name,
+        tags=parse_tags(args.tags),
+        start=start,
+    )
+
+    if args.dry_run:
+        print(f"[dry-run] 計測開始しない: [{project_name}] {payload['description']} "
+              f"tags={payload['tags']} at {start.strftime('%H:%M:%S')}")
+        return
+
+    # 既に計測中のエントリがあれば Toggl 側が自動で停止する（こちらでは叩かない）
+    created = toggl_client.start_time_entry(api_token, workspace_id, payload)
+    print(f"計測開始 {start.strftime('%H:%M:%S')}: [{project_name}] "
+          f"{payload['description']} (id={created.get('id')})")
+
+
+def cmd_stop(args) -> None:
+    logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
+
+    api_token = load_creds(sys.stderr)['api_token']
+
+    entry = toggl_client.fetch_current_entry(api_token)
+    if entry is None:
+        print('計測中のエントリは無い', file=sys.stderr)
+        sys.exit(1)
+
+    cached = toggl_timer.load_project_cache()
+    projects = cached[1] if cached else {}
+    now = dt.datetime.now(dt.timezone.utc)
+
+    if args.dry_run:
+        print(f"[dry-run] 停止しない: {toggl_timer.describe_entry(entry, projects, now)}")
+        return
+
+    stopped = toggl_client.stop_time_entry(api_token, entry['workspace_id'], entry['id'])
+    duration = stopped.get('duration') or toggl_timer.elapsed_seconds(entry, now)
+    project = toggl_timer.describe_project(entry.get('project_id'), projects)
+    print(f"計測停止 {dt.datetime.now(store.JST).strftime('%H:%M:%S')}: "
+          f"[{project}] {stopped.get('description') or ''} "
+          f"({toggl_timer.format_elapsed(int(duration))})")
+
+
+def cmd_current(args) -> None:
+    logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
+
+    api_token = load_creds(sys.stderr)['api_token']
+
+    entry = toggl_client.fetch_current_entry(api_token)
+    if entry is None:
+        print('計測中のエントリは無い')
+        return
+
+    cached = toggl_timer.load_project_cache()
+    projects = cached[1] if cached else {}
+    print(toggl_timer.describe_entry(entry, projects, dt.datetime.now(dt.timezone.utc)))
+
+
+def cmd_projects(args) -> None:
+    """キャッシュ済みのプロジェクト一覧を出す（--refresh でAPIから取り直す）"""
+    logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
+
+    cached = toggl_timer.load_project_cache()
+    if args.refresh or cached is None:
+        api_token = load_creds(sys.stderr)['api_token']
+        _, projects, _ = load_projects_for_timer(api_token, sys.stderr, refresh=True)
+    else:
+        projects = cached[1]
+
+    for name in sorted(projects.values()):
+        print(name)
+
+
+def cmd_open(args) -> None:
+    """Toggl の Web 画面を既定ブラウザで開く（API は叩かないのでクォータ消費なし）"""
+    url = toggl_timer.WEB_URLS[args.target]
+    if args.print_url:
+        print(url)
+        return
+    if not webbrowser.open(url):
+        # SSH 越しなど、開ける相手が居ない環境。黙って成功しない
+        print(f"エラー: ブラウザを開けなかった。URL: {url}", file=sys.stderr)
+        sys.exit(1)
+    print(f"開いた: {url}")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='Toggl Track CLI（fetch / show）')
+    parser = argparse.ArgumentParser(description='Toggl Track CLI（fetch / show / push / start / stop）')
     subparsers = parser.add_subparsers(dest='command', required=True)
 
     fetch_parser = subparsers.add_parser('fetch', help='Toggl Trackタイムエントリ取得')
@@ -344,6 +495,39 @@ def build_parser() -> argparse.ArgumentParser:
     push_parser.add_argument('--dry-run', action='store_true',
                               help='投入予定を表示するだけでAPIを叩かない')
     push_parser.set_defaults(func=cmd_push, parser=push_parser)
+
+    start_parser = subparsers.add_parser('start', help='指定プロジェクトの計測を開始')
+    start_parser.add_argument('project', type=str, help='プロジェクト名（部分一致可）')
+    start_parser.add_argument('-d', '--description', type=str, default=None,
+                              help='エントリの説明（既定: プロジェクト名）')
+    start_parser.add_argument('-t', '--tags', type=str, default=None,
+                              help='タグ（カンマ区切り）')
+    start_parser.add_argument('--refresh-projects', action='store_true',
+                              help='プロジェクト一覧のキャッシュを取り直してから開始する')
+    start_parser.add_argument('--dry-run', action='store_true',
+                              help='開始予定を表示するだけで書き込まない')
+    start_parser.set_defaults(func=cmd_start, parser=start_parser)
+
+    stop_parser = subparsers.add_parser('stop', help='計測中のエントリを停止')
+    stop_parser.add_argument('--dry-run', action='store_true',
+                             help='停止対象を表示するだけで書き込まない')
+    stop_parser.set_defaults(func=cmd_stop, parser=stop_parser)
+
+    current_parser = subparsers.add_parser('current', help='計測中のエントリを表示')
+    current_parser.set_defaults(func=cmd_current, parser=current_parser)
+
+    projects_parser = subparsers.add_parser('projects', help='プロジェクト名の一覧を表示')
+    projects_parser.add_argument('--refresh', action='store_true',
+                                 help='APIから取り直す（クォータを2消費する）')
+    projects_parser.set_defaults(func=cmd_projects, parser=projects_parser)
+
+    open_parser = subparsers.add_parser('open', help='Toggl の Web 画面をブラウザで開く')
+    open_parser.add_argument('target', nargs='?', default='timer',
+                             choices=sorted(toggl_timer.WEB_URLS),
+                             help='開く画面（既定: timer）')
+    open_parser.add_argument('--print', dest='print_url', action='store_true',
+                             help='開かずに URL を出力する')
+    open_parser.set_defaults(func=cmd_open, parser=open_parser)
 
     return parser
 
