@@ -71,7 +71,9 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         マージ済みDataFrame（重複は新しいデータを優先）
     """
     if not csv_path.exists():
-        return df_new
+        # 初回もソートする。ここを素通りすると取得順のまま書かれ、
+        # 次回マージまで並びが直らない
+        return df_new.sort_values(sort_by) if sort_by else df_new
 
     df_old = pd.read_csv(csv_path, parse_dates=parse_dates or [])
 
