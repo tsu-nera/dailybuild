@@ -30,9 +30,16 @@ def load_creds():
 def main():
     parser = argparse.ArgumentParser(description='HealthPlanet体組成計データ取得')
     parser.add_argument('--overwrite', action='store_true', help='既存データを上書き（デフォルトは追記）')
-    parser.add_argument('--days', type=int, default=60,
-                        help='取得日数（90と365は粒度が変わるため使用不可）')
+    parser.add_argument('--days', type=int, default=None,
+                        help='取得日数（90と365は粒度が変わるため使用不可。デフォルト60、--fullとは排他）')
+    parser.add_argument('--full', action='store_true',
+                        help='page を走査して全期間を取得（--days とは排他）')
     args = parser.parse_args()
+
+    if args.full and args.days is not None:
+        parser.error('--full と --days は同時に指定できません')
+    if args.days is None:
+        args.days = 60
 
     creds = load_creds()
 
@@ -40,11 +47,11 @@ def main():
     session = hp.create_login_session(creds['login_id'], creds['password'])
 
     print("体組成計データを取得中...")
-    save_records(hp.get_innerscan_data(session, days=args.days),
+    save_records(hp.get_innerscan_data(session, days=args.days, full=args.full),
                  OUT_FILE, args.overwrite)
 
     print("血圧計データを取得中...")
-    save_records(hp.get_blood_pressure_data(session, days=args.days),
+    save_records(hp.get_blood_pressure_data(session, days=args.days, full=args.full),
                  BP_OUT_FILE, args.overwrite)
 
 
