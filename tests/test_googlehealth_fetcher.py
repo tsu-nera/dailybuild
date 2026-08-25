@@ -96,7 +96,7 @@ def test_overwrite_replaces_existing_rows(data_dir, fake_rows):
 
 def test_unknown_endpoint_raises():
     with pytest.raises(ValueError, match='Unknown endpoint'):
-        ghf.fetch_endpoint(None, 'sleep', days=3)
+        ghf.fetch_endpoint(None, 'spo2', days=3)
 
 
 def test_history_boundary_blocks_rewrite_by_default(data_dir, fake_rows):
@@ -148,3 +148,214 @@ def test_num_coerces_string_values():
     assert googlehealth_api._num(36.5) == 36.5
     assert googlehealth_api._num(None) is None
     assert googlehealth_api._num('') is None
+
+
+# =============================================================================
+# sleep（期間置換・2セッション/日・efficiency算出・sleep_levels）
+# =============================================================================
+
+def _sleep_row(date_of_sleep, minutes_asleep=300, minutes_in_sleep_period=360,
+              log_id='999', is_main=True):
+    return {
+        'dateOfSleep': date_of_sleep,
+        'startTime': f'{date_of_sleep}T23:00:00.000',
+        'endTime': f'{date_of_sleep}T07:00:00.000',
+        'duration': 28800000,
+        'timeInBed': minutes_in_sleep_period,
+        'efficiency': round(minutes_asleep / minutes_in_sleep_period * 100),
+        'minutesAsleep': minutes_asleep,
+        'minutesAwake': minutes_in_sleep_period - minutes_asleep,
+        'minutesAfterWakeup': 0,
+        'minutesToFallAsleep': 0,
+        'logId': log_id,
+        'logType': None,
+        'type': 'stages',
+        'infoCode': None,
+        'isMainSleep': is_main,
+        'deepMinutes': 30, 'lightMinutes': 200, 'remMinutes': 60, 'wakeMinutes': 10,
+        'deepCount': 3, 'lightCount': 10, 'remCount': 5, 'wakeCount': 2,
+        'deepAvg30': None, 'lightAvg30': None, 'remAvg30': None, 'wakeAvg30': None,
+    }
+
+
+@pytest.fixture
+def fake_sleep(monkeypatch):
+    """FETCHERS['sleep'] を差し替えて (sleep_rows, level_rows) を返させる"""
+    def install(sleep_rows, level_rows=None):
+        monkeypatch.setitem(
+            googlehealth_api.FETCHERS, 'sleep',
+            lambda creds, s, e: (sleep_rows, level_rows or []),
+        )
+    return install
+
+
+def test_sleep_period_replace_drops_only_in_range_rows(data_dir, fake_sleep):
+    """期間置換: 対象期間の既存行は消え、期間外は残ること"""
+    existing = pd.DataFrame([
+        _sleep_row('2026-07-01', log_id='old-1'),  # 期間外 -> 残る
+        _sleep_row('2026-08-01', log_id='old-2'),  # 期間内 -> 消える
+    ])
+    existing.to_csv(data_dir / 'sleep.csv', index=False)
+    pd.DataFrame([], columns=['logId', 'dateOfSleep', 'dateTime', 'level', 'seconds', 'isShort']
+                ).to_csv(data_dir / 'sleep_levels.csv', index=False)
+
+    fake_sleep([_sleep_row('2026-08-01', log_id='new-1')])
+    result = ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 1), end_date=dt.date(2026, 8, 1),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep.csv')
+    assert result['records'] == 2
+    assert set(saved['logId'].astype(str)) == {'old-1', 'new-1'}
+
+
+def test_sleep_two_sessions_same_day_saved_as_two_rows(data_dir, fake_sleep):
+    """1日に複数セッション（昼寝）があるとき2行として保存されること"""
+    fake_sleep([
+        _sleep_row('2026-08-20', log_id='main', is_main=True),
+        _sleep_row('2026-08-20', log_id='nap', minutes_asleep=40,
+                   minutes_in_sleep_period=45, is_main=False),
+    ])
+    ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 20), end_date=dt.date(2026, 8, 20),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep.csv')
+    assert len(saved[saved['dateOfSleep'] == '2026-08-20']) == 2
+
+
+def test_sleep_efficiency_is_computed(data_dir, fake_sleep):
+    row = _sleep_row('2026-08-20', minutes_asleep=300, minutes_in_sleep_period=360)
+    fake_sleep([row])
+    ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 20), end_date=dt.date(2026, 8, 20),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep.csv')
+    assert saved.loc[0, 'efficiency'] == round(300 / 360 * 100)
+
+
+def test_sleep_levels_has_both_short_and_normal_entries(data_dir, fake_sleep):
+    levels = [
+        {'logId': '1', 'dateOfSleep': '2026-08-20', 'dateTime': '2026-08-20 23:10:00',
+         'level': 'light', 'seconds': 600, 'isShort': False},
+        {'logId': '1', 'dateOfSleep': '2026-08-20', 'dateTime': '2026-08-20 23:30:00',
+         'level': 'wake', 'seconds': 60, 'isShort': True},
+    ]
+    fake_sleep([_sleep_row('2026-08-20', log_id='1')], levels)
+    ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 20), end_date=dt.date(2026, 8, 20),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep_levels.csv')
+    assert set(saved['isShort'].astype(str).str.lower()) == {'true', 'false'}
+
+
+# =============================================================================
+# 重なりセッションの除外（PRレビュー指摘: メイン睡眠に重なる短いセッションを
+# Google が別 dataPoint として返すことがある。Issue #74）
+# =============================================================================
+
+def _raw_point(point_id: str, start: str, end: str, minutes_in_sleep_period: int,
+               main_sleep: bool | None = None) -> dict:
+    """生 API 相当の sleep dataPoint（UTC・オフセット0固定でテストを単純化）"""
+    metadata = {'stagesStatus': 'SUCCEEDED', 'processed': True}
+    if main_sleep is not None:
+        metadata['mainSleep'] = main_sleep
+    return {
+        'name': f'users/me/dataTypes/sleep/dataPoints/{point_id}',
+        'sleep': {
+            'interval': {
+                'startTime': start, 'startUtcOffset': '0s',
+                'endTime': end, 'endUtcOffset': '0s',
+            },
+            'type': 'STAGES',
+            'metadata': metadata,
+            'summary': {
+                'minutesInSleepPeriod': str(minutes_in_sleep_period),
+                'minutesAsleep': str(minutes_in_sleep_period),
+                'minutesAwake': '0',
+                'minutesAfterWakeUp': '0',
+                'minutesToFallAsleep': '0',
+                'stagesSummary': [],
+            },
+            'stages': [],
+            'shortAwakenings': [],
+        },
+    }
+
+
+@pytest.fixture
+def fake_points(monkeypatch):
+    """_list_sleep_points を差し替えて任意の生 dataPoint 群を返させる"""
+    def install(points):
+        monkeypatch.setattr(googlehealth_api, '_list_sleep_points', lambda creds, s, e: points)
+    return install
+
+
+def test_overlapping_session_only_the_longer_one_survives(fake_points):
+    """重なる2セッションのうち、長い方だけが残ること"""
+    points = [
+        _raw_point('main', '2026-08-19T23:32:00Z', '2026-08-20T06:56:00Z', 444, main_sleep=True),
+        _raw_point('short', '2026-08-19T23:36:00Z', '2026-08-19T23:53:00Z', 17),
+    ]
+    fake_points(points)
+
+    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+        None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
+    )
+
+    log_ids = {r['logId'] for r in sleep_rows}
+    assert log_ids == {'main'}
+
+
+def test_overlap_winner_decided_by_length_not_mainsleep(fake_points):
+    """isMainSleep=True の短いセッションより、mainSleepなしの長いセッションが残ること"""
+    points = [
+        _raw_point('short-main', '2026-08-19T22:00:00Z', '2026-08-19T22:30:00Z',
+                   30, main_sleep=True),
+        _raw_point('long-nomain', '2026-08-19T21:00:00Z', '2026-08-20T05:00:00Z', 480),
+    ]
+    fake_points(points)
+
+    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+        None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
+    )
+
+    log_ids = {r['logId'] for r in sleep_rows}
+    assert log_ids == {'long-nomain'}
+
+
+def test_non_overlapping_sessions_both_kept(fake_points):
+    """重ならない2セッション（本睡眠+昼寝）は両方残ること"""
+    points = [
+        _raw_point('main', '2026-08-19T23:00:00Z', '2026-08-20T07:00:00Z', 480, main_sleep=True),
+        _raw_point('nap', '2026-08-20T12:00:00Z', '2026-08-20T12:45:00Z', 45),
+    ]
+    fake_points(points)
+
+    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+        None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
+    )
+
+    log_ids = {r['logId'] for r in sleep_rows}
+    assert log_ids == {'main', 'nap'}
+
+
+def test_dropped_overlap_count_is_logged(fake_points, capsys):
+    """落とした件数が黙って消えずログに出ること"""
+    points = [
+        _raw_point('main', '2026-08-19T23:32:00Z', '2026-08-20T06:56:00Z', 444, main_sleep=True),
+        _raw_point('short', '2026-08-19T23:36:00Z', '2026-08-19T23:53:00Z', 17),
+    ]
+    fake_points(points)
+
+    googlehealth_api.fetch_sleep_all(None, dt.date(2026, 8, 19), dt.date(2026, 8, 20))
+
+    captured = capsys.readouterr()
+    assert '1件' in captured.out
+    assert '除外' in captured.out
