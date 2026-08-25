@@ -12,6 +12,8 @@
 import pandas as pd
 import numpy as np
 
+from .sleep import flag_inconsistent
+
 
 def calc_hrv_7day_rolling_stats(df_hrv, metric_col='daily_rmssd'):
     """
@@ -151,9 +153,15 @@ def prepare_training_readiness_data(start_date, end_date, df_hrv, df_sleep=None)
     date_range = pd.date_range(start=start_date, end=end_date, freq='D')
 
     # 睡眠データをdictに変換
+    # サマリとステージ内訳が内部矛盾している行（#65）はefficiencyが壊れているため、
+    # 該当行のefficiencyはNone（不明）として扱う。should_workout_todayはNoneを許容する。
     sleep_dict = {}
     if df_sleep is not None:
-        for _, row in df_sleep.iterrows():
+        inconsistent_flag = flag_inconsistent(df_sleep)
+        for idx, row in df_sleep.iterrows():
+            if inconsistent_flag.loc[idx]:
+                row = row.copy()
+                row['efficiency'] = None
             sleep_dict[row['dateOfSleep']] = row
 
     for date in date_range:
