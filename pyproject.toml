@@ -18,6 +18,9 @@ dependencies = [
     "google-api-python-client>=2.197.0",
     # tabulate が全角文字の表示幅を正しく測るために必要（import されないが必須）
     "wcwidth>=0.8.2",
+    # googlehealth_api.py が直接 import する（gspread の間接依存に頼らない）
+    "google-auth>=2.53.0",
+    "google-auth-oauthlib>=1.4.0",
     "playwright>=1.62.0",
     "openpyxl>=3.1.5",
 ]

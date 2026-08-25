@@ -51,6 +51,8 @@ echo "=== Daily Routine (--days $DAYS) ==="
 echo "Started at $(date)"
 
 step "Fitbit"        uv run python scripts/fetch_fitbit.py --all --days "$DAYS"
+# Fitbit Web API 廃止に向けた移行中で、同じ data/fitbit/*.csv を両方が更新する（Issue #49）
+step "Google Health" uv run python scripts/fetch_googlehealth.py --days "$DAYS" --non-interactive
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14

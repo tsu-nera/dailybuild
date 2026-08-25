@@ -10,6 +10,7 @@ import pytest
 
 from lib import googlehealth_fetcher as ghf
 from lib.clients import googlehealth_api
+from lib.utils import private_data
 
 
 @pytest.fixture
@@ -126,6 +127,19 @@ def test_negative_zero_is_not_written_to_csv(data_dir, fake_rows):
 
     text = (data_dir / 'hrv.csv').read_text()
     assert '-0.0' not in text, f'負のゼロが出力されている: {text}'
+
+
+def test_未マウントの環境ではpublic側への書き込みがエラーで止まる(tmp_path, monkeypatch, fake_rows):
+    """symlink 未設定を模した環境で、0件成功ではなく FileNotFoundError で落ちること"""
+    repo = tmp_path / 'dailybuild'
+    (repo / 'data').mkdir(parents=True)
+    monkeypatch.setattr(private_data, 'REPO_ROOT', repo)
+    monkeypatch.setattr(ghf, 'DATA_DIR', repo / 'data' / 'fitbit')
+
+    fake_rows([{'date': '2026-08-01', 'daily_rmssd': 30.1, 'deep_rmssd': 28.0}])
+
+    with pytest.raises(FileNotFoundError):
+        ghf.fetch_endpoint(None, 'hrv', days=3)
 
 
 def test_num_coerces_string_values():
