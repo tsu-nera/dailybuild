@@ -215,3 +215,132 @@ def test_fitbit_sleep_intervals_disabled_returns_empty(tmp_path, monkeypatch):
         dt.date(2026, 8, 20), dt.date(2026, 8, 20), config, JST,
     )
     assert intervals == []
+
+
+# =============================================================================
+# googlehealth_exercise ソース
+# =============================================================================
+
+EXERCISE_CONFIG = {'sources': {'googlehealth_exercise': {
+    'enabled': True,
+    'platform_priority': ['FITBIT', 'HEALTH_CONNECT'],
+    'overlap_threshold_sec': 60,
+    'categories': {
+        'cycling': {'project': 'サイクリング', 'description': 'サイクリング',
+                    'tags': ['auto'],
+                    'exercise_types': ['OUTDOOR_BIKE', 'BIKING']},
+        'workout': {'project': '筋トレ', 'description': '筋トレ', 'tags': ['auto'],
+                    'exercise_types': ['WEIGHTS', 'STRENGTH_TRAINING']},
+        'meditation': {'project': '瞑想', 'description': '瞑想', 'tags': ['auto'],
+                       'exercise_types': ['MEDITATE']},
+    },
+}}}
+
+EXERCISE_HEADER = 'id,start,end,duration_sec,exercise_type,display_name,platform\n'
+
+
+def write_exercise_csv(tmp_path, monkeypatch, body):
+    csv_path = tmp_path / 'exercise.csv'
+    csv_path.write_text(EXERCISE_HEADER + body)
+    monkeypatch.setattr(toggl_sources, 'EXERCISE_CSV_FILE', csv_path)
+    return csv_path
+
+
+def test_exercise_maps_types_to_categories(tmp_path, monkeypatch):
+    write_exercise_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 06:00:00+09:00,2026-08-20 06:30:00+09:00,'
+        '1800,OUTDOOR_BIKE,野外サイクリング,FITBIT\n'
+        '2222222222222222222,2026-08-20 07:00:00+09:00,2026-08-20 07:30:00+09:00,'
+        '1800,WEIGHTS,リフティング,FITBIT\n'
+        '3333333333333333333,2026-08-20 08:00:00+09:00,2026-08-20 08:10:00+09:00,'
+        '600,MEDITATE,瞑想,FITBIT\n'
+    ))
+    intervals = toggl_sources.googlehealth_exercise_intervals(
+        dt.date(2026, 8, 20), dt.date(2026, 8, 20), EXERCISE_CONFIG, JST,
+    )
+    assert {i.project for i in intervals} == {'サイクリング', '筋トレ', '瞑想'}
+    # 19桁のidがfloat化して精度が飛んでいないこと
+    assert '1111111111111111111' in {i.source_id for i in intervals}
+    bike = next(i for i in intervals if i.project == 'サイクリング')
+    assert bike.start == dt.datetime(2026, 8, 20, 6, 0, tzinfo=JST)
+    assert bike.tags == ('auto',)
+
+
+def test_exercise_skips_types_outside_categories(tmp_path, monkeypatch):
+    write_exercise_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 06:00:00+09:00,2026-08-20 06:30:00+09:00,'
+        '1800,WALKING,ウォーキング,FITBIT\n'
+        '2222222222222222222,2026-08-20 07:00:00+09:00,2026-08-20 07:30:00+09:00,'
+        '1800,YOGA,ヨガ,FITBIT\n'
+    ))
+    intervals = toggl_sources.googlehealth_exercise_intervals(
+        dt.date(2026, 8, 20), dt.date(2026, 8, 20), EXERCISE_CONFIG, JST,
+    )
+    assert intervals == []
+
+
+def test_exercise_drops_lower_priority_platform_on_overlap(tmp_path, monkeypatch):
+    # 同じ筋トレが Fitbit と Health Connect(Hevy) の両方から届く
+    write_exercise_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 06:40:00+09:00,2026-08-20 07:13:00+09:00,'
+        '1980,WEIGHTS,リフティング,FITBIT\n'
+        '2222222222222222222,2026-08-20 06:45:00+09:00,2026-08-20 07:12:00+09:00,'
+        '1620,STRENGTH_TRAINING,ウェイトトレーニング,HEALTH_CONNECT\n'
+    ))
+    intervals = toggl_sources.googlehealth_exercise_intervals(
+        dt.date(2026, 8, 20), dt.date(2026, 8, 20), EXERCISE_CONFIG, JST,
+    )
+    assert [i.source_id for i in intervals] == ['1111111111111111111']
+
+
+def test_exercise_keeps_non_overlapping_low_priority_platform(tmp_path, monkeypatch):
+    # 重なっていなければ platform で捨てない（Fitbit を外しても穴が空かない）
+    write_exercise_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 06:00:00+09:00,2026-08-20 06:30:00+09:00,'
+        '1800,OUTDOOR_BIKE,野外サイクリング,FITBIT\n'
+        '2222222222222222222,2026-08-20 18:00:00+09:00,2026-08-20 18:30:00+09:00,'
+        '1800,BIKING,サイクリング,HEALTH_CONNECT\n'
+    ))
+    intervals = toggl_sources.googlehealth_exercise_intervals(
+        dt.date(2026, 8, 20), dt.date(2026, 8, 20), EXERCISE_CONFIG, JST,
+    )
+    assert len(intervals) == 2
+
+
+def test_exercise_touching_sessions_are_both_kept(tmp_path, monkeypatch):
+    # 終了と開始が接するだけ（重なり0秒）のセッションは別物として残す
+    write_exercise_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 05:51:00+09:00,2026-08-20 05:58:00+09:00,'
+        '420,BIKING,サイクリング,HEALTH_CONNECT\n'
+        '2222222222222222222,2026-08-20 05:58:00+09:00,2026-08-20 06:32:00+09:00,'
+        '2040,OUTDOOR_BIKE,野外サイクリング,FITBIT\n'
+    ))
+    intervals = toggl_sources.googlehealth_exercise_intervals(
+        dt.date(2026, 8, 20), dt.date(2026, 8, 20), EXERCISE_CONFIG, JST,
+    )
+    assert len(intervals) == 2
+
+
+def test_exercise_filters_by_period(tmp_path, monkeypatch):
+    write_exercise_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-19 06:00:00+09:00,2026-08-19 06:30:00+09:00,'
+        '1800,OUTDOOR_BIKE,野外サイクリング,FITBIT\n'
+        '2222222222222222222,2026-08-20 06:00:00+09:00,2026-08-20 06:30:00+09:00,'
+        '1800,OUTDOOR_BIKE,野外サイクリング,FITBIT\n'
+    ))
+    intervals = toggl_sources.googlehealth_exercise_intervals(
+        dt.date(2026, 8, 20), dt.date(2026, 8, 20), EXERCISE_CONFIG, JST,
+    )
+    assert [i.source_id for i in intervals] == ['2222222222222222222']
+
+
+def test_exercise_disabled_returns_empty(tmp_path, monkeypatch):
+    write_exercise_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 06:00:00+09:00,2026-08-20 06:30:00+09:00,'
+        '1800,OUTDOOR_BIKE,野外サイクリング,FITBIT\n'
+    ))
+    config = {'sources': {'googlehealth_exercise': {'enabled': False}}}
+    intervals = toggl_sources.googlehealth_exercise_intervals(
+        dt.date(2026, 8, 20), dt.date(2026, 8, 20), config, JST,
+    )
+    assert intervals == []

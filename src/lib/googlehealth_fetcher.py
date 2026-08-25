@@ -21,6 +21,7 @@ from .utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / 'data' / 'fitbit'
+GOOGLEHEALTH_DIR = BASE_DIR / 'data' / 'googlehealth'
 
 # この日付より前は Google 側が値を再計算しており、Fitbit 由来の既存 CSV と一致しない
 # （HRV で ±0.2〜3.0ms、呼吸数で ±0.2〜0.8/min）。うっかり長期間を指定すると
@@ -42,11 +43,23 @@ ENDPOINTS = {
         'description': '皮膚温（睡眠中）',
         'date_column': 'date',
     },
+    # 1日に複数行が立つセッション型。既存の Fitbit CSV を書き換えないよう
+    # data/googlehealth/ に別ファイルとして持つ（activity_logs.csv との
+    # スキーマ統一は Issue #77 の担当）。日付でなく id でマージするため
+    # HISTORY_BOUNDARY の対象外
+    'exercise': {
+        'description': '運動セッション',
+        'date_column': 'start',
+        'merge_key': 'id',
+        'output': GOOGLEHEALTH_DIR / 'exercise.csv',
+        'columns': googlehealth_api.EXERCISE_COLUMNS,
+    },
 }
 
 
 def get_output_path(endpoint: str) -> Path:
-    return DATA_DIR / f'{endpoint}.csv'
+    config = ENDPOINTS.get(endpoint, {})
+    return config.get('output') or DATA_DIR / f'{endpoint}.csv'
 
 
 def list_endpoints() -> list[str]:
@@ -80,7 +93,8 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
     config = ENDPOINTS[endpoint]
     start_date, end_date = _resolve_range(days, start_date, end_date)
 
-    if start_date < HISTORY_BOUNDARY and not allow_history_rewrite:
+    if start_date < HISTORY_BOUNDARY and not config.get('merge_key') \
+            and not allow_history_rewrite:
         msg = (
             f'{start_date} は履歴境界 {HISTORY_BOUNDARY} より前。'
             'この範囲は Google と Fitbit で値が異なり、既存CSVを書き換えてしまう。'
@@ -104,17 +118,28 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
         return {'records': 0, 'path': None, 'error': msg}
 
     date_col = config['date_column']
-    df = pd.DataFrame(rows)
-    df[date_col] = pd.to_datetime(df[date_col])
-    df.set_index(date_col, inplace=True)
+    merge_key = config.get('merge_key')
+    df = pd.DataFrame(rows, columns=config.get('columns'))
 
     out_path = get_output_path(endpoint)
     ensure_dir(out_path.parent)
 
-    if not overwrite:
-        df = csv_utils.merge_csv(df, out_path, date_col)
-
-    df.to_csv(out_path)
+    if merge_key:
+        # セッション型は1日に複数行が立つので、日付ではなく id でマージする。
+        # id は19桁の整数。dtype=str を明示しないと読み戻しで int になり
+        # 新旧のキーが一致せず、同じセッションが二重に残る
+        df[merge_key] = df[merge_key].astype(str)
+        if not overwrite and out_path.exists():
+            df_old = pd.read_csv(out_path, dtype={merge_key: str})
+            df = pd.concat([df_old, df]).drop_duplicates(
+                subset=[merge_key], keep='last').sort_values(date_col)
+        df.to_csv(out_path, index=False)
+    else:
+        df[date_col] = pd.to_datetime(df[date_col])
+        df.set_index(date_col, inplace=True)
+        if not overwrite:
+            df = csv_utils.merge_csv(df, out_path, date_col)
+        df.to_csv(out_path)
     print(f'  保存: {out_path} ({len(df)}件)')
     return {'records': len(df), 'path': out_path}
 

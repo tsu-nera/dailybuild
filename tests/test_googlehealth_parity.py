@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from lib import googlehealth_fetcher
 from lib.clients import googlehealth_api as gh
 
 BASE_DIR = Path(__file__).parent.parent
@@ -94,8 +95,10 @@ def test_fetchers_respect_date_range(creds):
     start = dt.date.today() - dt.timedelta(days=10)
     end = dt.date.today() - dt.timedelta(days=5)
     for endpoint in gh.FETCHERS:
+        # セッション型（exercise）は日次でなく開始時刻を持つので先頭10文字で見る
+        column = googlehealth_fetcher.ENDPOINTS[endpoint]['date_column']
         rows = gh.FETCHERS[endpoint](creds, start, end)
         for row in rows:
-            assert start.isoformat() <= row['date'] <= end.isoformat(), (
-                f'{endpoint}: 範囲外の日付 {row["date"]}'
+            assert start.isoformat() <= row[column][:10] <= end.isoformat(), (
+                f'{endpoint}: 範囲外の日付 {row[column]}'
             )
