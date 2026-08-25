@@ -210,6 +210,31 @@ def test_sleep_period_replace_drops_only_in_range_rows(data_dir, fake_sleep):
     assert set(saved['logId'].astype(str)) == {'old-1', 'new-1'}
 
 
+def test_sleep_period_replace_keeps_day_with_no_google_session(data_dir, fake_sleep, capsys):
+    """期間内でも Google に1件もセッションが無い日は、既存行が残ること
+    （replace_csv_period の意味変更、Issue #75 PR #84 レビュー）"""
+    existing = pd.DataFrame([
+        _sleep_row('2026-08-01', log_id='old-1'),  # Googleにセッション無し -> 残る
+        _sleep_row('2026-08-02', log_id='old-2'),  # Googleにセッションあり -> 置き換わる
+    ])
+    existing.to_csv(data_dir / 'sleep.csv', index=False)
+    pd.DataFrame([], columns=['logId', 'dateOfSleep', 'dateTime', 'level', 'seconds', 'isShort']
+                ).to_csv(data_dir / 'sleep_levels.csv', index=False)
+
+    fake_sleep([_sleep_row('2026-08-02', log_id='new-1')])
+    result = ghf.fetch_endpoint(
+        None, 'sleep', start_date=dt.date(2026, 8, 1), end_date=dt.date(2026, 8, 2),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'sleep.csv')
+    assert result['records'] == 2
+    assert set(saved['logId'].astype(str)) == {'old-1', 'new-1'}
+
+    captured = capsys.readouterr()
+    assert '既存行を残した' in captured.out
+
+
 def test_sleep_two_sessions_same_day_saved_as_two_rows(data_dir, fake_sleep):
     """1日に複数セッション（昼寝）があるとき2行として保存されること"""
     fake_sleep([

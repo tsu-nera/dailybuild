@@ -208,6 +208,7 @@ def _save_period_replace(endpoint: str, config: dict, result, start_date: dt.dat
     else:
         df = csv_utils.replace_csv_period(
             df, out_path, date_col, start_date, end_date, sort_by=[date_col],
+            label=endpoint,
         )
         df.to_csv(out_path, index=False)
     print(f'  保存: {out_path} ({len(df)}件)')
@@ -223,7 +224,7 @@ def _save_period_replace(endpoint: str, config: dict, result, start_date: dt.dat
         else:
             df_extra = csv_utils.replace_csv_period(
                 df_extra, extra_out_path, date_col, start_date, end_date,
-                sort_by=[date_col],
+                sort_by=[date_col], label=extra_key,
             )
             df_extra.to_csv(extra_out_path, index=False)
         print(f'  保存: {extra_out_path} ({len(df_extra)}件)')
