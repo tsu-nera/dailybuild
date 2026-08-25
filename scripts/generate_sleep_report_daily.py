@@ -288,7 +288,8 @@ def prepare_sleep_report_data(results):
             'avg_fall_asleep': f"{stats.get('timing', {}).get('avg_fall_asleep', 0):.0f}",
             'avg_after_wakeup': f"{stats.get('timing', {}).get('avg_after_wakeup', 0):.0f}",
             'image': f"img/{results['time_in_bed_img']}",
-            'table': results['efficiency_table'].to_markdown(index=False)
+            'table': results['efficiency_table'].to_markdown(index=False),
+            'integrity': stats.get('integrity'),
         },
         'stages': {
             'mean_hours': f"{stats['duration']['mean_hours']:.1f}",

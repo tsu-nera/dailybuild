@@ -2,11 +2,13 @@
 睡眠データ分析パッケージ
 
 モジュール:
-    sleep_analysis: 睡眠統計・可視化
+    sleep_analysis: 睡眠統計
+    sleep_plots: 睡眠データ可視化
     sleep_cycle: 睡眠サイクル検出・分析
     sleep_need_estimator: 最適睡眠時間の推定
     sleep_debt_clean: 睡眠負債の計算
     sleep_intraday_analysis: 睡眠中のIntradayデータ分析
+    summary_integrity: 睡眠サマリの内部矛盾（乖離行）の検出
 """
 
 from .sleep_analysis import (
@@ -19,6 +21,9 @@ from .sleep_analysis import (
     calc_time_stats,
     calc_recovery_score,
     print_sleep_stats,
+)
+
+from .sleep_plots import (
     # 可視化
     plot_sleep_duration,
     plot_time_in_bed_stacked,
@@ -63,6 +68,12 @@ from .sleep_need_estimator import (
     print_sleep_need_report,
 )
 
+from .summary_integrity import (
+    STAGE_GAP_THRESHOLD_MINUTES,
+    flag_inconsistent,
+    split_by_integrity,
+)
+
 from .sleep_debt_clean import (
     # データクラス
     SleepDebtResult,
@@ -84,6 +95,7 @@ __all__ = [
     'calc_time_stats',
     'calc_recovery_score',
     'print_sleep_stats',
+    # sleep_plots
     'plot_sleep_duration',
     'plot_time_in_bed_stacked',
     'plot_sleep_stages_stacked',
@@ -105,6 +117,10 @@ __all__ = [
     'IntegratedSleepNeed',
     'SleepNeedEstimator',
     'print_sleep_need_report',
+    # summary_integrity
+    'STAGE_GAP_THRESHOLD_MINUTES',
+    'flag_inconsistent',
+    'split_by_integrity',
     # sleep_debt_clean
     'SleepDebtResult',
     'SleepDebtCalculator',

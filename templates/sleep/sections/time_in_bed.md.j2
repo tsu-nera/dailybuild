@@ -9,6 +9,12 @@
 | 平均入眠 | {{ efficiency.avg_fall_asleep }}分 |
 | 平均起床後 | {{ efficiency.avg_after_wakeup }}分 |
 
+{% if efficiency.integrity and efficiency.integrity.excluded > 0 %}
+> Fitbit のサマリが内部矛盾している {{ efficiency.integrity.excluded }}日（全{{ efficiency.integrity.total }}日中）を
+> 効率・睡眠時間の集計から除外しています（ステージ内訳と minutesAsleep が
+> {{ efficiency.integrity.threshold_minutes }}分以上乖離）。ステージ統計には含めています。
+{% endif %}
+
 ![Time in Bed]({{ efficiency.image }})
 
 {{ efficiency.table }}
