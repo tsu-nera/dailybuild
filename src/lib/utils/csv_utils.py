@@ -95,13 +95,15 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
 
 def replace_csv_period(df_new: pd.DataFrame, csv_path: Path, date_column: str,
                        start_date, end_date,
-                       sort_by: list[str] | None = None) -> pd.DataFrame:
+                       sort_by: list[str] | None = None,
+                       label: str | None = None) -> pd.DataFrame:
     """
-    既存CSVの指定期間の行を丸ごと削除し、df_new に置き換える（キーマージしない）
+    既存CSVのうち、df_new に日付が存在する行だけを削除し、df_new に置き換える
+    （キーマージしない）
 
     merge_csv / merge_csv_by_columns はどちらも「キー（index や logId 等）が
     一致した行を上書きする」設計だが、それが成立しない移行元切り替え
-    （Fitbit -> Google Health の sleep 等）では使えない:
+    （Fitbit -> Google Health の sleep / temperature_core 等）では使えない:
 
     - キー空間が別物: logId は取得元ごとに独立した採番で、同じ夜でも
       Fitbit と Google で一致しない。キーにすると同じ夜が2行として
@@ -109,29 +111,57 @@ def replace_csv_period(df_new: pd.DataFrame, csv_path: Path, date_column: str,
     - 時刻も一致しない: 開始時刻が取得元間で最大30分ずれることがあり、
       時刻をキーにしても一致しない
 
-    そこで「取得元を切り替えた期間は、その期間の既存行を無条件に捨てて
-    新データで置き換える」戦略を取る。1日に複数セッション（昼寝等）が
-    あってもキー衝突が起きず、取得元混在によるレポートの二重計上も
-    起きない。
+    「期間内の既存行をすべて削除」ではなく「新データに存在する日付の既存行
+    だけを削除」する。取得期間を渡しても、Google 側にその日のデータが
+    無ければ何も削除しない。**Google にデータが無いことは既存行を消してよい
+    理由にならない**（このリポジトリの規約「黙って欠測を捏造しない」の裏返し
+    で、取り替えられない行を黙って消すのも同じ問題）。
+    例: temperature_core は Google 側の実測日が既存 CSV の日付集合の
+    サブセットで、期間内すべて削除する実装だと 2026-01 〜 05 の Fitbit 由来の
+    日次行が丸ごと消えていた（Issue #75 PR #84 レビューで発覚）。
+
+    1日に複数セッション（昼寝、複数回の体温測定等）があってもキー衝突が
+    起きず、取得元混在によるレポートの二重計上も起きない。
+
+    この関数は sleep と temperature_core の両方から呼ばれる
+    （src/lib/googlehealth_fetcher.py の _save_period_replace 経由）。
 
     Args:
         df_new: 新しいデータ（date_column を含む）
         csv_path: 既存CSVのパス
-        date_column: 期間判定に使う日付列名
-        start_date: 削除・置換する期間の開始日（この日を含む）
-        end_date: 削除・置換する期間の終了日（この日を含む）
+        date_column: 期間判定に使う日付列名。日時（"YYYY-MM-DD HH:MM:SS"）でもよい
+        start_date: 削除・置換の対象となりうる期間の開始日（この日を含む）
+        end_date: 削除・置換の対象となりうる期間の終了日（この日を含む）
         sort_by: ソートに使う列名リスト
+        label: 警告メッセージに出す名前（省略時は date_column を使う）
 
     Returns:
-        置換後のDataFrame（期間外の既存行 + df_new）
+        置換後のDataFrame（df_new に無い日付の既存行 + df_new）
     """
     if not csv_path.exists():
         df_merged = df_new.copy()
     else:
         df_old = pd.read_csv(csv_path)
+        # date_column が日時（"YYYY-MM-DD HH:MM:SS"）だと、素の文字列比較では
+        # end_date 当日で時刻付きの値が end_s（時刻無し）より辞書順で大きくなり
+        # 「期間内」から漏れる（例: "2026-08-23 05:49:21" > "2026-08-23"）。
+        # 先頭10文字（日付部分）だけで比較する
+        old_dates = df_old[date_column].astype(str).str[:10]
+        new_dates = set(df_new[date_column].astype(str).str[:10]) if len(df_new) else set()
+
+        to_replace = old_dates.isin(new_dates)
+        df_merged = pd.concat([df_old[~to_replace], df_new], ignore_index=True)
+
+        # 期間内だが新データに1件も無い日付は、黙って残さず警告する
         start_s, end_s = str(start_date), str(end_date)
-        outside_period = ~df_old[date_column].astype(str).between(start_s, end_s)
-        df_merged = pd.concat([df_old[outside_period], df_new], ignore_index=True)
+        in_period = old_dates.between(start_s, end_s)
+        preserved = sorted(set(old_dates[in_period & ~to_replace]))
+        if preserved:
+            shown = ', '.join(preserved[:5])
+            more = f' 他{len(preserved) - 5}件' if len(preserved) > 5 else ''
+            name = label or date_column
+            print(f'  ⚠️ {name}: 期間内で Google にデータが無い{len(preserved)}日は'
+                  f'既存行を残した（{shown}{more}）')
 
     # df_new が空（例: 昼寝なしでshortAwakeningsが1件も無い日のsleep_levels）だと
     # 列が無く sort_values が KeyError になるため、その場合はソートを飛ばす

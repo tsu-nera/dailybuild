@@ -103,6 +103,18 @@ def _get(creds: Credentials, path: str, params: dict = None) -> dict:
         time.sleep(RETRY_WAIT_SEC * (attempt + 1))
 
 
+def _post(creds: Credentials, path: str, json_body: dict) -> dict:
+    r = requests.post(
+        f'{API_BASE}/{path}',
+        headers={'Authorization': f'Bearer {creds.token}'},
+        json=json_body,
+        timeout=60,
+    )
+    if r.status_code != 200:
+        raise GoogleHealthError(f'POST {path} -> HTTP {r.status_code}: {r.text[:500]}')
+    return r.json()
+
+
 def list_data_points(creds: Credentials, data_type: str, max_points: int = 10000,
                      stop_before: dt.date = None, payload_key: str = None) -> list[dict]:
     """
@@ -180,6 +192,84 @@ def _daily_rows(creds, data_type: str, payload_key: str, start_date: dt.date,
             rows.append({'date': date, **row})
     rows.sort(key=lambda r: r['date'])
     return rows
+
+
+# =============================================================================
+# dailyRollUp 共通呼び出し（activity / active_zone_minutes が使う）
+# =============================================================================
+
+# 型ごとの最大取得期間（日数）。超えると INVALID_ROLLUP_QUERY_DURATION になるが、
+# メッセージは "Invalid argument in request." としか言わない
+# （実際の上限は error.details[0].metadata.maxDurationDays に入る）。
+# 実測値をハードコードし、この範囲で自動分割する。
+#
+# core-body-temperature はここに含めない: dailyRollUp は日次平均になるが、
+# 既存 CSV の date_time は「日次固定00:00:00の行」と「実測時刻の行」が
+# 混在しており（sampleTime.civilTime が実測時刻を持つ）、平均で埋めると
+# 既存の実測時刻行と二重に入る。list + civilTime を使う（fetch_temperature_core）。
+ROLLUP_MAX_DURATION_DAYS = {
+    'steps': 90,
+    'distance': 90,
+    'sedentary-period': 90,
+    'active-zone-minutes': 90,
+    'total-calories': 14,
+    'active-minutes': 14,
+}
+
+
+def _civil_date(d: dt.date) -> dict:
+    return {'year': d.year, 'month': d.month, 'day': d.day}
+
+
+def _daily_rollup(creds: Credentials, data_type: str, start_date: dt.date,
+                  end_date: dt.date) -> list[dict]:
+    """
+    dataPoints:dailyRollUp を型ごとの maxDurationDays で自動分割して呼び、
+    rollupDataPoints をまとめて返す
+
+    型を知らないまま分割単位を誤ると INVALID_ROLLUP_QUERY_DURATION で
+    黙って0件になりかねないため、ROLLUP_MAX_DURATION_DAYS に無い型は
+    KeyError で明示的に落とす（握り潰さない）。
+
+    range.end は排他的（実測: start==end は400、end 当日は結果に含まれない。
+    例えば total-calories で start=2026-08-01, end=2026-08-15 を渡すと
+    2026-08-01〜08-14 の14件が返り、08-15 は含まれない）。Issue #75 の
+    実測メモにはこの挙動の記載が無かったため、含めたい最終日 chunk_end に
+    +1 日して渡す。maxDurationDays の判定は (end - start) の日数で行われる
+    ため、この +1 を反映してもチャンクサイズは max_days のままでよい
+    （08-01〜08-15 の raw span は14日で total-calories の上限と一致し成功、
+    15日にすると INVALID_ROLLUP_QUERY_DURATION で失敗することを実測済み）。
+    """
+    max_days = ROLLUP_MAX_DURATION_DAYS[data_type]
+
+    points = []
+    chunk_start = start_date
+    while chunk_start <= end_date:
+        chunk_end = min(chunk_start + dt.timedelta(days=max_days - 1), end_date)
+        body = {
+            'range': {
+                'start': {'date': _civil_date(chunk_start)},
+                'end': {'date': _civil_date(chunk_end + dt.timedelta(days=1))},
+            }
+        }
+        resp = _post(creds, f'{USER}/dataTypes/{data_type}/dataPoints:dailyRollUp', body)
+        points.extend(resp.get('rollupDataPoints', []))
+        chunk_start = chunk_end + dt.timedelta(days=1)
+    return points
+
+
+def _rollup_by_date(creds: Credentials, data_type: str, payload_key: str,
+                    start_date: dt.date, end_date: dt.date) -> dict[str, dict]:
+    """dailyRollUp を取得し、日付(YYYY-MM-DD) -> payload の辞書にする"""
+    points = _daily_rollup(creds, data_type, start_date, end_date)
+    out = {}
+    for point in points:
+        payload = point.get(payload_key)
+        civil_start = point.get('civilStartTime', {}).get('date')
+        if payload is None or civil_start is None:
+            continue
+        out[_to_date(civil_start)] = payload
+    return out
 
 
 # =============================================================================
@@ -563,6 +653,165 @@ def _build_level_row(log_id: str, date_of_sleep: dt.date, entry: dict, is_short:
     }
 
 
+# =============================================================================
+# 活動量 -> data/fitbit/activity.csv
+# =============================================================================
+
+def fetch_activity(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    列: date, caloriesOut, activityCalories, steps, distance, sedentaryMinutes,
+        lightlyActiveMinutes, fairlyActiveMinutes, veryActiveMinutes
+
+    steps / distance / active-minutes / total-calories の4型を叩いて日付で
+    マージする（型ごとに maxDurationDays が違うため、分割単位も型ごとに変わる。
+    steps/distance は90日、active-minutes/total-calories は14日）。
+
+    sedentary-period は叩かない: Google の定義が Fitbit の sedentaryMinutes と
+    違う（Fitbit は起床中の非活動時間全体、Google は明示的な座位バウトのみを
+    数える）。実測13日中0日が一致し、Google側が約350分少ない。
+
+    activityCalories と sedentaryMinutes は Google に対応する型が無いため常に
+    None にする。merge_csv はセル単位で df_new を優先しつつ NaN は df_old で
+    埋めるため、この2列は過去の行の値を消さず、新しい日だけが空になる。
+    """
+    steps_by_date = _rollup_by_date(creds, 'steps', 'steps', start_date, end_date)
+    distance_by_date = _rollup_by_date(creds, 'distance', 'distance', start_date, end_date)
+    minutes_by_date = _rollup_by_date(creds, 'active-minutes', 'activeMinutes', start_date, end_date)
+    calories_by_date = _rollup_by_date(creds, 'total-calories', 'totalCalories', start_date, end_date)
+
+    all_dates = sorted(
+        set(steps_by_date) | set(distance_by_date)
+        | set(minutes_by_date) | set(calories_by_date)
+    )
+    if all_dates:
+        print('  ⚠️ activity: activityCalories / sedentaryMinutes は Google に対応する型が無いため空にする')
+
+    rows = []
+    for date in all_dates:
+        distance_mm = _num(distance_by_date.get(date, {}).get('millimetersSum'))
+        distance_km = distance_mm / 1_000_000 if distance_mm is not None else None
+
+        levels = {
+            lvl.get('activityLevel'): _num(lvl.get('activeMinutesSum'))
+            for lvl in minutes_by_date.get(date, {}).get('activeMinutesRollupByActivityLevel', [])
+        }
+
+        rows.append({
+            'date': date,
+            'caloriesOut': _num(calories_by_date.get(date, {}).get('kcalSum')),
+            'activityCalories': None,
+            'steps': _num(steps_by_date.get(date, {}).get('countSum')),
+            'distance': distance_km,
+            'sedentaryMinutes': None,
+            'lightlyActiveMinutes': levels.get('LIGHT'),
+            'fairlyActiveMinutes': levels.get('MODERATE'),
+            'veryActiveMinutes': levels.get('VIGOROUS'),
+        })
+    return rows
+
+
+# =============================================================================
+# アクティブゾーン分 -> data/fitbit/active_zone_minutes.csv
+# =============================================================================
+
+def fetch_active_zone_minutes(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    列: date, activeZoneMinutes, fatBurnActiveZoneMinutes, cardioActiveZoneMinutes,
+        peakActiveZoneMinutes
+
+    合計の activeZoneMinutes は Google に対応するフィールドが無いため算出する。
+    fitbit_api.parse_active_zone_minutes の docstring は「cardio/peak 1分=2AZM」の
+    重み付けと書いているが、実データ（2026-08-11〜23の13日）はそれに従わない:
+    単純和 fatBurn+cardio+peak が Fitbit の activeZoneMinutes と13/13で一致し、
+    重み付き fatBurn+2*cardio+2*peak は1/13しか一致しない。単純和を採用する。
+    """
+    by_date = _rollup_by_date(creds, 'active-zone-minutes', 'activeZoneMinutes', start_date, end_date)
+    rows = []
+    for date, payload in sorted(by_date.items()):
+        fat = _num(payload.get('sumInFatBurnHeartZone'))
+        cardio = _num(payload.get('sumInCardioHeartZone'))
+        peak = _num(payload.get('sumInPeakHeartZone'))
+        rows.append({
+            'date': date,
+            'activeZoneMinutes': (fat or 0.0) + (cardio or 0.0) + (peak or 0.0),
+            'fatBurnActiveZoneMinutes': fat,
+            'cardioActiveZoneMinutes': cardio,
+            'peakActiveZoneMinutes': peak,
+        })
+    return rows
+
+
+# =============================================================================
+# 深部体温 -> data/fitbit/temperature_core.csv
+# =============================================================================
+
+def _civil_time_str(civil: dict) -> str:
+    """civilTime（date + 省略されうる time）を "YYYY-MM-DD HH:MM:SS" にする"""
+    date = civil['date']
+    time = civil.get('time') or {}
+    return (
+        f"{date['year']:04d}-{date['month']:02d}-{date['day']:02d} "
+        f"{time.get('hours', 0):02d}:{time.get('minutes', 0):02d}:{time.get('seconds', 0):02d}"
+    )
+
+
+def fetch_temperature_core(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    列: date_time, temperature
+
+    dailyRollUp ではなく list を使う（当初 dailyRollUp + 日次平均で実装したが、
+    既存 CSV の date_time は「日次で00:00:00固定の行」と「実測時刻の行」が
+    混在しており（実測: 2026-01-03〜08-16 は00:00:00固定、2026-02-02
+    08:12:49 等は実測時刻）、日次平均で埋めると既にある実測時刻行と同じ日に
+    2行できてしまう。実測で 08-17/18/19/22/23 の5日の二重化を確認したため
+    list + sampleTime.civilTime に切り替えた。civilTime をそのまま使えば
+    既存 CSV と一致する（2026-08-23: Google "2026-08-23 05:49:21, 36.1" ==
+    既存CSV "2026-08-23 05:49:21,36.1"）。
+
+    civilTime.time は hours/minutes/seconds が0のとき省略されるため
+    .get(key, 0) で補う。
+
+    保存は googlehealth_fetcher 側で sleep と同じ期間置換
+    （csv_utils.replace_csv_period）を使う。キーマージにすると既存の
+    00:00:00 行と実測時刻行が両方残ってしまうため。
+    """
+    rows = []
+    token = None
+    while True:
+        params = {'pageToken': token} if token else {}
+        body = _get(creds, f'{USER}/dataTypes/core-body-temperature/dataPoints', params)
+        page = body.get('dataPoints', [])
+
+        page_rows = []
+        for point in page:
+            payload = point.get('coreBodyTemperature')
+            if not payload:
+                continue
+            civil = (payload.get('sampleTime') or {}).get('civilTime')
+            temperature = _num(payload.get('temperatureCelsius'))
+            if not civil or temperature is None:
+                continue
+            page_rows.append({
+                'date_time': _civil_time_str(civil),
+                'temperature': temperature,
+            })
+
+        rows.extend(
+            r for r in page_rows
+            if start_date.isoformat() <= r['date_time'][:10] <= end_date.isoformat()
+        )
+
+        token = body.get('nextPageToken')
+        if not token:
+            break
+        # 新しい順に返るので、ページ内の最新が start_date より前なら以降も全て古い
+        if page_rows and max(r['date_time'][:10] for r in page_rows) < start_date.isoformat():
+            break
+
+    rows.sort(key=lambda r: r['date_time'])
+    return rows
+
+
 # sleep は 1回の取得で sleep.csv / sleep_levels.csv の2つの行リストを作るため、
 # 他のエンドポイントと違って (sleep_rows, level_rows) のタプルを返す。
 # googlehealth_fetcher 側で戻り値の形を見て分岐する。
@@ -571,5 +820,8 @@ FETCHERS = {
     'breathing_rate': fetch_breathing_rate,
     'temperature_skin': fetch_temperature_skin,
     'sleep': fetch_sleep_all,
+    'activity': fetch_activity,
+    'active_zone_minutes': fetch_active_zone_minutes,
+    'temperature_core': fetch_temperature_core,
     'exercise': fetch_exercise,
 }

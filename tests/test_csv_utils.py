@@ -1,10 +1,10 @@
-"""merge_csv() のテスト（Issue #43: セル単位マージへの回帰防止）"""
+"""merge_csv() / replace_csv_period() のテスト（Issue #43, #75）"""
 
 from pathlib import Path
 
 import pandas as pd
 
-from lib.utils.csv_utils import merge_csv
+from lib.utils.csv_utils import merge_csv, replace_csv_period
 
 
 def _write_csv(path: Path, df: pd.DataFrame) -> None:
@@ -178,3 +178,106 @@ def test_large_integer_ids_are_not_rounded(tmp_path: Path):
     df_roundtrip = pd.read_csv(roundtrip_path, index_col="date")
     assert str(df_roundtrip.loc["2026-01-01", "logId"]) == "5667773472718017992"
     assert str(df_roundtrip.loc["2026-01-02", "logId"]) == "8694685614035756360"
+
+
+# =============================================================================
+# replace_csv_period（Issue #75 PR #84 レビュー: 「期間内すべて削除」だと
+# Google 側にデータが無い日の既存行まで消えてしまうと判明したため、
+# 「新データに存在する日付だけ削除」に変更した）
+# =============================================================================
+
+def test_replace_csv_period_replaces_dates_present_in_new_data(tmp_path: Path):
+    """期間内で新データに存在する日付は、既存行が置き換わること"""
+    csv_path = tmp_path / "temperature_core.csv"
+    df_old = pd.DataFrame({
+        "date_time": ["2026-08-17 09:03:19"],
+        "temperature": [36.8],
+    })
+    df_old.to_csv(csv_path, index=False)
+
+    df_new = pd.DataFrame({
+        "date_time": ["2026-08-17 10:00:00"],
+        "temperature": [37.0],
+    })
+
+    df_merged = replace_csv_period(
+        df_new, csv_path, "date_time", "2026-08-01", "2026-08-31",
+    )
+
+    assert len(df_merged) == 1
+    assert df_merged.iloc[0]["date_time"] == "2026-08-17 10:00:00"
+
+
+def test_replace_csv_period_keeps_dates_absent_from_new_data(tmp_path: Path, capsys):
+    """期間内でも新データに1件も無い日付は、既存行が残ること（本件の核心）"""
+    csv_path = tmp_path / "temperature_core.csv"
+    df_old = pd.DataFrame({
+        "date_time": ["2026-01-03 00:00:00", "2026-08-17 09:03:19"],
+        "temperature": [36.4, 36.8],
+    })
+    df_old.to_csv(csv_path, index=False)
+
+    # 新データは08-17分のみ。01-03はGoogle側にデータが無い想定
+    df_new = pd.DataFrame({
+        "date_time": ["2026-08-17 10:00:00"],
+        "temperature": [37.0],
+    })
+
+    df_merged = replace_csv_period(
+        df_new, csv_path, "date_time", "2026-01-01", "2026-08-31", label="temperature_core",
+    )
+
+    dates = set(df_merged["date_time"])
+    assert "2026-01-03 00:00:00" in dates, "Google にデータが無い日の既存行が消えている"
+    assert "2026-08-17 10:00:00" in dates
+    assert "2026-08-17 09:03:19" not in dates  # 新データがある日は置き換わる
+    assert len(df_merged) == 2
+
+    captured = capsys.readouterr()
+    assert 'temperature_core' in captured.out
+    assert '2026-01-03' in captured.out
+    assert '既存行を残した' in captured.out
+
+
+def test_replace_csv_period_keeps_dates_outside_period(tmp_path: Path):
+    """期間外の既存行はそのまま残ること（既存の挙動）"""
+    csv_path = tmp_path / "temperature_core.csv"
+    df_old = pd.DataFrame({
+        "date_time": ["2026-05-01 00:00:00"],
+        "temperature": [36.6],
+    })
+    df_old.to_csv(csv_path, index=False)
+
+    df_new = pd.DataFrame({
+        "date_time": ["2026-08-17 10:00:00"],
+        "temperature": [37.0],
+    })
+
+    df_merged = replace_csv_period(
+        df_new, csv_path, "date_time", "2026-08-01", "2026-08-31",
+    )
+
+    dates = set(df_merged["date_time"])
+    assert "2026-05-01 00:00:00" in dates
+    assert "2026-08-17 10:00:00" in dates
+    assert len(df_merged) == 2
+
+
+def test_replace_csv_period_no_warning_when_all_dates_covered(tmp_path: Path, capsys):
+    """新データがすべての既存日付をカバーしていれば警告が出ないこと"""
+    csv_path = tmp_path / "temperature_core.csv"
+    df_old = pd.DataFrame({
+        "date_time": ["2026-08-17 09:03:19"],
+        "temperature": [36.8],
+    })
+    df_old.to_csv(csv_path, index=False)
+
+    df_new = pd.DataFrame({
+        "date_time": ["2026-08-17 10:00:00"],
+        "temperature": [37.0],
+    })
+
+    replace_csv_period(df_new, csv_path, "date_time", "2026-08-01", "2026-08-31")
+
+    captured = capsys.readouterr()
+    assert '既存行を残した' not in captured.out

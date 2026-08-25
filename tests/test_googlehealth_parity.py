@@ -91,6 +91,22 @@ def test_temperature_skin_matches_existing_csv(creds):
     assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
 
 
+# =============================================================================
+# active_zone_minutes: ゾーン別3列は完全一致するため厳しい許容誤差で検証する
+# （Issue #75）。activity は #70 の壊れた行があるため parity には含めない
+# （PR 本文に理由あり）。
+# =============================================================================
+
+def test_active_zone_minutes_matches_existing_csv(creds):
+    compared, mismatches = _compare(
+        creds, 'active_zone_minutes',
+        ['activeZoneMinutes', 'fatBurnActiveZoneMinutes', 'cardioActiveZoneMinutes',
+         'peakActiveZoneMinutes'],
+    )
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
 def test_fetchers_respect_date_range(creds):
     """期間指定が効いていること（範囲外の日付を返さないこと）"""
     start = dt.date.today() - dt.timedelta(days=10)
@@ -98,7 +114,8 @@ def test_fetchers_respect_date_range(creds):
     for endpoint, fetcher in gh.FETCHERS.items():
         if endpoint == 'sleep':
             continue  # 専用テストで別途検証（戻り値の形が違う）
-        # セッション型（exercise）は日次でなく開始時刻を持つので先頭10文字で見る
+        # temperature_core は date_time（日時、実測時刻を含む）、exercise は
+        # start（開始時刻）と、型ごとに date_column が違うので先頭10文字で見る
         column = googlehealth_fetcher.ENDPOINTS[endpoint]['date_column']
         rows = fetcher(creds, start, end)
         for row in rows:
