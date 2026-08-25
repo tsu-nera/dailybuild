@@ -4,6 +4,6 @@
 sources:
   fitbit_sleep:
     enabled: true
-    project: Sleep
+    project: 睡眠
     description: "睡眠"
     tags: [auto]

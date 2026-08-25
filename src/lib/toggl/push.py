@@ -10,9 +10,16 @@ Fitbit睡眠等をTogglタイムエントリとして書き込む push の共通
 1. 台帳に (source, source_id) が無ければ投入対象
 2. 台帳にはあるが toggl_entry_id が time_entries.csv に見当たらない
    （＝Toggl側で手動削除された）場合は再投入対象。ただし判定は
-   time_entries.csv がカバーする期間内の行に限る。期間外は「取得していないだけ」
-   と区別できないため、無限に再投入してしまう安全弁として対象外にする
+   **直近 fetch が実際に取りに行った期間**（store.load_fetch_window）内に
+   start を持つ行に限る。期間外は「取得していないだけ」と区別できないため、
+   無限に再投入してしまう安全弁として対象外にする
 3. 台帳にあり CSV にも居れば skip
+
+削除判定の窓に CSV の start の min/max を使ってはいけない。CSV は過去分が
+積み上がるだけなので min は何ヶ月も前になり、「一度も fetch していない日」まで
+カバー済みと誤認する。睡眠エントリの start は dateOfSleep の前日夜にあるため、
+fetch と push を同じ --days N で回すと投入したエントリが翌日以降どの fetch 窓にも
+入らず、毎回「削除された」と誤判定されて重複投入される。
 """
 
 import dataclasses
@@ -90,12 +97,12 @@ def append_ledger(rows: list[dict]) -> None:
     df_merged.to_csv(LEDGER_FILE, index=False)
 
 
-def entries_csv_coverage(entries_df: pd.DataFrame | None) -> tuple[dt.datetime, dt.datetime] | None:
-    """time_entries.csv がカバーする start の範囲。DataFrameが無い/空ならNone"""
-    if entries_df is None or entries_df.empty:
+def fetch_window_bounds(fetch_window: tuple[dt.date, dt.date] | None) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """fetch 期間（両端を含む日付）を start 比較用の tz-naive JST 区間に変換"""
+    if fetch_window is None:
         return None
-    starts = pd.to_datetime(entries_df['start'])
-    return starts.min(), starts.max()
+    start, end = fetch_window
+    return pd.Timestamp(start), pd.Timestamp(end) + pd.Timedelta(days=1)
 
 
 def select_pending(
@@ -103,6 +110,7 @@ def select_pending(
     ledger_df: pd.DataFrame,
     entries_df: pd.DataFrame | None,
     check_deleted: bool = True,
+    fetch_window: tuple[dt.date, dt.date] | None = None,
 ) -> tuple[list[Interval], int]:
     """投入対象の Interval と skip 件数を返す
 
@@ -118,6 +126,9 @@ def select_pending(
     check_deleted : bool
         False の場合、台帳にある interval は無条件で skip する
         （time_entries.csv が古い/存在しないときに呼び出し側が指定する）
+    fetch_window : tuple[date, date] | None
+        直近 fetch が取りに行った期間（両端を含む）。None なら削除検出を行わない。
+        CSV の start の min/max で代用してはいけない（モジュール docstring 参照）
 
     Returns
     -------
@@ -127,7 +138,7 @@ def select_pending(
         if not ledger_df.empty else set()
 
     csv_ids = set(entries_df['id'].astype(str)) if entries_df is not None and not entries_df.empty else set()
-    coverage = entries_csv_coverage(entries_df) if check_deleted else None
+    coverage = fetch_window_bounds(fetch_window) if check_deleted else None
 
     ledger_by_key = {}
     if not ledger_df.empty:
@@ -152,13 +163,13 @@ def select_pending(
             skipped += 1
             continue
 
-        # CSVカバー範囲外は「未取得」と「削除済み」が区別できないためskip。
+        # fetch 窓の外は「未取得」と「削除済み」が区別できないためskip。
         # time_entries.csv の start は tz-naive JST なので、台帳側(tz-aware)も
         # tzinfoを落として比較する（どちらも同じJSTの壁時計時刻）
         row_start = pd.Timestamp(row['start'])
         if row_start.tzinfo is not None:
             row_start = row_start.tz_localize(None)
-        if not (coverage[0] <= row_start <= coverage[1]):
+        if not (coverage[0] <= row_start < coverage[1]):
             skipped += 1
             continue
 
@@ -206,6 +217,7 @@ def push_intervals(
     api_token: str | None,
     out: IO[str],
     check_deleted: bool = True,
+    fetch_window: tuple[dt.date, dt.date] | None = None,
 ) -> dict:
     """投入対象を選び、上限内で書き込む
 
@@ -219,7 +231,8 @@ def push_intervals(
     dict
         {'pending': int, 'skipped': int, 'pushed': int, 'carried_over': int}
     """
-    pending, skipped = select_pending(intervals, ledger_df, entries_df, check_deleted=check_deleted)
+    pending, skipped = select_pending(intervals, ledger_df, entries_df,
+                                     check_deleted=check_deleted, fetch_window=fetch_window)
     pending = sorted(pending, key=lambda i: i.start)
 
     to_push = pending[:max_writes]
@@ -241,7 +254,9 @@ def push_intervals(
 
     me = toggl_client.fetch_me(api_token)
     workspace_id = me.get('default_workspace_id')
-    project_map = {p['name']: p['id'] for p in (me.get('projects') or [])}
+    # me['projects'] は private プロジェクトを落とすので使わない（client.fetch_projects 参照）
+    project_map = {name: pid
+                   for pid, name in toggl_client.fetch_projects(api_token, workspace_id).items()}
 
     ledger_rows = []
     pushed = 0

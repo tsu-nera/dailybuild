@@ -55,38 +55,92 @@ def test_in_ledger_and_in_csv_is_skipped():
     assert skipped == 1
 
 
-def test_deleted_in_toggl_within_coverage_is_repushed():
-    """台帳にあるが time_entries.csv に居らず、start がCSVのカバー範囲内 → 再投入対象"""
+def test_deleted_in_toggl_within_fetch_window_is_repushed():
+    """台帳にあるが time_entries.csv に居らず、start が直近 fetch 窓の中 → 再投入対象"""
     intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
     ledger = _ledger_df([{
         'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
     }])
-    # CSVのカバー範囲は 08-19〜08-22 だが id=999 は居ない(手動削除された)
+    # 08-19〜08-22 を fetch したのに id=999 が返ってこない = 手動削除された
     entries = _entries_df([
         {'id': '111', 'start': '2026-08-19 08:00:00'},
         {'id': '222', 'start': '2026-08-22 08:00:00'},
     ])
-    pending, skipped = select_pending(intervals, ledger, entries, check_deleted=True)
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)))
     assert pending == intervals
     assert skipped == 0
 
 
-def test_deleted_but_outside_coverage_is_not_repushed():
-    """カバー範囲外は「未取得」と区別できないので再投入しない（安全弁）"""
+def test_deleted_but_outside_fetch_window_is_not_repushed():
+    """fetch 窓の外は「未取得」と区別できないので再投入しない（安全弁）"""
     intervals = [_interval('100', '2026-07-01T22:00:00', '2026-07-02T06:00:00')]
     ledger = _ledger_df([{
         'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-07-01T22:00:00+09:00', 'pushed_at': '2026-07-02T07:00:00+09:00',
     }])
-    # CSVのカバー範囲は 08月のみ。7月分の削除有無は判定できない
     entries = _entries_df([
         {'id': '111', 'start': '2026-08-19 08:00:00'},
         {'id': '222', 'start': '2026-08-22 08:00:00'},
     ])
-    pending, skipped = select_pending(intervals, ledger, entries, check_deleted=True)
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)))
     assert pending == []
     assert skipped == 1
+
+
+def test_entry_pushed_before_fetch_window_is_not_repushed():
+    """回帰: 睡眠の start は対象日の前日夜。fetch と push を同じ --days で回すと
+    投入済みエントリがどの fetch 窓にも入らず、毎回「削除された」と誤判定されて
+    重複投入されていた。CSV の start の min/max を窓に使うと再発する"""
+    intervals = [_interval('100', '2026-08-23T22:46:00', '2026-08-24T07:24:00')]
+    ledger = _ledger_df([{
+        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-23T22:46:00+09:00', 'pushed_at': '2026-08-25T11:01:00+09:00',
+    }])
+    # CSV は 08-12 から積み上がっている（min/max を使うと 08-23 はカバー内に見える）
+    entries = _entries_df([
+        {'id': '111', 'start': '2026-08-12 09:07:00'},
+        {'id': '222', 'start': '2026-08-24 22:08:00'},
+    ])
+    # だが直近 fetch は --days 2 で 08-24〜08-25 しか取りに行っていない
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 24), dt.date(2026, 8, 25)))
+    assert pending == []
+    assert skipped == 1
+
+
+def test_no_fetch_window_disables_deletion_check():
+    """fetch 期間の記録が無ければ削除検出はしない（fetch_state.json 未生成の環境）"""
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+    ledger = _ledger_df([{
+        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
+    }])
+    entries = _entries_df([{'id': '111', 'start': '2026-08-20 08:00:00'}])
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True, fetch_window=None)
+    assert pending == []
+    assert skipped == 1
+
+
+def test_fetch_window_end_day_is_inclusive():
+    """窓の end は日付。その日の 23:59 に始まるエントリも判定対象に含む"""
+    intervals = [_interval('100', '2026-08-22T23:59:00', '2026-08-23T06:00:00')]
+    ledger = _ledger_df([{
+        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-22T23:59:00+09:00', 'pushed_at': '2026-08-23T07:00:00+09:00',
+    }])
+    entries = _entries_df([{'id': '111', 'start': '2026-08-22 08:00:00'}])
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)))
+    assert pending == intervals
+    assert skipped == 0
 
 
 def test_max_writes_carries_over_excess():

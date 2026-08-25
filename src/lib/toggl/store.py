@@ -6,6 +6,7 @@ fetch 側のマージ保存と show 側の読み込みをまとめる。
 """
 
 import datetime as dt
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -16,6 +17,11 @@ from lib.utils.private_data import require_private_path
 BASE_DIR = Path(__file__).resolve().parents[3]
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
 CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv')
+
+# 直近の fetch がどの期間を取りに行ったかの記録。CSV は過去分が積み上がるだけで
+# 「いつの期間を実際に取得したか」を持たないため、push の削除検出がこれを要る
+# （詳細は push.select_pending）
+FETCH_STATE_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'fetch_state.json')
 
 JST = dt.timezone(dt.timedelta(hours=9))
 
@@ -100,6 +106,27 @@ def save_merged(df_new: pd.DataFrame) -> pd.DataFrame:
     CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
     df_merged.to_csv(CSV_FILE, index=False)
     return df_merged
+
+
+def save_fetch_window(start: dt.date, end: dt.date) -> None:
+    """直近 fetch の対象期間を記録する（両端を含む日付）"""
+    FETCH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    FETCH_STATE_FILE.write_text(json.dumps({
+        'start': start.isoformat(),
+        'end': end.isoformat(),
+        'fetched_at': dt.datetime.now(JST).isoformat(),
+    }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def load_fetch_window() -> tuple[dt.date, dt.date] | None:
+    """直近 fetch の対象期間。記録が無い/壊れていれば None"""
+    if not FETCH_STATE_FILE.exists():
+        return None
+    try:
+        state = json.loads(FETCH_STATE_FILE.read_text(encoding='utf-8'))
+        return dt.date.fromisoformat(state['start']), dt.date.fromisoformat(state['end'])
+    except (json.JSONDecodeError, KeyError, ValueError):
+        return None
 
 
 def load_entries() -> pd.DataFrame:

@@ -92,25 +92,49 @@ def fetch_me(api_token: str) -> dict:
     return response.json()
 
 
-def fetch_projects(api_token: str) -> dict[int, str]:
+PROJECTS_PAGE_SIZE = 200
+
+
+def fetch_projects(api_token: str, workspace_id: int | None = None) -> dict[int, str]:
     """プロジェクトID → プロジェクト名の対応表を取得
 
+    /me?with_related_data=true の projects は **private プロジェクトを含まない**。
+    そちらを使うと private プロジェクト（実測: 65件中45件）が名前解決に失敗し、
+    push は project_id 無しで黙って投入してしまう。ワークスペースの
+    /projects を使うこと。
+
+    workspace_id を渡さない場合は /me を1回追加で叩いて解決する（クォータを
+    1消費する）。呼び出し側が既に持っているなら渡すこと。
+
     プロジェクトが未設定の場合でもタイムエントリは取得できるため、
-    projects が空/欠落でも例外にせず空 dict を返す。
+    応答が空でも例外にせず空 dict を返す。
 
     Parameters
     ----------
     api_token : str
         Toggl Track の API token
+    workspace_id : int | None
+        対象ワークスペース。None なら /me の default_workspace_id を使う
 
     Returns
     -------
     dict[int, str]
         {project_id: project_name}
     """
-    data = fetch_me(api_token)
-    projects = data.get('projects') or []
-    return {p['id']: p['name'] for p in projects}
+    if workspace_id is None:
+        workspace_id = fetch_me(api_token).get('default_workspace_id')
+
+    projects: dict[int, str] = {}
+    page = 1
+    while True:
+        response = _get(api_token, f'/workspaces/{workspace_id}/projects',
+                        {'per_page': PROJECTS_PAGE_SIZE, 'page': page})
+        batch = response.json() or []
+        projects.update({p['id']: p['name'] for p in batch})
+        if len(batch) < PROJECTS_PAGE_SIZE:
+            break
+        page += 1
+    return projects
 
 
 def create_time_entry(api_token: str, workspace_id: int, payload: dict) -> dict:

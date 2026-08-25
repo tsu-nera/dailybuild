@@ -98,6 +98,10 @@ def run_fetch(args, out: IO[str]) -> None:
     entries = toggl_client.fetch_time_entries(creds['api_token'], start, end)
     projects = toggl_client.fetch_projects(creds['api_token'])
 
+    # 取得できた時点で窓を記録する。0件でも「その期間は取りに行った」は事実で、
+    # push の削除検出はこの記録だけを根拠にする（CSV の min/max では代用不可）
+    store.save_fetch_window(start, end)
+
     df_new = store.build_dataframe(entries, projects)
 
     if df_new.empty:
@@ -242,6 +246,17 @@ def run_push(args, out: IO[str]) -> None:
         print("⚠️ time_entries.csv が無いか古い（前日より前）。"
               "台帳のみで判定し、Toggl側の手動削除は検出しない", file=out)
 
+    fetch_window = store.load_fetch_window()
+    if not stale and fetch_window is None:
+        print("⚠️ 直近 fetch の期間記録が無い（fetch_state.json 未生成）。"
+              "Toggl側の手動削除は検出しない。fetch を一度回せば記録される", file=out)
+    elif not stale and fetch_window[0] > since - dt.timedelta(days=1):
+        # 睡眠エントリの start は対象日の前日夜に来る。fetch 窓がそこまで
+        # 遡っていないと「未取得」を「削除された」と誤読しうるので検出を諦める
+        print(f"⚠️ 直近 fetch の期間 {fetch_window[0]}〜{fetch_window[1]} が "
+              f"push 対象期間 {since}〜{until} の前日をカバーしていない。"
+              "その範囲の手動削除は検出しない", file=out)
+
     ledger_df = toggl_push.load_ledger()
 
     api_token = None
@@ -258,6 +273,7 @@ def run_push(args, out: IO[str]) -> None:
         api_token=api_token,
         out=out,
         check_deleted=not stale,
+        fetch_window=fetch_window,
     )
 
     pending = result['pending']
