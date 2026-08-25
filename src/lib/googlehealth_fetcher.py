@@ -17,6 +17,7 @@ import pandas as pd
 
 from .clients import googlehealth_api
 from .utils import csv_utils
+from .utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent.parent
 DATA_DIR = BASE_DIR / 'data' / 'fitbit'
@@ -108,7 +109,7 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
     df.set_index(date_col, inplace=True)
 
     out_path = get_output_path(endpoint)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(out_path.parent)
 
     if not overwrite:
         df = csv_utils.merge_csv(df, out_path, date_col)

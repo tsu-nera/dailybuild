@@ -34,6 +34,8 @@ def main():
     parser.add_argument('--overwrite', action='store_true', help='既存CSVを上書き（既定はマージ）')
     parser.add_argument('--allow-history-rewrite', action='store_true',
                         help='履歴境界より前も取得する（既存の過去の値が書き換わる。Issue #50）')
+    parser.add_argument('--non-interactive', action='store_true',
+                        help='トークンが無効でもブラウザを開かずエラー終了する（cron 用）')
     args = parser.parse_args()
 
     start_date = dt.date.fromisoformat(args.start_date) if args.start_date else None
@@ -43,7 +45,7 @@ def main():
     print('Google Health データ取得')
     print('=' * 70)
 
-    creds = googlehealth_api.authorize()
+    creds = googlehealth_api.authorize(interactive=not args.non_interactive)
 
     if args.endpoint:
         results = {args.endpoint: googlehealth_fetcher.fetch_endpoint(
