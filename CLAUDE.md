@@ -61,6 +61,8 @@ uv run scripts/toggl.py current          # 計測中のエントリを表示
 uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
 uv run scripts/fetch_emotion.py      # 気分記録（Google Form回答）取得
+uv run scripts/fetch_environment.py --update  # 室内環境（CO2/温度/湿度）差分取得
+uv run scripts/fetch_environment.py --raw     # DPコード一覧（マッピング同定用）
 
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 
@@ -186,6 +188,34 @@ MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制�
 `foods_master.csv` に追記する（`source=manual`）。`build-master` は既存 CSV の
 `source != mext` の行を読み戻してから書くので、成分表を取り直しても手入力分は消えない。
 
+### 室内環境（CO2/温度/湿度）
+
+就寝中のCO2を測るのが目的。LSENLTY の Tuya 系センサーから `data/environment.csv` に
+5分刻みで蓄積する。ハマりどころ:
+
+- **デバイスは値が変化しなくても1秒ごとに送る。** 1日約26万件になり、素直に全件取得
+  すると約2,600コール・27分。API 側に集計・リサンプル機能は無い（統計APIは別サブスク
+  リプションが要り、`No permissions` で弾かれる）
+- そこで **5分境界ごとに60秒の窓だけを引き、窓内を平均する**。1境界1コールで済む。
+  `codes` に3項目まとめて渡せる（`v2.0/cloud/thing/{id}/report-logs`）
+- `size` は **100が上限**。`v1.0/logs` は200以上を指定しても100しか返さず、
+  `v2.0/report-logs` は `Parameter error (40000303)` で落ちる
+- `report-logs` は **`codes` が必須**。省くと `illegal param (1110)`。全DPを見たい
+  `--raw` は `v1.0/logs` を使う
+- **ログ照会にレート制限がある**（`40000309 The log query is too frequent`）。実測で
+  無待機は全滅、1.5秒間隔なら40回連続成功。API のレイテンシ自体が約1.3秒あるので
+  詰めても速くならない
+- **窓が閉じていない境界は取らない。** 途中までの平均が確定値としてCSVに載ると、
+  以後スキップ対象になって二度と取り直されない
+- 窓が0件の境界は**欠測のまま残す**。デバイスのオフライン時間と測定値の不在を
+  区別できなくなるため補間しない。ただし欠測境界はスキップ対象にならず毎回
+  引き直されるので、日次は `--update`（CSVの最終時刻からの差分）で回す
+- Tuya のログは**最大7日**しか遡れない。オフライン中の値はデバイスに残らないので、
+  **穴は原理的に埋められない**
+
+デバイスは建物提供Wi-Fi（WPA2/WPA3混在 + 802.11ax）に association できない。
+WiMAXルータ経由で常時接続している。詳細は Issue #42。
+
 ### MoneyForward ME
 
 公式 API が無いため、Playwright で保持したログインセッションを使って
@@ -307,6 +337,7 @@ df_filtered = filter_dataframe_by_period(
 - `toggl_creds.json` - Toggl Track API（api_token必須）
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
+- `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
