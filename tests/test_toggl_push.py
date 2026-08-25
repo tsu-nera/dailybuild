@@ -11,7 +11,9 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import pytest
 
-from lib.toggl.push import Interval, is_entries_csv_stale, push_intervals, select_pending
+from lib.toggl.push import (
+    Interval, build_payload, is_entries_csv_stale, push_intervals, select_pending,
+)
 from lib.toggl import sources as toggl_sources
 
 JST = ZoneInfo('Asia/Tokyo')
@@ -69,7 +71,8 @@ def test_deleted_in_toggl_within_fetch_window_is_repushed():
     ])
     pending, skipped = select_pending(
         intervals, ledger, entries, check_deleted=True,
-        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)))
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)),
+        fetched_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=JST))
     assert pending == intervals
     assert skipped == 0
 
@@ -138,7 +141,8 @@ def test_fetch_window_end_day_is_inclusive():
     entries = _entries_df([{'id': '111', 'start': '2026-08-22 08:00:00'}])
     pending, skipped = select_pending(
         intervals, ledger, entries, check_deleted=True,
-        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)))
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)),
+        fetched_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=JST))
     assert pending == intervals
     assert skipped == 0
 
@@ -344,3 +348,63 @@ def test_exercise_disabled_returns_empty(tmp_path, monkeypatch):
         dt.date(2026, 8, 20), dt.date(2026, 8, 20), config, JST,
     )
     assert intervals == []
+
+
+# =============================================================================
+# 回帰: fetch を挟まない再 push / 秒未満のタイムスタンプ
+# =============================================================================
+
+def test_entry_pushed_after_last_fetch_is_not_repushed():
+    """回帰: fetch を挟まずに push を2回叩くと重複投入していた
+
+    投入直後のエントリは、次の fetch までは CSV に居なくて当たり前。
+    それを「手動削除された」と読むと、2回目の push が同じ運動をもう1本作る
+    （2026-08-25 に実際に発生。サイクリング2件が Toggl 上で二重になった）。
+    """
+    intervals = [_interval('100', '2026-08-25T10:11:16', '2026-08-25T10:43:42')]
+    ledger = _ledger_df([{
+        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-25T10:11:16+09:00', 'pushed_at': '2026-08-25T22:17:44+09:00',
+    }])
+    # CSV は 22:10 の fetch 時点のもの。その後 22:17 に投入した id=999 は
+    # まだ一度も取りに行っていないので、居なくて当たり前
+    entries = _entries_df([{'id': '111', 'start': '2026-08-25 09:00:00'}])
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 25), dt.date(2026, 8, 25)),
+        fetched_at=dt.datetime(2026, 8, 25, 22, 10, 0, tzinfo=JST))
+    assert pending == []
+    assert skipped == 1
+
+
+def test_unknown_pushed_at_is_not_repushed():
+    """pushed_at が読めないときは再投入しない側へ倒す"""
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+    ledger = _ledger_df([{
+        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-20T22:00:00+09:00', 'pushed_at': None,
+    }])
+    entries = _entries_df([{'id': '111', 'start': '2026-08-20 08:00:00'}])
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)),
+        fetched_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=JST))
+    assert pending == []
+    assert skipped == 1
+
+
+def test_build_payload_truncates_subsecond():
+    """回帰: Toggl は秒未満を含む RFC3339 を 400 で弾く
+
+    Health Connect 由来のセッションはミリ秒付きで届く。
+    """
+    start = dt.datetime(2026, 8, 25, 19, 9, 17, 944000, tzinfo=JST)
+    stop = dt.datetime(2026, 8, 25, 19, 21, 1, 168000, tzinfo=JST)
+    interval = Interval(
+        source='googlehealth_exercise', source_id='1', start=start, stop=stop,
+        description='サイクリング', project='サイクリング', tags=('auto',),
+    )
+    payload = build_payload(interval, 88463, {'サイクリング': 222011943})
+    assert payload['start'] == '2026-08-25T19:09:17+09:00'
+    assert payload['stop'] == '2026-08-25T19:21:01+09:00'
+    assert payload['duration'] == 704

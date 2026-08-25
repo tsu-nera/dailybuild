@@ -105,12 +105,33 @@ def fetch_window_bounds(fetch_window: tuple[dt.date, dt.date] | None) -> tuple[p
     return pd.Timestamp(start), pd.Timestamp(end) + pd.Timedelta(days=1)
 
 
+def _pushed_before_fetch(pushed_at, fetched_at: dt.datetime | None) -> bool:
+    """その投入は直近 fetch より前か（＝CSV に居ないなら削除されたと言えるか）
+
+    fetched_at が無い、または pushed_at が読めない場合は False を返す。
+    「削除されたか分からない」を「再投入する」に倒すと重複が増えるため、
+    判断できないときは再投入しない側へ寄せる。
+    """
+    if fetched_at is None:
+        return False
+    try:
+        pushed = pd.Timestamp(pushed_at)
+    except (ValueError, TypeError):
+        return False
+    if pushed is pd.NaT or pd.isna(pushed):
+        return False
+    if pushed.tzinfo is None:
+        pushed = pushed.tz_localize(fetched_at.tzinfo)
+    return pushed < pd.Timestamp(fetched_at)
+
+
 def select_pending(
     intervals: list[Interval],
     ledger_df: pd.DataFrame,
     entries_df: pd.DataFrame | None,
     check_deleted: bool = True,
     fetch_window: tuple[dt.date, dt.date] | None = None,
+    fetched_at: dt.datetime | None = None,
 ) -> tuple[list[Interval], int]:
     """投入対象の Interval と skip 件数を返す
 
@@ -129,6 +150,8 @@ def select_pending(
     fetch_window : tuple[date, date] | None
         直近 fetch が取りに行った期間（両端を含む）。None なら削除検出を行わない。
         CSV の start の min/max で代用してはいけない（モジュール docstring 参照）
+    fetched_at : datetime | None
+        直近 fetch を実行した時刻。これより後に投入したエントリは削除判定から外す
 
     Returns
     -------
@@ -163,6 +186,14 @@ def select_pending(
             skipped += 1
             continue
 
+        # 直近 fetch より後に投入したものは、まだ一度も取りに行っていないので
+        # CSV に居なくて当たり前。ここを見ないと、fetch を挟まずに push を
+        # 2回叩いただけで「削除された」と誤読して重複投入する。
+        # pushed_at が読めないものも、疑わしきは再投入しない側に倒す
+        if not _pushed_before_fetch(row.get('pushed_at'), fetched_at):
+            skipped += 1
+            continue
+
         # fetch 窓の外は「未取得」と「削除済み」が区別できないためskip。
         # time_entries.csv の start は tz-naive JST なので、台帳側(tz-aware)も
         # tzinfoを落として比較する（どちらも同じJSTの壁時計時刻）
@@ -192,13 +223,17 @@ def resolve_project_id(project_name: str, project_map: dict[str, int]) -> int | 
 
 def build_payload(interval: Interval, workspace_id: int, project_map: dict[str, int]) -> dict:
     """Toggl API へのPOSTペイロードを組み立てる"""
+    # Toggl は秒未満を含む RFC3339 を 400 で弾く。Health Connect 由来の
+    # セッションはミリ秒付きで届くので、秒に丸めてから渡す
+    start = interval.start.replace(microsecond=0)
+    stop = interval.stop.replace(microsecond=0)
     payload = {
         'created_with': 'dailybuild',
         'workspace_id': workspace_id,
         'description': interval.description,
-        'start': interval.start.isoformat(),
-        'stop': interval.stop.isoformat(),
-        'duration': int((interval.stop - interval.start).total_seconds()),
+        'start': start.isoformat(),
+        'stop': stop.isoformat(),
+        'duration': int((stop - start).total_seconds()),
         'tags': list(interval.tags),
         'billable': False,
     }
@@ -218,6 +253,7 @@ def push_intervals(
     out: IO[str],
     check_deleted: bool = True,
     fetch_window: tuple[dt.date, dt.date] | None = None,
+    fetched_at: dt.datetime | None = None,
 ) -> dict:
     """投入対象を選び、上限内で書き込む
 
@@ -232,7 +268,8 @@ def push_intervals(
         {'pending': int, 'skipped': int, 'pushed': int, 'carried_over': int}
     """
     pending, skipped = select_pending(intervals, ledger_df, entries_df,
-                                     check_deleted=check_deleted, fetch_window=fetch_window)
+                                     check_deleted=check_deleted, fetch_window=fetch_window,
+                                     fetched_at=fetched_at)
     pending = sorted(pending, key=lambda i: i.start)
 
     to_push = pending[:max_writes]

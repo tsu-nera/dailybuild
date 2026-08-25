@@ -257,6 +257,7 @@ def run_push(args, out: IO[str]) -> None:
               "台帳のみで判定し、Toggl側の手動削除は検出しない", file=out)
 
     fetch_window = store.load_fetch_window()
+    fetched_at = store.load_fetched_at()
     if not stale and fetch_window is None:
         print("⚠️ 直近 fetch の期間記録が無い（fetch_state.json 未生成）。"
               "Toggl側の手動削除は検出しない。fetch を一度回せば記録される", file=out)
@@ -284,6 +285,7 @@ def run_push(args, out: IO[str]) -> None:
         out=out,
         check_deleted=not stale,
         fetch_window=fetch_window,
+        fetched_at=fetched_at,
     )
 
     pending = result['pending']
