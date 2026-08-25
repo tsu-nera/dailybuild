@@ -71,6 +71,8 @@ uv run scripts/toggl.py show --update        # 取得してから表示
 
 uv run scripts/mf.py show                    # MF 月次サマリ（直近3ヶ月）
 uv run scripts/mf.py show --month 1 --year 2026  # 指定月
+uv run scripts/mf.py show --year 2018            # 指定年を丸ごと
+uv run scripts/mf.py show --unit year            # 年次（既定で全期間）
 uv run scripts/mf.py show --unit day --days 14   # 日次
 uv run scripts/mf.py show --list             # 明細一覧
 uv run scripts/mf.py show --update           # 取得してから表示
@@ -102,6 +104,11 @@ CSV が古い/無い場合、`fetch_state.json` が無い場合、fetch 窓が p
 
 なお削除されたエントリは CSV に残り続けるため、**一度 CSV に入った投入済みエントリの
 手動削除は原理的に検出できない**。検出が効くのは CSV にまだ入っていないものだけ。
+
+MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制限は無い。2015-01 以前は
+0 件 = MF 側に記録が無い）。`--unit year` の既定期間はこの最古年から当月までで、
+`EARLIEST_YEAR` に持たせてある。ただし連携が壊れている口座の明細は過去分も丸ごと
+欠けるため、古い年ほど支出は過少に出る。
 
 `mf.py show` は `計算対象=1` の明細だけを集計する。口座間の振替は MF 側で必ず
 `計算対象=0` が付くのでこの絞り込みだけで落ちる。MF は引き落とし予定日の

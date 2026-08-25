@@ -17,6 +17,8 @@ Usage:
 
     python scripts/mf.py show                       # 月次（直近3ヶ月）
     python scripts/mf.py show --months 12
+    python scripts/mf.py show --unit year           # 年次（全期間）
+    python scripts/mf.py show --year 2018           # 2018年を丸ごと
     python scripts/mf.py show --month 1 --year 2026 # 指定月
     python scripts/mf.py show --unit day --days 14  # 日次
     python scripts/mf.py show --list                # 明細一覧
@@ -52,6 +54,10 @@ PENDING_STATUS = '更新中'
 
 # 取得・表示の既定月数
 DEFAULT_MONTHS = 3
+
+# MF に明細が存在する最古の年（2015-02 が初出。それ以前は 0 件）。
+# --unit year の既定期間を全期間にするために使う
+EARLIEST_YEAR = 2015
 
 
 def parse_month(text: str) -> dt.date:
@@ -152,6 +158,18 @@ def filter_recent_months(df: pd.DataFrame, months: int) -> pd.DataFrame:
     return df[(df['date'] >= start) & (df['date'] <= end)]
 
 
+def default_months(args) -> int:
+    """期間指定が無いときの既定月数。
+
+    --unit year で直近3ヶ月だけ出しても年次の表にならないので、年次のときは
+    全期間（MF の最古は 2015-02）を既定にする。
+    """
+    if args.unit == 'year':
+        today = dt.date.today()
+        return (today.year - EARLIEST_YEAR) * 12 + today.month
+    return DEFAULT_MONTHS
+
+
 def cmd_fetch(args) -> None:
     if args.login and (args.refresh or args.year or args.start or args.end):
         args.parser.error('--login は他のオプションと同時に指定できない')
@@ -176,8 +194,12 @@ def cmd_show(args) -> None:
             df=df, date_column='date',
             week=week, month=month, year=year, days=args.days,
         )
+    elif year is not None:
+        # --year 単独。filter_dataframe_by_period は year だけでは絞れないので
+        # ここで年を切る（黙って直近Nヶ月にフォールバックさせない）
+        df = df[df['date'].dt.year == year]
     else:
-        df = filter_recent_months(df, args.months or DEFAULT_MONTHS)
+        df = filter_recent_months(df, args.months or default_months(args))
 
     if df.empty:
         print('該当期間の明細がありません', file=sys.stderr)
@@ -242,7 +264,8 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_parser.set_defaults(func=cmd_fetch, parser=fetch_parser)
 
     show_parser = subparsers.add_parser('show', help='MoneyForward ME 収入・支出のサマリを表示')
-    show_parser.add_argument('--unit', choices=['day', 'week', 'month'], default='month',
+    show_parser.add_argument('--unit', choices=['day', 'week', 'month', 'year'],
+                             default='month',
                              help='集計単位（デフォルト: month）')
     show_parser.add_argument('--months', type=int, default=None,
                              help=f'直近Nヶ月（--days/--week/--month 未指定時のデフォルト: {DEFAULT_MONTHS}）')
@@ -253,7 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument('--month', type=str, default=None,
                              help='月番号（例: 8）または "current"')
     show_parser.add_argument('--year', type=int, default=None,
-                             help='年（--week/--month 指定時に使用）')
+                             help='年。単独指定でその年を丸ごと（--week/--month と併用も可）')
     show_parser.add_argument('--top', type=int, default=10,
                              help='中項目別・店舗別で表示する件数（デフォルト: 10）')
     show_parser.add_argument('--list', action='store_true',
