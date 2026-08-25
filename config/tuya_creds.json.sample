@@ -1,0 +1,6 @@
+{
+  "api_region": "us",
+  "api_key": "Tuya IoT Platform の Overview に出る Access ID",
+  "api_secret": "同 Access Secret",
+  "device_id": "対象デバイスの Device ID"
+}
