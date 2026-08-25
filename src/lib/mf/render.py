@@ -14,8 +14,8 @@ from lib.mf.store import (
 
 WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
 
-BUCKET_LABEL = {'month': '月', 'week': '週', 'day': '日'}
-UNIT_LABEL = {'month': '月次', 'week': '週次', 'day': '日次'}
+BUCKET_LABEL = {'year': '年', 'month': '月', 'week': '週', 'day': '日'}
+UNIT_LABEL = {'year': '年次', 'month': '月次', 'week': '週次', 'day': '日次'}
 
 # 店舗名（内容）は返礼品名などで際限なく長くなる。表の横伸びを止める表示幅
 NAME_WIDTH = 32
@@ -55,7 +55,9 @@ def format_yen(amount) -> str:
 def add_bucket(df: pd.DataFrame, unit: str) -> pd.DataFrame:
     """集計単位の列 bucket を付与する"""
     df = df.copy()
-    if unit == 'month':
+    if unit == 'year':
+        df['bucket'] = df['date'].dt.strftime('%Y')
+    elif unit == 'month':
         df['bucket'] = df['date'].dt.strftime('%Y-%m')
     elif unit == 'week':
         iso = df['date'].dt.isocalendar()
@@ -87,8 +89,8 @@ def render_balance(df: pd.DataFrame, unit: str) -> str:
     }, index=grouped.index)
 
     # 収入は月1回まとめて入るのに支出は毎日出るため、週次・日次の貯蓄率は
-    # -60000% のような無意味な値になる。月次でだけ出す
-    if unit == 'month':
+    # -60000% のような無意味な値になる。収入の周期以上の単位でだけ出す
+    if unit in ('year', 'month'):
         rate = (balance / grouped['income'] * 100).where(grouped['income'] > 0)
         out['貯蓄率'] = rate.map(lambda v: '-' if pd.isna(v) else f"{v:.1f}%")
 
