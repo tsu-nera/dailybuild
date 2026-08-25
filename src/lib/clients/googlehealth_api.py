@@ -407,7 +407,10 @@ def _drop_overlapping_sessions(sessions: list[dict]) -> list[dict]:
     Google の sleep は、メイン睡眠の内側に重なる短いセッションを別の
     dataPoint として独立に返すことがある（実測: 2022-04〜2026-08 の
     1,331セッション中105件 = 7.9% が他セッションと時間的に重なる。重なる
-    側の長さは10〜480分）。Fitbit にはこの種のレコードが存在せず、
+    側の長さは10〜480分）。ただし**重なりは 2026-05 以降に集中している**。
+    2026-04 以前は0件で、2026-05 は35%、2026-06〜08 は48〜52%。通算の
+    7.9% を見て「めったに発火しない」と誤解しないこと。
+    Fitbit にはこの種のレコードが存在せず、
     そのまま保存すると1日のセッション数が Fitbit 時代より増え、
     mind/body レポートの「昼寝をメイン睡眠として拾う」既知の不具合を
     悪化させる方向に効く。そのため保存前に重なりを解消する。
@@ -419,6 +422,9 @@ def _drop_overlapping_sessions(sessions: list[dict]) -> list[dict]:
     セッションだけを採用する貪欲法にする。
 
     重なり判定: start < 既存end かつ 既存start < end
+
+    対照検証: このフィルタを通すと 2026-06-01〜08-24 の85日すべてで
+    Fitbit の sleep.csv とセッション数が一致する（フィルタ前は 26/85）。
     """
     by_length_desc = sorted(sessions, key=lambda s: s['length'], reverse=True)
 
