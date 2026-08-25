@@ -90,6 +90,22 @@ def test_temperature_skin_matches_existing_csv(creds):
     assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
 
 
+# =============================================================================
+# active_zone_minutes: ゾーン別3列は完全一致するため厳しい許容誤差で検証する
+# （Issue #75）。activity は #70 の壊れた行があるため parity には含めない
+# （PR 本文に理由あり）。
+# =============================================================================
+
+def test_active_zone_minutes_matches_existing_csv(creds):
+    compared, mismatches = _compare(
+        creds, 'active_zone_minutes',
+        ['activeZoneMinutes', 'fatBurnActiveZoneMinutes', 'cardioActiveZoneMinutes',
+         'peakActiveZoneMinutes'],
+    )
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
 def test_fetchers_respect_date_range(creds):
     """期間指定が効いていること（範囲外の日付を返さないこと）"""
     start = dt.date.today() - dt.timedelta(days=10)
@@ -97,10 +113,13 @@ def test_fetchers_respect_date_range(creds):
     for endpoint, fetcher in gh.FETCHERS.items():
         if endpoint == 'sleep':
             continue  # 専用テストで別途検証（戻り値の形が違う）
+        # temperature_core だけ date_column が date_time（"<date> 00:00:00"）
+        date_key = 'date_time' if endpoint == 'temperature_core' else 'date'
         rows = fetcher(creds, start, end)
         for row in rows:
-            assert start.isoformat() <= row['date'] <= end.isoformat(), (
-                f'{endpoint}: 範囲外の日付 {row["date"]}'
+            date = row[date_key][:10]
+            assert start.isoformat() <= date <= end.isoformat(), (
+                f'{endpoint}: 範囲外の日付 {row[date_key]}'
             )
 
 

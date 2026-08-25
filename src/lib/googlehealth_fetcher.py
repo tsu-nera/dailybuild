@@ -55,6 +55,18 @@ ENDPOINTS = {
         'kind': 'period_replace',
         'extra_csv': 'sleep_levels',
     },
+    'activity': {
+        'description': '活動量（歩数・距離・活動時間・消費カロリー）',
+        'date_column': 'date',
+    },
+    'active_zone_minutes': {
+        'description': 'アクティブゾーン分',
+        'date_column': 'date',
+    },
+    'temperature_core': {
+        'description': '深部体温',
+        'date_column': 'date_time',
+    },
 }
 
 

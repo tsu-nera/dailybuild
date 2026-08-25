@@ -359,3 +359,162 @@ def test_dropped_overlap_count_is_logged(fake_points, capsys):
     captured = capsys.readouterr()
     assert '1件' in captured.out
     assert '除外' in captured.out
+
+
+# =============================================================================
+# dailyRollUp 経路（activity / active_zone_minutes / temperature_core, Issue #75）
+# =============================================================================
+
+def _rollup_point(year, month, day, **payload):
+    """rollupDataPoints の1要素相当を組み立てる（payload は {payloadKey: 値}）"""
+    point = {'civilStartTime': {'date': {'year': year, 'month': month, 'day': day}}}
+    point.update(payload)
+    return point
+
+
+@pytest.fixture
+def fake_post(monkeypatch):
+    """googlehealth_api._post を差し替えて呼び出しを記録しつつ任意の応答を返す"""
+    def install(responder):
+        calls = []
+
+        def fake(creds, path, body):
+            calls.append((path, body))
+            return responder(path, body)
+
+        monkeypatch.setattr(googlehealth_api, '_post', fake)
+        return calls
+    return install
+
+
+def test_daily_rollup_splits_by_type_max_duration_total_calories(fake_post):
+    """total-calories は14日上限。40日分の要求は3チャンクに分割されること"""
+    calls = fake_post(lambda path, body: {'rollupDataPoints': []})
+    googlehealth_api._daily_rollup(
+        None, 'total-calories', dt.date(2026, 1, 1), dt.date(2026, 2, 9)  # 40日
+    )
+    assert len(calls) == 3
+    for path, body in calls:
+        assert 'total-calories' in path
+        s = body['range']['start']['date']
+        e = body['range']['end']['date']
+        # range.end は排他的（実測）。raw span = end - start が maxDurationDays 以内であること
+        span = (dt.date(e['year'], e['month'], e['day']) - dt.date(s['year'], s['month'], s['day'])).days
+        assert span <= 14
+
+
+def test_daily_rollup_splits_by_type_max_duration_steps(fake_post):
+    """steps は90日上限。100日分の要求は2チャンクに分割されること"""
+    calls = fake_post(lambda path, body: {'rollupDataPoints': []})
+    googlehealth_api._daily_rollup(
+        None, 'steps', dt.date(2026, 1, 1), dt.date(2026, 4, 10)  # 100日
+    )
+    assert len(calls) == 2
+    for path, body in calls:
+        s = body['range']['start']['date']
+        e = body['range']['end']['date']
+        span = (dt.date(e['year'], e['month'], e['day']) - dt.date(s['year'], s['month'], s['day'])).days
+        assert span <= 90
+
+
+def test_active_zone_minutes_sums_zones(fake_post):
+    """activeZoneMinutes が fatBurn+cardio+peak の単純和で算出されること"""
+    fake_post(lambda path, body: {'rollupDataPoints': [
+        _rollup_point(2026, 8, 11, activeZoneMinutes={
+            'sumInFatBurnHeartZone': '20', 'sumInCardioHeartZone': '15', 'sumInPeakHeartZone': '9',
+        }),
+    ]})
+    rows = googlehealth_api.fetch_active_zone_minutes(None, dt.date(2026, 8, 11), dt.date(2026, 8, 11))
+    assert rows == [{
+        'date': '2026-08-11',
+        'activeZoneMinutes': 44.0,
+        'fatBurnActiveZoneMinutes': 20.0,
+        'cardioActiveZoneMinutes': 15.0,
+        'peakActiveZoneMinutes': 9.0,
+    }]
+
+
+def _fake_activity_responder(path, body):
+    date = {'year': 2026, 'month': 8, 'day': 15}
+    if 'dataTypes/steps' in path:
+        return {'rollupDataPoints': [_rollup_point(**date, steps={'countSum': '100'})]}
+    if 'dataTypes/distance' in path:
+        return {'rollupDataPoints': [_rollup_point(**date, distance={'millimetersSum': '2000000'})]}
+    if 'dataTypes/active-minutes' in path:
+        return {'rollupDataPoints': [_rollup_point(**date, activeMinutes={
+            'activeMinutesRollupByActivityLevel': [
+                {'activityLevel': 'LIGHT', 'activeMinutesSum': '50'},
+                {'activityLevel': 'MODERATE', 'activeMinutesSum': '10'},
+                {'activityLevel': 'VIGOROUS', 'activeMinutesSum': '5'},
+            ],
+        })]}
+    if 'dataTypes/total-calories' in path:
+        return {'rollupDataPoints': [_rollup_point(**date, totalCalories={'kcalSum': 2000.5})]}
+    raise AssertionError(f'unexpected path: {path}')
+
+
+def test_activity_activity_calories_and_sedentary_minutes_are_none_with_warning(fake_post, capsys):
+    fake_post(_fake_activity_responder)
+
+    rows = googlehealth_api.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row['activityCalories'] is None
+    assert row['sedentaryMinutes'] is None
+
+    captured = capsys.readouterr()
+    assert 'activityCalories' in captured.out
+    assert 'sedentaryMinutes' in captured.out
+
+
+def test_activity_distance_converted_mm_to_km(fake_post):
+    fake_post(_fake_activity_responder)
+    rows = googlehealth_api.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
+    assert rows[0]['distance'] == 2.0  # 2,000,000mm = 2km
+
+
+def test_activity_active_minutes_levels_mapped(fake_post):
+    fake_post(_fake_activity_responder)
+    rows = googlehealth_api.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
+    row = rows[0]
+    assert row['lightlyActiveMinutes'] == 50.0
+    assert row['fairlyActiveMinutes'] == 10.0
+    assert row['veryActiveMinutes'] == 5.0
+    assert row['caloriesOut'] == 2000.5
+    assert row['steps'] == 100.0
+
+
+def test_temperature_core_date_time_is_midnight(fake_post):
+    fake_post(lambda path, body: {'rollupDataPoints': [
+        _rollup_point(2026, 8, 20, coreBodyTemperature={
+            'temperatureCelsiusAvg': 36.4, 'temperatureCelsiusMin': 36.4, 'temperatureCelsiusMax': 36.4,
+        }),
+    ]})
+    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
+    assert rows == [{'date_time': '2026-08-20 00:00:00', 'temperature': 36.4}]
+
+
+def test_temperature_core_warns_on_multiple_measurements(fake_post, capsys):
+    fake_post(lambda path, body: {'rollupDataPoints': [
+        _rollup_point(2026, 8, 21, coreBodyTemperature={
+            'temperatureCelsiusAvg': 36.3, 'temperatureCelsiusMin': 36.1, 'temperatureCelsiusMax': 36.5,
+        }),
+    ]})
+    googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 21), dt.date(2026, 8, 21))
+
+    captured = capsys.readouterr()
+    assert '2026-08-21' in captured.out
+    assert '複数回測定' in captured.out
+
+
+def test_temperature_core_no_warning_when_min_equals_max(fake_post, capsys):
+    fake_post(lambda path, body: {'rollupDataPoints': [
+        _rollup_point(2026, 8, 22, coreBodyTemperature={
+            'temperatureCelsiusAvg': 36.2, 'temperatureCelsiusMin': 36.2, 'temperatureCelsiusMax': 36.2,
+        }),
+    ]})
+    googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 22), dt.date(2026, 8, 22))
+
+    captured = capsys.readouterr()
+    assert '複数回測定' not in captured.out
