@@ -258,15 +258,20 @@ def push_intervals(
     project_map = {name: pid
                    for pid, name in toggl_client.fetch_projects(api_token, workspace_id).items()}
 
+    # プロジェクトが Toggl 側に無いまま投入すると、project 無しのエントリが
+    # 台帳に「投入済み」として残り、後からプロジェクトを作っても直せない。
+    # 投入せず次回に回す（Toggl 側でプロジェクトを作れば自然に流れる）
+    missing = sorted({i.project for i in to_push if i.project not in project_map})
+    if missing:
+        print(f"⚠️ プロジェクトが Toggl 側に無いため投入を見送る: {', '.join(missing)}", file=out)
+        to_push = [i for i in to_push if i.project in project_map]
+
     ledger_rows = []
     pushed = 0
     now_str = dt.datetime.now(load_timezone()).isoformat()
 
     try:
         for interval in to_push:
-            if interval.project not in project_map:
-                print(f"⚠️ プロジェクト '{interval.project}' が Toggl 側に見つからない。project_id無しで投入する", file=out)
-
             payload = build_payload(interval, workspace_id, project_map)
             created = toggl_client.create_time_entry(api_token, workspace_id, payload)
 

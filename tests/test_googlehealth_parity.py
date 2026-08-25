@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from lib import googlehealth_fetcher
 from lib.clients import googlehealth_api as gh
 
 BASE_DIR = Path(__file__).parent.parent
@@ -113,13 +114,13 @@ def test_fetchers_respect_date_range(creds):
     for endpoint, fetcher in gh.FETCHERS.items():
         if endpoint == 'sleep':
             continue  # 専用テストで別途検証（戻り値の形が違う）
-        # temperature_core だけ date_column が date_time（"<date> 00:00:00"）
-        date_key = 'date_time' if endpoint == 'temperature_core' else 'date'
+        # temperature_core は date_time（"<date> 00:00:00"）、exercise は
+        # start（開始時刻）と、型ごとに date_column が違うので先頭10文字で見る
+        column = googlehealth_fetcher.ENDPOINTS[endpoint]['date_column']
         rows = fetcher(creds, start, end)
         for row in rows:
-            date = row[date_key][:10]
-            assert start.isoformat() <= date <= end.isoformat(), (
-                f'{endpoint}: 範囲外の日付 {row[date_key]}'
+            assert start.isoformat() <= row[column][:10] <= end.isoformat(), (
+                f'{endpoint}: 範囲外の日付 {row[column]}'
             )
 
 

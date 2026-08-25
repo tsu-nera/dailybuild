@@ -7,3 +7,36 @@ sources:
     project: 睡眠
     description: "睡眠"
     tags: [auto]
+
+  googlehealth_exercise:
+    enabled: true
+    # 同じ運動が複数プラットフォームから届く（Fitbit の Charge 6 と、
+    # Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を
+    # 別セッションとして返す）。時間が重なったら先に載っている
+    # platform を残し、後ろのものを落とす
+    platform_priority: [FITBIT, HEALTH_CONNECT]
+    # 重なりがこの秒数を超えたら同一セッションとみなす
+    overlap_threshold_sec: 60
+    # ここに無い exerciseType（WALKING / RUNNING / YOGA 等）は投入しない
+    categories:
+      cycling:
+        project: サイクリング
+        description: "サイクリング"
+        tags: [auto]
+        exercise_types: [OUTDOOR_BIKE, BIKING, SPINNING]
+      workout:
+        project: 筋トレ
+        description: "筋トレ"
+        tags: [auto]
+        exercise_types:
+          - WEIGHTS
+          - STRENGTH_TRAINING
+          - WORKOUT
+          - INTERVAL_WORKOUT
+          - CIRCUIT_TRAINING
+          - HIIT
+      meditation:
+        project: 瞑想
+        description: "瞑想"
+        tags: [auto]
+        exercise_types: [MEDITATE]
