@@ -104,7 +104,7 @@ ENDPOINTS = {
         'fetch_fn': 'get_active_zone_minutes_by_date_range',
         'parse_fn': 'parse_active_zone_minutes',
         'date_column': 'date',
-        'max_days': None,  # 最大1095日間
+        'max_days': 1095,  # 1096日を超えるとINVALID_ARGUMENT（実測: 1096日OK / 1097日NG）
         'is_range_api': True,
     },
     'nutrition': {
