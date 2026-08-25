@@ -15,7 +15,8 @@ import fitbit
 # python-fitbit の既定は en_US で、距離=マイル・体温=華氏で返る。
 # メートル法で受け取るため明示的に上書きする。
 # （python-fitbit の Fitbit.METRIC は 'en_UK' という綴り誤りのため使わない）
-UNIT_SYSTEM = 'en_GB'
+UNIT_SYSTEM = 'metric'  # en_GB は距離こそ km だが体重は stone で返る。
+# metric なら体重 kg・距離 km。activity / sleep / activity_logs は en_GB と差分0件（実測）。
 
 
 def load_token(token_file):
@@ -1151,6 +1152,124 @@ def get_spo2_by_date_range(client, start_date, end_date):
     https://dev.fitbit.com/build/reference/web-api/spo2/get-spo2-summary-by-interval/
     """
     return get_by_date_range(client, 'spo2', start_date, end_date, api_version='1')
+
+
+def get_weight_logs_by_date_range(client, start_date, end_date):
+    """
+    期間指定で体重ログ（実測）を取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: {'weight': [...]}
+
+    Note:
+        最大32日間まで（33日以上は 400 Invalid argument）
+
+        time series の /1/user/-/body/weight/ とは別物。あちらは前回値を
+        持ち越して毎日値を返すため、保存すると測っていない日の体重を捏造する。
+        実測だけが要るのでログ側を使う。
+
+    Endpoint: /1/user/-/body/log/weight/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/body/get-weight-log/
+    """
+    return get_by_date_range(client, 'body/log/weight', start_date, end_date, api_version='1')
+
+
+def get_fat_logs_by_date_range(client, start_date, end_date):
+    """
+    期間指定で体脂肪率ログ（実測）を取得
+
+    Args:
+        client: Fitbitクライアント
+        start_date: 開始日（datetime.date）
+        end_date: 終了日（datetime.date）
+
+    Returns:
+        APIレスポンス（dict）: {'fat': [...]}
+
+    Note:
+        最大32日間まで。体重ログと同時測定の場合は logId が一致する
+
+    Endpoint: /1/user/-/body/log/fat/date/{startDate}/{endDate}.json
+    https://dev.fitbit.com/build/reference/web-api/body/get-bodyfat-log/
+    """
+    return get_by_date_range(client, 'body/log/fat', start_date, end_date, api_version='1')
+
+
+def parse_weight_logs(data):
+    """
+    体重ログをリストに変換
+
+    Args:
+        data: get_weight_logs_by_date_rangeの戻り値
+
+    Returns:
+        体重エントリのリスト
+
+    データ構造:
+        - date, time: 測定日時
+        - weight: 体重（kg）
+        - bmi: BMI
+        - fat: 体脂肪率（同時測定時のみ。無い場合はNone）
+        - logId: ミリ秒エポック
+        - source: 測定元（API, Withings など）
+    """
+    entries = data.get('weight', []) if isinstance(data, dict) else []
+    if not entries:
+        return []
+
+    results = []
+    for entry in entries:
+        row = {
+            'date': entry.get('date'),
+            'time': entry.get('time'),
+            'weight': entry.get('weight'),
+            'bmi': entry.get('bmi'),
+            'fat': entry.get('fat'),
+            'logId': entry.get('logId'),
+            'source': entry.get('source'),
+        }
+        results.append(row)
+
+    return results
+
+
+def parse_fat_logs(data):
+    """
+    体脂肪率ログをリストに変換
+
+    Args:
+        data: get_fat_logs_by_date_rangeの戻り値
+
+    Returns:
+        体脂肪率エントリのリスト
+
+    データ構造:
+        - date, time: 測定日時
+        - fat: 体脂肪率（%）
+        - logId: ミリ秒エポック
+        - source: 測定元
+    """
+    entries = data.get('fat', []) if isinstance(data, dict) else []
+    if not entries:
+        return []
+
+    results = []
+    for entry in entries:
+        row = {
+            'date': entry.get('date'),
+            'time': entry.get('time'),
+            'fat': entry.get('fat'),
+            'logId': entry.get('logId'),
+            'source': entry.get('source'),
+        }
+        results.append(row)
+
+    return results
 
 
 def parse_spo2(data):

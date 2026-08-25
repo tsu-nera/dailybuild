@@ -72,6 +72,7 @@ ENDPOINTS = {
         'parse_fn': 'parse_sleep',
         'date_column': 'dateOfSleep',
         'max_days': 100,
+        'merge_keys': ['logId'],
         'has_levels': True,
         'is_time_series_api': True,  # Time Series API（期間指定、1リクエスト）
     },
@@ -200,6 +201,24 @@ ENDPOINTS = {
         'max_days': None,
         'is_time_series_api': False,  # 日付ごとにループ（N日間=Nリクエスト）
         'is_intraday': True,  # Intraday API
+    },
+    'body_weight': {
+        'description': '体重ログ（実測）',
+        'fetch_fn': 'get_weight_logs_by_date_range',
+        'parse_fn': 'parse_weight_logs',
+        'date_column': 'date',
+        'max_days': 31,  # 33日以上で400（実測: 32日OK / 33日NG）
+        'merge_keys': ['logId'],  # 1日に複数回計測しうる
+        'is_range_api': True,
+    },
+    'body_fat': {
+        'description': '体脂肪率ログ（実測）',
+        'fetch_fn': 'get_fat_logs_by_date_range',
+        'parse_fn': 'parse_fat_logs',
+        'date_column': 'date',
+        'max_days': 31,
+        'merge_keys': ['logId'],
+        'is_range_api': True,
     },
     'br_intraday': {
         'description': 'BR Intraday（睡眠ステージ別呼吸数）',
@@ -356,12 +375,14 @@ def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = Fa
     out_path = get_output_path(endpoint)
     ensure_dir(out_path.parent)
 
+    merge_keys = config.get('merge_keys')
+
     if not overwrite:
-        # 睡眠データはlogIdで重複判定（同じ日に複数の睡眠ログがあるため）
-        if endpoint == 'sleep' and 'logId' in df.columns:
+        if merge_keys:
+            # 1日に複数レコードが立つ系（睡眠ログ・体組成ログ）はlogIdで重複判定
             df = csv_utils.merge_csv_by_columns(
                 df, out_path,
-                key_columns=['logId'],
+                key_columns=merge_keys,
                 parse_dates=[date_col],
                 sort_by=[date_col]
             )
@@ -369,16 +390,12 @@ def fetch_endpoint(client, endpoint: str, days: int = None, overwrite: bool = Fa
             # その他のエンドポイントは日付で重複判定
             df.set_index(date_col, inplace=True)
             df = csv_utils.merge_csv(df, out_path, date_col)
-    else:
+    elif not merge_keys:
         # overwriteモードでは既存のインデックス処理を維持
-        if endpoint != 'sleep' or 'logId' not in df.columns:
-            df.set_index(date_col, inplace=True)
+        df.set_index(date_col, inplace=True)
 
-    # CSVに保存（睡眠データはindex=False、その他はindex=True）
-    if endpoint == 'sleep' and 'logId' in df.columns:
-        df.to_csv(out_path, index=False)
-    else:
-        df.to_csv(out_path)
+    # merge_keys を持つ系は index を持たない
+    df.to_csv(out_path, index=not merge_keys)
     print(f"  保存: {out_path} ({len(df)}件)")
 
     result = {'records': len(df), 'path': out_path}
@@ -490,12 +507,14 @@ def _fetch_endpoint_chunked(client, endpoint: str, start_date: dt.date, end_date
     out_path = get_output_path(endpoint)
     ensure_dir(out_path.parent)
 
+    merge_keys = config.get('merge_keys')
+
     if not overwrite:
-        # 睡眠データはlogIdで重複判定（同じ日に複数の睡眠ログがあるため）
-        if endpoint == 'sleep' and 'logId' in df.columns:
+        if merge_keys:
+            # 1日に複数レコードが立つ系（睡眠ログ・体組成ログ）はlogIdで重複判定
             df = csv_utils.merge_csv_by_columns(
                 df, out_path,
-                key_columns=['logId'],
+                key_columns=merge_keys,
                 parse_dates=[date_col],
                 sort_by=[date_col]
             )
@@ -503,16 +522,12 @@ def _fetch_endpoint_chunked(client, endpoint: str, start_date: dt.date, end_date
             # その他のエンドポイントは日付で重複判定
             df.set_index(date_col, inplace=True)
             df = csv_utils.merge_csv(df, out_path, date_col)
-    else:
+    elif not merge_keys:
         # overwriteモードでは既存のインデックス処理を維持
-        if endpoint != 'sleep' or 'logId' not in df.columns:
-            df.set_index(date_col, inplace=True)
+        df.set_index(date_col, inplace=True)
 
-    # CSVに保存（睡眠データはindex=False、その他はindex=True）
-    if endpoint == 'sleep' and 'logId' in df.columns:
-        df.to_csv(out_path, index=False)
-    else:
-        df.to_csv(out_path)
+    # merge_keys を持つ系は index を持たない
+    df.to_csv(out_path, index=not merge_keys)
     print(f"  保存: {out_path} ({len(df)}件)")
 
     result = {'records': len(df), 'path': out_path}
