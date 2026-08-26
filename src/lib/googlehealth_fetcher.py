@@ -83,6 +83,16 @@ ENDPOINTS = {
         'output': GOOGLEHEALTH_DIR / 'exercise.csv',
         'columns': googlehealth_api.EXERCISE_COLUMNS,
     },
+    # カフェインを飲まなかった/記録していない期間は0件が正常状態（allow_empty）。
+    # 他のエンドポイントと違い、0件をエラーにしない（Issue #90）
+    'caffeine': {
+        'description': 'カフェイン摂取',
+        'date_column': 'time',
+        'merge_key': 'id',
+        'output': GOOGLEHEALTH_DIR / 'caffeine.csv',
+        'columns': googlehealth_api.CAFFEINE_COLUMNS,
+        'allow_empty': True,
+    },
 }
 
 
@@ -145,6 +155,12 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
 
     rows = result
     if not rows:
+        if config.get('allow_empty'):
+            # 0件は正常でありうるが、取得の故障とは区別できない旨だけ警告する
+            # （例: カフェインを飲まなかった/記録していない期間）
+            msg = f'{start_date}〜{end_date} のデータが0件。正常な場合もあるが取得の故障とは区別できない'
+            print(f'  ⚠️ {msg}')
+            return {'records': 0, 'path': None}
         # 取得系の沈黙故障と区別できないため、空を成功として扱わない
         msg = f'{start_date}〜{end_date} のデータが0件。Google側に無いか取得が壊れている'
         print(f'  ⚠️ {msg}')

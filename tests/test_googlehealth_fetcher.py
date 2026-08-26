@@ -664,3 +664,131 @@ def test_activity_new_date_has_empty_activity_calories_and_sedentary_minutes(
     row = saved[saved['date'] == '2026-08-20'].iloc[0]
     assert pd.isna(row['activityCalories'])
     assert pd.isna(row['sedentaryMinutes'])
+
+
+# =============================================================================
+# caffeine: nutrition-log から CAFFEINE のみ拾う（Issue #90）
+# =============================================================================
+
+def _nutrition_point(point_id: str, start_time: str, offset: str = '32400s',
+                     caffeine_grams: float | None = None,
+                     package_name: str = 'com.AWSoft.CaffeineClock',
+                     platform: str = 'HEALTH_CONNECT') -> dict:
+    """nutrition-log の dataPoint 1件相当。caffeine_grams=None なら macros のみ
+    （Cronometer/Fitbit 由来の食事ログ）を模す"""
+    nutrients = [{'quantity': {'grams': 12.3}, 'nutrient': 'CARBOHYDRATES'}]
+    if caffeine_grams is not None:
+        nutrients.append({'quantity': {'grams': caffeine_grams}, 'nutrient': 'CAFFEINE'})
+    return {
+        'name': f'users/me/dataTypes/nutrition-log/dataPoints/{point_id}',
+        'dataSource': {
+            'recordingMethod': 'UNKNOWN',
+            'device': {},
+            'application': {'packageName': package_name},
+            'platform': platform,
+        },
+        'nutritionLog': {
+            'interval': {'startTime': start_time, 'startUtcOffset': offset},
+            'nutrients': nutrients,
+        },
+    }
+
+
+@pytest.fixture
+def caffeine_dir(tmp_path, monkeypatch):
+    """ENDPOINTS['caffeine']['output'] を差し替える
+
+    exercise 等と違い GOOGLEHEALTH_DIR は fetch_endpoint 実行時ではなく
+    モジュール読み込み時に ENDPOINTS へ束縛済みなので、GOOGLEHEALTH_DIR を
+    monkeypatch しても効かない。config の output を直接差し替える。
+    """
+    out = tmp_path / 'caffeine.csv'
+    monkeypatch.setitem(ghf.ENDPOINTS['caffeine'], 'output', out)
+    return out
+
+
+def test_fetch_caffeine_keeps_only_caffeine_nutrient(fake_get_pages):
+    """CAFFEINE を含む点だけを拾い、macros のみの食事ログは捨てること"""
+    fake_get_pages([{'dataPoints': [
+        _nutrition_point('cronometer-1', '2026-08-26T12:00:00Z'),  # macrosのみ
+        _nutrition_point('caffeine-1', '2026-08-26T23:12:03.787Z', caffeine_grams=0.0475),
+    ]}])
+
+    rows = googlehealth_api.fetch_caffeine(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert [r['id'] for r in rows] == ['caffeine-1']
+
+
+def test_fetch_caffeine_converts_grams_to_mg(fake_get_pages):
+    """0.0475 g -> 47.5 mg に変換すること"""
+    fake_get_pages([{'dataPoints': [
+        _nutrition_point('caffeine-1', '2026-08-26T23:12:03.787Z', caffeine_grams=0.0475),
+    ]}])
+
+    rows = googlehealth_api.fetch_caffeine(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['caffeine_mg'] == 47.5
+    assert rows[0]['date'] == '2026-08-27'  # startTime(UTC) + offset(+9h) でローカル日付
+    assert rows[0]['package_name'] == 'com.AWSoft.CaffeineClock'
+    assert rows[0]['platform'] == 'HEALTH_CONNECT'
+
+
+def test_fetch_caffeine_paging_stops_by_all_datapoints_not_only_caffeine(fake_get_pages):
+    """CAFFEINE を含まないページでも、dataPoint の日付で打ち切りが効くこと
+
+    （落とし穴の再発防止: カフェイン記録は疎なので、CAFFEINE 行だけで
+    打ち切り判定すると全履歴を引いてしまう）
+    """
+    fake_get_pages([
+        {'dataPoints': [
+            _nutrition_point('caffeine-1', '2026-08-26T23:12:03.787Z', caffeine_grams=0.0475),
+        ], 'nextPageToken': 'tok1'},
+        # CAFFEINE を1件も含まないページだが、日付は start_date より古い
+        {'dataPoints': [
+            _nutrition_point('cronometer-old', '2026-07-01T12:00:00Z'),
+        ], 'nextPageToken': 'tok2'},
+    ])
+
+    # フィクスチャは2ページしか用意していないため、打ち切らず3ページ目を
+    # 要求すると StopIteration で失敗する
+    rows = googlehealth_api.fetch_caffeine(None, dt.date(2026, 8, 20), dt.date(2026, 8, 27))
+
+    assert [r['id'] for r in rows] == ['caffeine-1']
+
+
+def test_caffeine_merge_key_idempotent_across_two_saves(caffeine_dir, monkeypatch):
+    """同じ id を2回保存しても行数が増えないこと（id は19桁、dtype=str 必須）"""
+    row = {
+        'id': '7641590239346029000', 'time': '2026-08-27 08:12:03',
+        'date': '2026-08-27', 'caffeine_mg': 47.5,
+        'package_name': 'com.AWSoft.CaffeineClock', 'platform': 'HEALTH_CONNECT',
+        'recording_method': 'UNKNOWN',
+    }
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'caffeine', lambda creds, s, e: [row])
+
+    ghf.fetch_endpoint(None, 'caffeine', days=3)
+    result = ghf.fetch_endpoint(None, 'caffeine', days=3)
+
+    assert result['records'] == 1
+    saved = pd.read_csv(caffeine_dir, dtype={'id': str})
+    assert len(saved) == 1
+    assert saved.loc[0, 'id'] == '7641590239346029000'
+
+
+def test_caffeine_allow_empty_does_not_error(caffeine_dir, monkeypatch):
+    """0件は正常でありうるためエラーにせず、CSV も作らないこと"""
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'caffeine', lambda creds, s, e: [])
+
+    result = ghf.fetch_endpoint(None, 'caffeine', days=3)
+
+    assert result['records'] == 0
+    assert 'error' not in result
+    assert not caffeine_dir.exists()
+
+
+def test_allow_empty_absent_endpoint_still_errors_on_zero_rows(data_dir, fake_rows):
+    """allow_empty の無いエンドポイント（hrv）では従来通り0件がエラーになること"""
+    fake_rows([])
+    result = ghf.fetch_endpoint(None, 'hrv', days=3)
+    assert result['records'] == 0
+    assert result['error']
