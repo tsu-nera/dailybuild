@@ -16,8 +16,13 @@ Tuya のログ API は最大7日しか遡れないため、日次実行で差分
 過去の長いオフライン区間を含む範囲を `--days` で指定すると、そこを毎回舐めることになる。
 日次は `--update` を使えば新しい時間帯しか見ないのでこの影響を受けない。
 
-ログ照会にはレート制限があり、1リクエストあたり実測1.3秒前後かかる。
-5分刻みで1日288点だと十数分かかるため、日次では `--update` を使う。
+ログ照会のレート制限はトークンバケット。実測（2026-08-26）でバースト約18コール、
+枯れた後の持続レートは約0.46 req/s（1点あたり約2.2秒）。API 自体のレイテンシは
+約0.5秒なので、待ち時間の大半はこのスロットルであって通信ではない。
+5分刻みで1日288点なら約11分かかる。この下限は実装では縮まない。
+
+長時間の実行が途中で死んでも取得済みを捨てないよう、SAVE_EVERY 点ごとに、
+また中断・エラー時にも CSV へ書き出す。
 """
 
 import sys
@@ -49,6 +54,23 @@ COLUMNS = ['datetime'] + list(CODE_TO_COLUMN.values())
 
 # Tuya のログ保持期間。これより古い範囲を指定しても返ってこない。
 MAX_LOOKBACK_DAYS = 7
+
+# 途中保存の間隔（点）。5分刻み1日ぶんで約11分かかるため、最後にまとめて書くと
+# Ctrl-C やレート制限の打ち切りで取得済みが丸ごと消える。
+SAVE_EVERY = 50
+
+
+def save_rows(rows: list[dict]) -> int:
+    """取得済みの行を CSV へマージして総行数を返す。rows が空なら何もしない。"""
+    if not rows:
+        return 0
+    df_new = pd.DataFrame(rows, columns=COLUMNS)
+    df_combined = merge_csv_by_columns(
+        df_new, CSV_FILE, key_columns=['datetime'],
+        parse_dates=['datetime'], sort_by=['datetime'])
+    ensure_dir(CSV_FILE.parent)
+    df_combined.to_csv(CSV_FILE, index=False, date_format='%Y-%m-%d %H:%M:%S')
+    return len(df_combined)
 
 
 def load_existing() -> tuple[set, dt.datetime | None]:
@@ -165,8 +187,10 @@ def main() -> int:
         print("取得対象の境界がありません（すべて取得済み）", file=sys.stderr)
         return 0
 
-    rows = []
+    rows = []          # まだ CSV へ書いていない行
+    saved = 0          # 途中保存した点数
     empty = 0
+    aborted = None     # 中断・エラーの理由（None なら完走）
     try:
         for i, point in enumerate(points, 1):
             row = client.sample_window(point, args.window_sec)
@@ -174,30 +198,43 @@ def main() -> int:
                 empty += 1
             else:
                 rows.append(row)
-            if i % 50 == 0 or i == len(points):
+            if i % SAVE_EVERY == 0 or i == len(points):
                 print(f"  {i}/{len(points)} 取得済み（欠測 {empty}）", file=sys.stderr)
+            # 途中保存。ここで書いておかないと、この後 Ctrl-C やレート制限の
+            # 打ち切りに当たったときに直前までの取得が丸ごと消える。
+            if i % SAVE_EVERY == 0 and rows:
+                saved += len(rows)
+                save_rows(rows)
+                rows = []
     except TuyaError as exc:
-        print(exc, file=sys.stderr)
-        return 1
+        aborted = str(exc)
+    except KeyboardInterrupt:
+        aborted = "中断された（Ctrl-C）"
 
-    if not rows:
-        print(f"取得0件（{len(points)}点すべて欠測）。デバイスがオフラインか、"
-              f"指定期間に記録がありません。", file=sys.stderr)
-        return 1
+    if rows:
+        saved += len(rows)
+        total_lines = save_rows(rows)
+    else:
+        total_lines = len(load_existing()[0])
 
     if empty:
         # 一部が欠測なのはデバイスのオフライン時間として正常。補間せず穴のまま残す。
         print(f"欠測 {empty}/{len(points)} 点（デバイスのオフライン時間。補間しない）",
               file=sys.stderr)
 
-    df_new = pd.DataFrame(rows, columns=COLUMNS)
-    df_combined = merge_csv_by_columns(
-        df_new, CSV_FILE, key_columns=['datetime'],
-        parse_dates=['datetime'], sort_by=['datetime'])
+    if aborted is not None:
+        print(aborted, file=sys.stderr)
+        print(f"中断時点までの {saved}点を保存した: {CSV_FILE} ({total_lines}行)。"
+              f"残りは再実行すると取得済みをスキップして続きから取る",
+              file=sys.stderr)
+        return 1
 
-    ensure_dir(CSV_FILE.parent)
-    df_combined.to_csv(CSV_FILE, index=False, date_format='%Y-%m-%d %H:%M:%S')
-    print(f"保存完了: {CSV_FILE} ({len(df_combined)}行)", file=sys.stderr)
+    if not saved:
+        print(f"取得0件（{len(points)}点すべて欠測）。デバイスがオフラインか、"
+              f"指定期間に記録がありません。", file=sys.stderr)
+        return 1
+
+    print(f"保存完了: {CSV_FILE} ({total_lines}行)", file=sys.stderr)
     return 0
 
 
