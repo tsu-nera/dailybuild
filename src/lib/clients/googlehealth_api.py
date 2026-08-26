@@ -812,6 +812,93 @@ def fetch_temperature_core(creds, start_date: dt.date, end_date: dt.date) -> lis
     return rows
 
 
+# =============================================================================
+# カフェイン摂取 -> data/googlehealth/caffeine.csv
+# =============================================================================
+
+CAFFEINE_COLUMNS = ['id', 'time', 'date', 'caffeine_mg', 'package_name', 'platform', 'recording_method']
+
+
+def _caffeine_row(point: dict) -> dict | None:
+    """dataPoint 1件を CSV 1行にする。CAFFEINE を含まない/時刻が欠ける場合は None
+
+    nutrition-log には Cronometer / Fitbit 由来の食事ログ（macros）も同居しているため、
+    nutrients に CAFFEINE を含む点だけを拾う。packageName ではフィルタしない
+    （他アプリからカフェインが届いても拾えるように）。
+    """
+    nutrition = point.get('nutritionLog') or {}
+    interval = nutrition.get('interval') or {}
+    if not interval.get('startTime'):
+        return None
+
+    caffeine_grams = None
+    for nutrient in nutrition.get('nutrients') or []:
+        if nutrient.get('nutrient') == 'CAFFEINE':
+            caffeine_grams = _num((nutrient.get('quantity') or {}).get('grams'))
+            break
+    if caffeine_grams is None:
+        return None
+
+    # civilStartTime は使わない: Cronometer 由来の行は time が 00:00 固定だが、
+    # startTime + startUtcOffset でも同じ値になるため経路を統一する
+    local = _localize(interval['startTime'], interval.get('startUtcOffset', '0s'))
+    time_str = local.isoformat(sep=' ')
+    source = point.get('dataSource') or {}
+    application = source.get('application') or {}
+
+    return {
+        'id': point['name'].rsplit('/', 1)[-1],
+        'time': time_str,
+        'date': time_str[:10],
+        'caffeine_mg': round(caffeine_grams * 1000, 3),
+        'package_name': application.get('packageName'),
+        'platform': source.get('platform'),
+        'recording_method': source.get('recordingMethod'),
+    }
+
+
+def fetch_caffeine(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    カフェイン摂取記録を期間で取得する（列は CAFFEINE_COLUMNS）
+
+    nutrition-log 型は dailyRollUp に非対応で list のみ。カフェイン記録は疎な
+    ため、CAFFEINE を含む行だけで打ち切り判定をすると効かない（1ページに
+    CAFFEINE 行が無くても、ページ全体としては start_date に届いていないことが
+    ある）。判定はページ内の**全 dataPoint**（CAFFEINE 有無に関わらず）の
+    interval の日付で行う。
+    """
+    rows = []
+    token = None
+    while True:
+        params = {'pageToken': token} if token else {}
+        body = _get(creds, f'{USER}/dataTypes/nutrition-log/dataPoints', params)
+        page = body.get('dataPoints', [])
+
+        page_dates = []
+        for point in page:
+            interval = (point.get('nutritionLog') or {}).get('interval') or {}
+            if not interval.get('startTime'):
+                continue
+            page_dates.append(
+                _localize(interval['startTime'], interval.get('startUtcOffset', '0s')).date()
+            )
+
+        page_rows = [r for r in (_caffeine_row(p) for p in page) if r is not None]
+        rows.extend(r for r in page_rows
+                    if start_date.isoformat() <= r['date'] <= end_date.isoformat())
+
+        token = body.get('nextPageToken')
+        if not token:
+            break
+        # 新しい順に返るので、ページ内の最新（CAFFEINE 有無に関わらず全dataPoint）が
+        # start_date より前なら以降も全て古い
+        if page_dates and max(page_dates) < start_date:
+            break
+
+    rows.sort(key=lambda r: r['time'])
+    return rows
+
+
 # sleep は 1回の取得で sleep.csv / sleep_levels.csv の2つの行リストを作るため、
 # 他のエンドポイントと違って (sleep_rows, level_rows) のタプルを返す。
 # googlehealth_fetcher 側で戻り値の形を見て分岐する。
@@ -824,4 +911,5 @@ FETCHERS = {
     'active_zone_minutes': fetch_active_zone_minutes,
     'temperature_core': fetch_temperature_core,
     'exercise': fetch_exercise,
+    'caffeine': fetch_caffeine,
 }

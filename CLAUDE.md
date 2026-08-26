@@ -186,6 +186,26 @@ Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セ�
 統合は Issue #77 の担当。マージのキーは日付でなく `id`（19桁の整数なので
 読み戻しは `dtype=str` 必須。int で読むと新旧のキーが一致せず二重に残る）。
 
+### カフェイン摂取
+
+ソースは Caffeine Clock（`com.AWSoft.CaffeineClock`、Android）が Health Connect に
+書き込んだ記録。Google Health API の `nutrition-log` から読める
+（`fetch_googlehealth.py` の `caffeine` エンドポイント、`data/googlehealth/caffeine.csv`）。
+**分析・レポートへの反映は未着手で、今は蓄積だけしている。**
+
+- **単位は grams で返る。** CSV では取り違え防止のため mg に直し、列名にも
+  単位を入れてある（`caffeine_mg`）
+- マージキーは `exercise` と同じく `id`（19桁の整数。`dtype=str` 必須）
+- `nutrition-log` は Cronometer / Fitbit の食事ログ（macros）と同居している。
+  `nutrients` に `CAFFEINE` を含む点だけを拾い、`packageName` ではフィルタしない
+  （他アプリからカフェインが届いても拾えるように）
+- **ページング打ち切りは CAFFEINE 行でなく、ページ内の全 dataPoint の日付で
+  行う。** カフェイン記録は疎なので、CAFFEINE 行だけで打ち切り判定すると
+  1ページに1件も無いことがあり、判定が効かず全履歴を引いてしまう
+- **0件はエラーにしない（`allow_empty`）。** 「飲んでいない/記録していない」が
+  正常状態なため。他の Google Health エンドポイントは0件を取得の沈黙故障として
+  扱うが、caffeine だけ例外
+
 MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制限は無い。2015-01 以前は
 0 件 = MF 側に記録が無い）。`--unit year` の既定期間はこの最古年から当月までで、
 `EARLIEST_YEAR` に持たせてある。ただし連携が壊れている口座の明細は過去分も丸ごと
