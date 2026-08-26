@@ -146,7 +146,11 @@ CSV が古い/無い場合、`fetch_state.json` が無い場合、fetch 窓が p
 ソースは `data/googlehealth/exercise.csv`（`fetch_googlehealth.py` の `exercise`
 エンドポイント）。`exerciseType` → プロジェクトの対応は `config/toggl_push.yaml`
 の `googlehealth_exercise.categories` に持たせてある。ここに載っていない型
-（WALKING / RUNNING / YOGA 等）は投入しない。
+（WALKING / RUNNING 等）は投入しない。
+
+**`YOGA` は瞑想として投入する。** Charge 6 のエクササイズ一覧（41種類）に瞑想は
+無く、本体で計測する手段が他に無いため、YOGA を瞑想の代用モードとして使っている。
+ヨガを実際にやり始めたらこの対応は破綻する。
 
 **同じ運動が複数プラットフォームから重複して届く。** Fitbit の Charge 6 と、
 Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セッションとして

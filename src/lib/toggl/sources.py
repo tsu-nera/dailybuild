@@ -103,7 +103,7 @@ def googlehealth_exercise_intervals(
     """data/googlehealth/exercise.csv から [since, until] のInterval列を作る
 
     yaml の categories に載っている exerciseType だけを投入する
-    （WALKING / RUNNING / YOGA 等は対象外）。start/end は取得時に
+    （WALKING / RUNNING 等は対象外）。start/end は取得時に
     +09:00 付きで書いてあるので tz の付与は不要。
     """
     source_config = config.get('sources', {}).get('googlehealth_exercise', {})

@@ -17,7 +17,7 @@ sources:
     platform_priority: [FITBIT, HEALTH_CONNECT]
     # 重なりがこの秒数を超えたら同一セッションとみなす
     overlap_threshold_sec: 60
-    # ここに無い exerciseType（WALKING / RUNNING / YOGA 等）は投入しない
+    # ここに無い exerciseType（WALKING / RUNNING 等）は投入しない
     categories:
       cycling:
         project: サイクリング
@@ -39,4 +39,6 @@ sources:
         project: 瞑想
         description: "瞑想"
         tags: [auto]
-        exercise_types: [MEDITATE]
+        # Charge 6 のエクササイズ一覧に瞑想は無い。本体で計測するときは
+        # YOGA を代用に使うので、瞑想として扱う（ヨガ自体はやらない）
+        exercise_types: [MEDITATE, YOGA]
