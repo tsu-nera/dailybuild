@@ -153,27 +153,35 @@ def _checkbox_choices(form, title):
 
 
 def update_vocab_history(revision_id, labels, path, now=None) -> bool:
-    """語彙の版が前回と違えば1行追記する。追記したら True
+    """語彙が前回と違えば1行追記する。追記したら True
 
     per-row の版列は持たない（毎回全件取り直すのでマージが濁る）。
     語彙が変わった時刻だけを別ファイルに残す。
+
+    判定は revisionId でなく **labels 自体**で行う。revisionId は質問文の
+    変更や `setup-form --update` の空打ちでも上がるため、これをキーにすると
+    語彙が同じ行が積み上がり、「いつ語彙が変わったか」を知るのに結局
+    labels を diff する羽目になる（このファイルの存在意義が消える）。
+    revision_id 列は「その語彙が最初に観測された版」の記録として残す。
     """
     path = Path(path)
     label_str = ';'.join(labels)
 
-    last_revision = None
+    last_labels = None
     if path.exists():
         existing = pd.read_csv(path, dtype=str)
         if not existing.empty:
-            last_revision = existing.iloc[-1]['revision_id']
+            last_labels = existing.iloc[-1]['labels']
 
-    if last_revision is not None and str(last_revision) == str(revision_id):
+    if last_labels is not None and str(last_labels) == label_str:
         return False
 
     now = now or dt.datetime.now()
     row = pd.DataFrame([{
         'first_seen': now.strftime('%Y-%m-%d %H:%M:%S'),
-        'revision_id': str(revision_id),
+        # revisionId が取れない場合も語彙は記録する。版が不明なことと
+        # 語彙変更を取りこぼすことでは、後者のほうがはるかに高くつく
+        'revision_id': '' if revision_id is None else str(revision_id),
         'labels': label_str,
     }])
 
@@ -209,13 +217,15 @@ def cmd_fetch(args):
     revision_id = form.get('revisionId')
     if revision_id is None:
         print('警告: forms.get の応答に revisionId が無い。'
-              '語彙バージョン履歴の更新をスキップする', file=sys.stderr)
-    else:
-        labels = _checkbox_choices(form, conf['questions']['emotions'])
-        if labels is not None:
-            if update_vocab_history(revision_id, labels, VOCAB_HISTORY_FILE):
-                print(f'語彙バージョン履歴を追記: revision {revision_id}',
-                      file=sys.stderr)
+              '語彙は記録するが版は空になる', file=sys.stderr)
+    labels = _checkbox_choices(form, conf['questions']['emotions'])
+    if labels is None:
+        print(f"警告: フォームに選択式の質問がない"
+              f"（{conf['questions']['emotions']}）。"
+              '語彙バージョン履歴を更新できない', file=sys.stderr)
+    elif update_vocab_history(revision_id, labels, VOCAB_HISTORY_FILE):
+        print(f'語彙バージョン履歴を追記: revision {revision_id} / '
+              f'{len(labels)}個', file=sys.stderr)
 
     ensure_dir(OUT_FILE.parent)
     df = csv_utils.merge_csv_by_columns(

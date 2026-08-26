@@ -122,7 +122,7 @@ def test_update_vocab_history_creates_file(tmp_path):
     assert df.iloc[0]['first_seen'] == '2026-08-26 10:00:00'
 
 
-def test_update_vocab_history_same_revision_no_append(tmp_path):
+def test_update_vocab_history_same_labels_no_append(tmp_path):
     path = tmp_path / 'emotion_vocab_history.csv'
     emotion.update_vocab_history('1', ['楽しい・うれしい'], path)
     changed = emotion.update_vocab_history('1', ['楽しい・うれしい'], path)
@@ -130,7 +130,20 @@ def test_update_vocab_history_same_revision_no_append(tmp_path):
     assert len(pd.read_csv(path, dtype=str)) == 1
 
 
-def test_update_vocab_history_new_revision_appends(tmp_path):
+def test_update_vocab_history_new_revision_same_labels_no_append(tmp_path):
+    """質問文の変更や setup-form --update の空打ちで revisionId だけが上がる。
+
+    これで行が増えると「いつ語彙が変わったか」を知るのに labels を diff する
+    羽目になり、このファイルの存在意義が消える（実機で発生: 00000008 -> 00000009）。
+    """
+    path = tmp_path / 'emotion_vocab_history.csv'
+    emotion.update_vocab_history('00000008', ['楽しい・うれしい', 'イライラ'], path)
+    changed = emotion.update_vocab_history('00000009', ['楽しい・うれしい', 'イライラ'], path)
+    assert changed is False
+    assert len(pd.read_csv(path, dtype=str)) == 1
+
+
+def test_update_vocab_history_new_labels_append(tmp_path):
     path = tmp_path / 'emotion_vocab_history.csv'
     emotion.update_vocab_history('1', ['楽しい・うれしい'], path)
     changed = emotion.update_vocab_history('2', ['楽しい・うれしい', 'イライラ'], path)
@@ -139,6 +152,17 @@ def test_update_vocab_history_new_revision_appends(tmp_path):
     assert len(df) == 2
     assert df.iloc[0]['revision_id'] == '1'
     assert df.iloc[1]['revision_id'] == '2'
+    # 旧語彙の行が残る（過去データの読み方が失われない）
+    assert df.iloc[0]['labels'] == '楽しい・うれしい'
+
+
+def test_update_vocab_history_label_order_change_is_a_change(tmp_path):
+    """並び替えもフォームの見た目が変わる = 別の版として記録する"""
+    path = tmp_path / 'emotion_vocab_history.csv'
+    emotion.update_vocab_history('1', ['楽しい・うれしい', 'イライラ'], path)
+    changed = emotion.update_vocab_history('2', ['イライラ', '楽しい・うれしい'], path)
+    assert changed is True
+    assert len(pd.read_csv(path, dtype=str)) == 2
 
 
 def test_update_vocab_history_zero_padded_revision_survives_roundtrip(tmp_path):
@@ -146,9 +170,18 @@ def test_update_vocab_history_zero_padded_revision_survives_roundtrip(tmp_path):
     emotion.update_vocab_history('00000004', ['楽しい・うれしい'], path)
     df = pd.read_csv(path, dtype=str)
     assert df.iloc[0]['revision_id'] == '00000004'
-    # 同じ版で再度呼んでも増えない（int に化けて '4' 扱いにならないこと）
     changed = emotion.update_vocab_history('00000004', ['楽しい・うれしい'], path)
     assert changed is False
+
+
+def test_update_vocab_history_records_labels_without_revision(tmp_path):
+    """revisionId が取れなくても語彙は記録する（取りこぼしのほうが高くつく）"""
+    path = tmp_path / 'emotion_vocab_history.csv'
+    changed = emotion.update_vocab_history(None, ['楽しい・うれしい'], path)
+    assert changed is True
+    df = pd.read_csv(path, dtype=str, keep_default_na=False)
+    assert df.iloc[0]['revision_id'] == ''
+    assert df.iloc[0]['labels'] == '楽しい・うれしい'
 
 
 # --- gforms_api.sync_questions ---
