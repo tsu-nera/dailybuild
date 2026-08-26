@@ -3,6 +3,9 @@
 # フォームは scripts/emotion.py setup-form が この定義から生成する。
 # 選択肢を足す/変えるときは vocabulary を直して setup-form --update を回す。
 # 画面を手で直すと yaml とズレるので触らない。
+# 語彙を変えたら必ず setup-form --update を回すこと。語彙の変更は
+# data/emotion_vocab_history.csv に版として記録される（過去データを
+# 読み違えないようにするため。詳細は CLAUDE.md の「気分記録」を参照）。
 
 # setup-form が書き戻す。空なら未作成
 form_id: 12H4gK9DnVl0tphr2DUBx5jgfXZmdkqYkaD8GArRBrus
@@ -11,19 +14,33 @@ form_title: 気分記録
 # 質問タイトル。回答は questionId で引くので、ここを変えたら
 # setup-form --update でフォーム側も合わせること
 questions:
+  score: いまの気分
   emotions: いまの気持ち
-  note: ひとこと
+  note: 何があった？
+
+# 気分の良し悪し（valence）。高=良好。manual_metrics の mind_score と同じ向きで、
+# 将来一本化できるようにしてある。感情の「強さ」ではない（強さは複数ラベルに
+# 対して単一スカラーでは定義できない）
+score:
+  low: 1
+  high: 5
+  low_label: 悪い
+  high_label: 良い
 
 # フォームの選択肢。valence（快/不快）× arousal（覚醒度）の4象限を埋める。
-# 陽性側を4つ置いているのは、回復の計器になるのが陰性感情の量ではなく
-# 陽性感情の頻度のため。選択肢が少ないとそこの解像度が落ちる。
+# 陽性7つ・陰性4つ・中立1つ。陽性を多く置いているのは、回復の計器になるのが
+# 陰性感情の量ではなく陽性感情の頻度のため。「やりきった・達成感」は行動活性化の
+# Mastery 軸（他は Pleasure/Serenity 系で、これが無いと達成感の頻度が数えられない）
 vocabulary:
-  - {label: 楽しい・うれしい, valence: pos, arousal: high}
-  - {label: わくわくする,     valence: pos, arousal: high}
-  - {label: 落ち着いている,   valence: pos, arousal: low}
-  - {label: ほっとした,       valence: pos, arousal: low}
-  - {label: イライラ,         valence: neg, arousal: high}
-  - {label: 不安・焦り,       valence: neg, arousal: high}
-  - {label: 悲しい,           valence: neg, arousal: low}
-  - {label: つらい・重い,     valence: neg, arousal: low}
-  - {label: 何も感じない,     valence: neu, arousal: low}
+  - {label: 楽しい・うれしい,   valence: pos, arousal: high}
+  - {label: わくわくする,       valence: pos, arousal: high}
+  - {label: 興味がわく,         valence: pos, arousal: high}
+  - {label: やりきった・達成感, valence: pos, arousal: high}
+  - {label: 落ち着いている,     valence: pos, arousal: low}
+  - {label: ほっとした,         valence: pos, arousal: low}
+  - {label: 感謝している,       valence: pos, arousal: low}
+  - {label: イライラ,           valence: neg, arousal: high}
+  - {label: 不安・焦り,         valence: neg, arousal: high}
+  - {label: 悲しい,             valence: neg, arousal: low}
+  - {label: つらい・重い,       valence: neg, arousal: low}
+  - {label: 何も感じない,       valence: neu, arousal: low}

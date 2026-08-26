@@ -9,6 +9,7 @@ setup-form でフォームを生成し、fetch で回答を直接取得する。
 """
 
 import argparse
+import datetime as dt
 import re
 import sys
 from pathlib import Path
@@ -24,6 +25,8 @@ from lib.utils.private_data import ensure_dir, require_private_path
 BASE_DIR = Path(__file__).parent.parent
 DEF_FILE = BASE_DIR / 'config/emotion_def.yaml'
 OUT_FILE = require_private_path(BASE_DIR / 'data/emotion.csv')
+VOCAB_HISTORY_FILE = require_private_path(
+    BASE_DIR / 'data/emotion_vocab_history.csv')
 
 TZ = 'Asia/Tokyo'
 
@@ -47,10 +50,21 @@ def responder_uri(form):
     return form.get('responderUri', f"https://docs.google.com/forms/d/{form['formId']}/viewform")
 
 
+def build_items(conf):
+    """yaml の定義からフォームの item spec リストを組み立てる"""
+    q, s = conf['questions'], conf['score']
+    choices = [v['label'] for v in conf['vocabulary']]
+    return [
+        gforms_api.scale_item(q['score'], s['low'], s['high'],
+                              s['low_label'], s['high_label'], required=True),
+        gforms_api.checkbox_item(q['emotions'], choices, required=True),
+        gforms_api.text_item(q['note'], required=False),
+    ]
+
+
 def cmd_setup_form(args):
     conf = load_def()
-    choices = [v['label'] for v in conf['vocabulary']]
-    q = conf['questions']
+    items = build_items(conf)
 
     service = gforms_api.create_service()
 
@@ -59,14 +73,16 @@ def cmd_setup_form(args):
             print(f"フォームは作成済み: {conf['form_id']}")
             print('選択肢や質問文を yaml に合わせ直すなら --update')
             return
-        _update_form(service, conf['form_id'], q, choices)
+        existing_form = gforms_api.get_form(service, conf['form_id'])
+        gforms_api.sync_questions(service, conf['form_id'], items,
+                                  existing_form=existing_form)
+        print('フォームを yaml に合わせて更新した')
         form = gforms_api.get_form(service, conf['form_id'])
     else:
         form = gforms_api.create_form(service, conf['form_title'],
                                       document_title=conf['form_title'])
         print(f"フォーム作成: {form['formId']}")
-        gforms_api.add_questions(service, form['formId'],
-                                 q['emotions'], choices, q['note'])
+        gforms_api.sync_questions(service, form['formId'], items)
         save_form_id(form['formId'])
         form = gforms_api.get_form(service, form['formId'])
 
@@ -75,59 +91,12 @@ def cmd_setup_form(args):
     print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
 
 
-def _update_form(service, form_id, questions, choices):
-    """既存フォームの質問文と選択肢を yaml に合わせる"""
-    form = gforms_api.get_form(service, form_id)
-    items = [i for i in form.get('items', []) if 'questionItem' in i]
-    if len(items) != 2:
-        raise ValueError(
-            f'質問が2つでない（{len(items)}個）。画面で編集した可能性がある: {form_id}')
-
-    requests = [
-        {
-            'updateItem': {
-                'item': {
-                    'title': questions['emotions'],
-                    'questionItem': {
-                        'question': {
-                            'required': True,
-                            'choiceQuestion': {
-                                'type': 'CHECKBOX',
-                                'options': [{'value': c} for c in choices],
-                            },
-                        },
-                    },
-                },
-                'location': {'index': 0},
-                'updateMask': 'title,questionItem.question',
-            },
-        },
-        {
-            'updateItem': {
-                'item': {
-                    'title': questions['note'],
-                    'questionItem': {
-                        'question': {
-                            'required': False,
-                            'textQuestion': {'paragraph': False},
-                        },
-                    },
-                },
-                'location': {'index': 1},
-                'updateMask': 'title,questionItem.question',
-            },
-        },
-    ]
-    service.forms().batchUpdate(formId=form_id,
-                                body={'requests': requests}).execute()
-    print('フォームを yaml に合わせて更新した')
-
-
 def build_dataframe(form, responses, conf):
     """回答リストを CSV スキーマの DataFrame にする"""
     by_title = gforms_api.question_id_by_title(form)
     q = conf['questions']
-    missing = [t for t in (q['emotions'], q['note']) if t not in by_title]
+    missing = [t for t in (q['score'], q['emotions'], q['note'])
+              if t not in by_title]
     if missing:
         raise ValueError(
             f'フォームに質問がない: {missing} / 実際: {list(by_title)}。'
@@ -137,11 +106,13 @@ def build_dataframe(form, responses, conf):
     rows = []
     unknown_all = set()
     for res in responses:
+        score = gforms_api.answer_values(res, by_title[q['score']])
         emotions = gforms_api.answer_values(res, by_title[q['emotions']])
         note = gforms_api.answer_values(res, by_title[q['note']])
         unknown_all |= {e for e in emotions if e not in known}
         rows.append({
             'timestamp': res.get('lastSubmittedTime') or res.get('createTime'),
+            'score': score[0] if score else pd.NA,
             # 複数選択は配列で返るので分割不要。区切り文字は CSV 側の都合
             'emotions': ';'.join(emotions) if emotions else pd.NA,
             'note': note[0] if note and note[0] else pd.NA,
@@ -151,10 +122,10 @@ def build_dataframe(form, responses, conf):
         print(f"警告: 定義にない選択肢 {sorted(unknown_all)}"
               f"（config/emotion_def.yaml の vocabulary と不一致）")
 
-    df = pd.DataFrame(rows, columns=['timestamp', 'emotions', 'note'])
+    columns = ['timestamp', 'date', 'score', 'emotions', 'note']
+    df = pd.DataFrame(rows, columns=['timestamp', 'score', 'emotions', 'note'])
     if df.empty:
-        return df.assign(date=pd.Series(dtype='object'))[
-            ['timestamp', 'date', 'emotions', 'note']]
+        return df.assign(date=pd.Series(dtype='object'))[columns]
 
     # API は RFC3339 の UTC を返す。他データと揃えて JST の naive にする
     ts = pd.to_datetime(df['timestamp'], format='ISO8601', utc=True)
@@ -163,7 +134,55 @@ def build_dataframe(form, responses, conf):
     df['timestamp'] = ts.dt.tz_convert(TZ).dt.tz_localize(None).dt.floor('s')
     # 日境界の補正はしない（深夜の記録もその日付のまま）
     df['date'] = df['timestamp'].dt.date
-    return df[['timestamp', 'date', 'emotions', 'note']]
+    # scaleQuestion の回答は textAnswers に文字列で入る（"3"）。
+    # 未回答・パース不能でも落ちないよう coerce → nullable Int64 にする
+    df['score'] = pd.to_numeric(df['score'], errors='coerce').astype('Int64')
+    return df[columns]
+
+
+def _checkbox_choices(form, title):
+    """フォームの実際のチェックボックス選択肢を title から引く。無ければ None"""
+    for item in form.get('items', []):
+        if item.get('title') != title:
+            continue
+        choice = item.get('questionItem', {}).get('question', {}).get(
+            'choiceQuestion')
+        if choice:
+            return [o['value'] for o in choice.get('options', [])]
+    return None
+
+
+def update_vocab_history(revision_id, labels, path, now=None) -> bool:
+    """語彙の版が前回と違えば1行追記する。追記したら True
+
+    per-row の版列は持たない（毎回全件取り直すのでマージが濁る）。
+    語彙が変わった時刻だけを別ファイルに残す。
+    """
+    path = Path(path)
+    label_str = ';'.join(labels)
+
+    last_revision = None
+    if path.exists():
+        existing = pd.read_csv(path, dtype=str)
+        if not existing.empty:
+            last_revision = existing.iloc[-1]['revision_id']
+
+    if last_revision is not None and str(last_revision) == str(revision_id):
+        return False
+
+    now = now or dt.datetime.now()
+    row = pd.DataFrame([{
+        'first_seen': now.strftime('%Y-%m-%d %H:%M:%S'),
+        'revision_id': str(revision_id),
+        'labels': label_str,
+    }])
+
+    ensure_dir(path.parent)
+    if path.exists() and path.stat().st_size > 0:
+        row.to_csv(path, mode='a', header=False, index=False)
+    else:
+        row.to_csv(path, mode='w', header=True, index=False)
+    return True
 
 
 def cmd_fetch(args):
@@ -186,6 +205,17 @@ def cmd_fetch(args):
     if not responses and OUT_FILE.exists() and len(pd.read_csv(OUT_FILE)) > 0:
         print('警告: 既存CSVに行があるのに回答が0件。'
               'フォームの差し替えかAPIの異常を疑うこと', file=sys.stderr)
+
+    revision_id = form.get('revisionId')
+    if revision_id is None:
+        print('警告: forms.get の応答に revisionId が無い。'
+              '語彙バージョン履歴の更新をスキップする', file=sys.stderr)
+    else:
+        labels = _checkbox_choices(form, conf['questions']['emotions'])
+        if labels is not None:
+            if update_vocab_history(revision_id, labels, VOCAB_HISTORY_FILE):
+                print(f'語彙バージョン履歴を追記: revision {revision_id}',
+                      file=sys.stderr)
 
     ensure_dir(OUT_FILE.parent)
     df = csv_utils.merge_csv_by_columns(

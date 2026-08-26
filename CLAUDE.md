@@ -225,7 +225,8 @@ WiMAXルータ経由で常時接続している。詳細は Issue #42。
 ### 気分記録
 
 Google Form で入力し、Forms API で直接読む（回答先スプレッドシートは作らない。
-Forms API にリンク設定が無く、そこだけ手作業として残るため）。
+Forms API にリンク設定が無く、そこだけ手作業として残るため）。3問構成
+（気分1〜5・気持ち12個・何があった？）。
 
 - **サービスアカウントでは作れない。** Drive の `storageQuota.limit` が 0 で
   ファイルを所有できず、`forms.create` が **500 Internal** になる（quota だと
@@ -233,6 +234,18 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
 - **フォームを画面で編集しない。** 語彙の正は `config/emotion_def.yaml` で、
   `setup-form --update` が画面の内容を上書きする
 - 削除された回答は CSV に残り続ける（マージは追加・更新のみ）
+- 1〜5 は **valence（高=良好）であって感情の強さではない**。`mind_score` と
+  同じ向き。`scaleQuestion` の回答は `textAnswers` に文字列で入るので数値化は
+  こちら側（`emotion.py`）で行う
+- **`data/emotion_vocab_history.csv` に語彙の版を残している。** 語彙を後から
+  変えると過去のデータが読めなくなる（0件が「感じなかった」のか「選択肢が
+  無かった」のか区別できない）ため、`forms.get` の `revisionId` が変わった
+  ときだけ1行追記する。per-row の版列は持たない（毎回全件取り直すので
+  マージが濁る）
+- **フォームの質問はタイトルでなく種類（scale/choice/text）で突き合わせて
+  更新している。** index で突き合わせると既存 item の型を作り変えることに
+  なり、questionId が保持されたまま中身が変わって過去の回答が別の質問に
+  化ける（`gforms_api.sync_questions()`）
 
 ### MoneyForward ME
 

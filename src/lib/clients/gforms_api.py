@@ -79,42 +79,142 @@ def create_form(service, title: str, document_title: str = None) -> dict:
     return service.forms().create(body={'info': info}).execute()
 
 
-def add_questions(service, form_id: str, checkbox_title: str, choices: list,
-                  text_title: str) -> dict:
-    """チェックボックス（必須）と記述式（任意）を1つずつ足す"""
-    requests = [
-        {
-            'createItem': {
-                'item': {
-                    'title': checkbox_title,
-                    'questionItem': {
-                        'question': {
-                            'required': True,
-                            'choiceQuestion': {
-                                'type': 'CHECKBOX',
-                                'options': [{'value': c} for c in choices],
-                            },
-                        },
-                    },
+def scale_item(title: str, low: int, high: int, low_label: str,
+              high_label: str, required: bool = True) -> dict:
+    """均等目盛（scaleQuestion）の item spec"""
+    return {
+        'title': title,
+        'questionItem': {
+            'question': {
+                'required': required,
+                'scaleQuestion': {
+                    'low': low,
+                    'high': high,
+                    'lowLabel': low_label,
+                    'highLabel': high_label,
                 },
-                'location': {'index': 0},
             },
         },
-        {
-            'createItem': {
-                'item': {
-                    'title': text_title,
-                    'questionItem': {
-                        'question': {
-                            'required': False,
-                            'textQuestion': {'paragraph': False},
-                        },
-                    },
+    }
+
+
+def checkbox_item(title: str, choices: list, required: bool = True) -> dict:
+    """チェックボックス（choiceQuestion）の item spec"""
+    return {
+        'title': title,
+        'questionItem': {
+            'question': {
+                'required': required,
+                'choiceQuestion': {
+                    'type': 'CHECKBOX',
+                    'options': [{'value': c} for c in choices],
                 },
-                'location': {'index': 1},
             },
         },
-    ]
+    }
+
+
+def text_item(title: str, required: bool = False) -> dict:
+    """記述式（textQuestion）の item spec"""
+    return {
+        'title': title,
+        'questionItem': {
+            'question': {
+                'required': required,
+                'textQuestion': {'paragraph': False},
+            },
+        },
+    }
+
+
+def _question_kind(item: dict) -> str | None:
+    """item から質問の種類を取り出す（scaleQuestion / choiceQuestion / textQuestion）"""
+    question = item.get('questionItem', {}).get('question', {})
+    for kind in ('scaleQuestion', 'choiceQuestion', 'textQuestion'):
+        if kind in question:
+            return kind
+    return None
+
+
+def sync_questions(service, form_id: str, items: list,
+                   existing_form: dict = None) -> dict:
+    """フォームの質問を items（望ましい item spec のリスト）に合わせる
+
+    existing_form が None なら全 item を新規作成する。
+    existing_form があれば、既存 item と items を「質問の種類」で
+    突き合わせて createItem / updateItem に振り分ける。
+
+    index で突き合わせてはいけない。questionId は item に紐づいて保持される
+    ため、既存 item の型を作り変える（= 別の質問として updateItem する）と、
+    過去の回答の questionId が新しい質問のものとして残ってしまう。
+
+    さらに実機で確認した Forms API の癖として、updateItem の
+    questionItem.question に questionId を明示しないと、たとえ既存 item を
+    正しく標的にしていても **API 側が新しい questionId を割り当てて
+    しまう**（title だけの変更でも起きる）。これをやると過去回答の
+    questionId が古いままになり、CSV 側から二度と引けなくなる。
+    そのため update する item には既存の questionId を明示的に埋め込む。
+    """
+    if existing_form is None:
+        requests = [
+            {'createItem': {'item': item, 'location': {'index': i}}}
+            for i, item in enumerate(items)
+        ]
+        return service.forms().batchUpdate(
+            formId=form_id, body={'requests': requests}).execute()
+
+    existing_items = [i for i in existing_form.get('items', [])
+                      if 'questionItem' in i]
+    existing_by_kind = {}
+    for item in existing_items:
+        kind = _question_kind(item)
+        existing_by_kind.setdefault(kind, []).append(item)
+
+    create_requests = []
+    update_requests = []
+    final_index = 0
+    used_item_ids = set()
+    for spec in items:
+        kind = _question_kind(spec)
+        bucket = existing_by_kind.get(kind, [])
+        if bucket:
+            existing_item = bucket.pop(0)
+            used_item_ids.add(existing_item.get('itemId'))
+            existing_question_id = existing_item.get(
+                'questionItem', {}).get('question', {}).get('questionId')
+            update_item = {
+                'title': spec['title'],
+                'questionItem': {
+                    'question': {
+                        **spec['questionItem']['question'],
+                        'questionId': existing_question_id,
+                    },
+                },
+            }
+            update_requests.append({
+                'updateItem': {
+                    'item': update_item,
+                    'location': {'index': final_index},
+                    'updateMask': 'title,questionItem.question',
+                },
+            })
+        else:
+            create_requests.append({
+                'createItem': {'item': spec, 'location': {'index': final_index}},
+            })
+        final_index += 1
+
+    leftover = [i for i in existing_items if i.get('itemId') not in used_item_ids]
+    if leftover:
+        raise GoogleFormsError(
+            '望ましい質問構成に対応しない既存の質問が残っている'
+            '（画面で手編集された可能性がある）: '
+            f"{[(i.get('title'), _question_kind(i)) for i in leftover]}"
+        )
+
+    # createItem を先に適用し、updateItem の index は create 適用後
+    # （= 最終的な望ましい順序）の index を使う
+    requests = create_requests + update_requests
     return service.forms().batchUpdate(
         formId=form_id, body={'requests': requests}).execute()
 
