@@ -26,3 +26,8 @@ tmp/
 data
 reports
 logs/
+
+# Claude Code のマシン固有設定と worktree の実体。
+# .claude/skills/ は追跡対象（プロジェクトのスキルは共有する）
+.claude/settings.local.json
+.claude/worktrees/
