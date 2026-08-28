@@ -181,32 +181,6 @@ def merge_eat_to_daily(df_daily, eat_stats):
     return df_merged
 
 
-def calc_neat(df_daily):
-    """
-    NEAT（非運動性活動熱産生）を計算
-
-    NEAT = activity_calories - EAT
-
-    Args:
-        df_daily: 日別データのDataFrame
-            必須カラム: activity_calories, eat
-
-    Returns:
-        pandas.DataFrame: NEATカラムが追加されたDataFrame
-    """
-    df = df_daily.copy()
-
-    # activity_caloriesとeatが両方あればNEATを計算
-    if 'activity_calories' in df.columns and 'eat' in df.columns:
-        df['neat'] = df['activity_calories'] - df['eat']
-        # 負の値は0にする（データ不整合の場合）
-        df['neat'] = df['neat'].clip(lower=0)
-    else:
-        df['neat'] = 0
-
-    return df
-
-
 def calc_tef(df_daily):
     """
     TEF（食事誘発性熱産生）を計算
