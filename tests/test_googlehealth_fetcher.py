@@ -792,3 +792,106 @@ def test_allow_empty_absent_endpoint_still_errors_on_zero_rows(data_dir, fake_ro
     result = ghf.fetch_endpoint(None, 'hrv', days=3)
     assert result['records'] == 0
     assert result['error']
+
+
+# =============================================================================
+# weight / body_fat: Health Connect 経由の体重・体脂肪率（Issue #94）
+# =============================================================================
+
+def _body_measure_point(point_id: str, payload_key: str, value_key: str, value,
+                        physical_time: str = '2026-08-26T20:37:32Z',
+                        utc_offset: str = '32400s',
+                        package_name: str = 'jp.healthplanet.healthplanetapp',
+                        platform: str = 'HEALTH_CONNECT') -> dict:
+    """weight / body-fat の dataPoint 1件相当"""
+    payload_field = 'weight' if payload_key == 'weight' else 'bodyFat'
+    return {
+        'name': f'users/me/dataTypes/{payload_key}/dataPoints/{point_id}',
+        'dataSource': {
+            'recordingMethod': 'UNKNOWN',
+            'device': {},
+            'application': {'packageName': package_name},
+            'platform': platform,
+        },
+        payload_field: {
+            'sampleTime': {'physicalTime': physical_time, 'utcOffset': utc_offset},
+            value_key: value,
+        },
+    }
+
+
+def test_fetch_weight_converts_grams_to_kg(fake_get_pages):
+    """weightGrams: 61300 が weight_kg: 61.3 になること（単位換算の回帰防止）"""
+    fake_get_pages([{'dataPoints': [
+        _body_measure_point('weight-1', 'weight', 'weightGrams', 61300),
+    ]}])
+
+    rows = googlehealth_api.fetch_weight(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['weight_kg'] == 61.3
+
+
+def test_fetch_weight_uses_local_time_not_utc_date(fake_get_pages):
+    """physicalTime(UTC) + utcOffset からローカル日付が出ること
+
+    2026-08-26T20:37:32Z + 32400s(+9h) -> time は 2026-08-27 05:37:32、
+    date は 2026-08-27。UTC の日付(08-26)のまま保存されたら FAIL
+    """
+    fake_get_pages([{'dataPoints': [
+        _body_measure_point('weight-1', 'weight', 'weightGrams', 61300,
+                            physical_time='2026-08-26T20:37:32Z', utc_offset='32400s'),
+    ]}])
+
+    rows = googlehealth_api.fetch_weight(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['time'] == '2026-08-27 05:37:32'
+    assert rows[0]['date'] == '2026-08-27'
+
+
+def test_fetch_body_fat_keeps_percentage_as_is(fake_get_pages):
+    fake_get_pages([{'dataPoints': [
+        _body_measure_point('bodyfat-1', 'body-fat', 'percentage', 18.3),
+    ]}])
+
+    rows = googlehealth_api.fetch_body_fat(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['body_fat_rate'] == 18.3
+    assert rows[0]['date'] == '2026-08-27'
+
+
+@pytest.fixture
+def weight_dir(tmp_path, monkeypatch):
+    """ENDPOINTS['weight']['output'] を tmp_path 配下に差し替える（caffeine_dir と同じ理由）"""
+    out = tmp_path / 'weight.csv'
+    monkeypatch.setitem(ghf.ENDPOINTS['weight'], 'output', out)
+    return out
+
+
+def test_weight_merge_key_idempotent_across_two_saves(weight_dir, monkeypatch):
+    """同じ id を2回保存しても行数が増えないこと（id は19桁、dtype=str 必須）"""
+    row = {
+        'id': '2744074805234614368', 'time': '2026-08-27 05:37:32',
+        'date': '2026-08-27', 'weight_kg': 61.3,
+        'package_name': 'jp.healthplanet.healthplanetapp', 'platform': 'HEALTH_CONNECT',
+        'recording_method': 'UNKNOWN',
+    }
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'weight', lambda creds, s, e: [row])
+
+    ghf.fetch_endpoint(None, 'weight', days=3)
+    result = ghf.fetch_endpoint(None, 'weight', days=3)
+
+    assert result['records'] == 1
+    saved = pd.read_csv(weight_dir, dtype={'id': str})
+    assert len(saved) == 1
+    assert saved.loc[0, 'id'] == '2744074805234614368'
+
+
+def test_weight_allow_empty_does_not_error(weight_dir, monkeypatch):
+    """計測が疎なため0件は正常。エラーにせず CSV も作らないこと"""
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'weight', lambda creds, s, e: [])
+
+    result = ghf.fetch_endpoint(None, 'weight', days=3)
+
+    assert result['records'] == 0
+    assert 'error' not in result
+    assert not weight_dir.exists()
