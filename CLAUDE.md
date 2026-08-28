@@ -206,6 +206,21 @@ Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セ�
   正常状態なため。他の Google Health エンドポイントは0件を取得の沈黙故障として
   扱うが、caffeine だけ例外
 
+### 安静時心拍数・SpO2（Issue #78）
+
+- **`daily-resting-heart-rate` は FITBIT と HEALTH_CONNECT の2系統が同じ日付に
+  届く。** FITBIT（`calculationMethod: WITH_SLEEP`）だけが既存 CSV と一致し、
+  HEALTH_CONNECT（`com.google.android.apps.fitness`）は約5bpm低い。混ぜると
+  存在しない段差になるため、HEALTH_CONNECT へのフォールバックはせず、FITBIT
+  点が無い日は欠測のまま残す
+- **`daily-oxygen-saturation` の日付は「その夜が始まった暦日」で、既存 CSV
+  （起床日）より1日前になる。** 一律 +1 日ではなく、正午〜正午の窓で重なる
+  睡眠セッションを引き当て、その `dateOfSleep` を採用して解決している
+  （素朴な「開始日=セッション開始日」規則は実測で10日破綻する）
+- 日付ズレがあるのは spo2 だけで、他の daily 型（hrv/breathing_rate/
+  temperature_skin/active_zone_minutes/heart_rate）は lag 0。
+  `test_no_date_lag_in_daily_types` で恒久確認している
+
 MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制限は無い。2015-01 以前は
 0 件 = MF 側に記録が無い）。`--unit year` の既定期間はこの最古年から当月までで、
 `EARLIEST_YEAR` に持たせてある。ただし連携が壊れている口座の明細は過去分も丸ごと

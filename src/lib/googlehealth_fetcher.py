@@ -29,7 +29,8 @@ GOOGLEHEALTH_DIR = BASE_DIR / 'data' / 'googlehealth'
 HISTORY_BOUNDARY = dt.date(2026, 6, 1)
 
 # 値が既存 CSV と完全一致することを実測で確認済みのエンドポイントのみ（Issue #49）。
-# spo2 は未解決の定義差があるため未対応。
+# heart_rate / spo2 は Issue #78 で対応（heart_rate はプラットフォーム選択、
+# spo2 は日付ラベルの1日ずれを睡眠セッションの引き当てで解決）。
 #
 # sleep は他と違い:
 #   - 'kind': 'period_replace' -> 期間置換（logId 空間が Fitbit と Google で
@@ -48,6 +49,14 @@ ENDPOINTS = {
     },
     'temperature_skin': {
         'description': '皮膚温（睡眠中）',
+        'date_column': 'date',
+    },
+    'heart_rate': {
+        'description': '安静時心拍数',
+        'date_column': 'date',
+    },
+    'spo2': {
+        'description': 'SpO2（血中酸素飽和度）',
         'date_column': 'date',
     },
     'sleep': {
