@@ -206,6 +206,31 @@ Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セ�
   正常状態なため。他の Google Health エンドポイントは0件を取得の沈黙故障として
   扱うが、caffeine だけ例外
 
+### 栄養（食事ログ）
+
+ソースは Google Health API の `nutrition-log`（`fetch_googlehealth.py` の
+`nutrition` / `nutrition_logs` エンドポイント、`data/fitbit/nutrition.csv` /
+`nutrition_logs.csv`）。
+
+- `nutrition-log` は**個別食事ログしか持たない**。日次サマリのデータ型は
+  存在しない（`nutrition` / `nutrition-summary` / `daily-nutrition` はいずれも
+  400）。`nutrition.csv` は `nutrition_logs.csv` の合算で作っている
+- 食事ログとカフェイン（既存の `caffeine` エンドポイント）の判別は
+  `foodDisplayName` の有無で行う。**id の桁数では判別できない**（同じ
+  Fitbit 由来でも11桁と19桁が混在する）
+- `water` は取得元のデータ型が無い（`hydration` / `water` はいずれも400）ため
+  常に空欄。0 にすると「水を摂っていない」という嘘になる
+- `sodium` は grams で返るので mg に直している
+- 未記録日は行を作らない。既存 CSV に残る「全項目0の行」は Fitbit 経路が
+  書いたもので、摂取0とは限らない（実例: `2026-02-26` は Google では
+  1542 kcal だが CSV では 0）
+- `mealTypeId` の 1（BREAKFAST）/2（BEFORE_LUNCH）/7（ANYTIME）は実データ
+  未確認の推定値。実データで一致を確認したのは 3/4/5/6 のみ
+- `unitName`（「グラム」「食分」等）は `food-measurement-unit` 型の単体照会
+  （`GET users/me/dataTypes/food-measurement-unit/dataPoints/<unitId>`）で
+  解決している。一覧はページングが要るうえ毎回全件引くのは無駄なので、
+  未知の unitId のときだけ引きモジュールレベルの dict にキャッシュする
+
 ### 体重・体脂肪率（Google Health 経由）
 
 `fetch_googlehealth.py` の `weight` / `body_fat` エンドポイントで
