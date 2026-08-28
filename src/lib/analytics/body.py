@@ -35,7 +35,6 @@ COLUMN_CONFIG = {
     'calories_out': ('Out', '.0f'),
     'calorie_balance': ('Balance', '.0f'),
     'eat': ('EAT', '.0f'),
-    'neat': ('NEAT', '.0f'),
     'tef': ('TEF', '.0f'),
     'active_minutes': ('活動分', '.0f'),
     'protein': ('プロテイン', '.1f'),
