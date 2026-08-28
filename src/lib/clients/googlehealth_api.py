@@ -904,6 +904,133 @@ def fetch_caffeine(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
     return rows
 
 
+# =============================================================================
+# 体重・体脂肪率 -> data/googlehealth/weight.csv, data/googlehealth/body_fat.csv
+# =============================================================================
+
+WEIGHT_COLUMNS = ['id', 'time', 'date', 'weight_kg', 'package_name', 'platform', 'recording_method']
+BODY_FAT_COLUMNS = ['id', 'time', 'date', 'body_fat_rate', 'package_name', 'platform', 'recording_method']
+
+
+def _sample_time_local(sample_time: dict) -> dt.datetime | None:
+    """sampleTime.physicalTime + utcOffset をローカル時刻にする。physicalTime が無ければ None
+
+    civilTime は使わない（カフェインと同じ理由で経路を統一する）。
+    """
+    physical_time = sample_time.get('physicalTime')
+    if not physical_time:
+        return None
+    return _localize(physical_time, sample_time.get('utcOffset', '0s'))
+
+
+def _body_measure_row(point: dict, payload_key: str, value_column: str, extract) -> dict | None:
+    """dataPoint 1件を CSV 1行にする。値または時刻が欠ける場合は None
+
+    payload_key は 'weight' / 'bodyFat'。extract は payload から数値を取り出す関数。
+    """
+    payload = point.get(payload_key) or {}
+    sample_time = payload.get('sampleTime') or {}
+    local = _sample_time_local(sample_time)
+    if local is None:
+        return None
+
+    value = extract(payload)
+    if value is None:
+        return None
+
+    time_str = local.isoformat(sep=' ')
+    source = point.get('dataSource') or {}
+    application = source.get('application') or {}
+
+    return {
+        'id': point['name'].rsplit('/', 1)[-1],
+        'time': time_str,
+        'date': time_str[:10],
+        value_column: value,
+        'package_name': application.get('packageName'),
+        'platform': source.get('platform'),
+        'recording_method': source.get('recordingMethod'),
+    }
+
+
+def _fetch_body_measures(creds, data_type: str, payload_key: str, value_column: str, extract,
+                          start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    体重/体脂肪率の dataPoints を期間で取得する（fetch_exercise / fetch_caffeine と同じ形）
+
+    体組成の計測は数日〜週おきで疎なため、打ち切り判定はページ内の全 dataPoint
+    （値の有無に関わらず）の sampleTime の日付で行う（caffeine と同じ理由）。
+    """
+    rows = []
+    token = None
+    while True:
+        params = {'pageToken': token} if token else {}
+        body = _get(creds, f'{USER}/dataTypes/{data_type}/dataPoints', params)
+        page = body.get('dataPoints', [])
+
+        page_dates = []
+        for point in page:
+            sample_time = (point.get(payload_key) or {}).get('sampleTime') or {}
+            local = _sample_time_local(sample_time)
+            if local is not None:
+                page_dates.append(local.date())
+
+        page_rows = [r for r in (_body_measure_row(p, payload_key, value_column, extract) for p in page)
+                     if r is not None]
+        rows.extend(r for r in page_rows
+                    if start_date.isoformat() <= r['date'] <= end_date.isoformat())
+
+        token = body.get('nextPageToken')
+        if not token:
+            break
+        # 新しい順に返るので、ページ内の最新（値の有無に関わらず全dataPoint）が
+        # start_date より前なら以降も全て古い
+        if page_dates and max(page_dates) < start_date:
+            break
+
+    rows.sort(key=lambda r: r['time'])
+    return rows
+
+
+def fetch_weight(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    体重を期間で取得する（列は WEIGHT_COLUMNS）
+
+    Fitbit 由来ではない。dataSource は 2012-2021 が FITBIT/FITBIT_WEB_API、2025 以降は
+    HealthPlanet アプリ（jp.healthplanet.healthplanetapp）が Health Connect に書いたもの。
+    HealthPlanet 非公式APIが落ちたときの予備経路になる。
+
+    既存の data/fitbit/body_weight.csv とは同一スキーマにできない: bmi が返らない
+    （Google は身長を持たない）のと、logId 空間が別物（Fitbit は epoch-ms、Google は
+    19桁の dataPoint ID）のため、data/googlehealth/weight.csv に別ファイルとして持つ。
+    """
+    def _extract_weight_kg(payload):
+        grams = _num(payload.get('weightGrams'))
+        return None if grams is None else round(grams / 1000, 3)
+
+    return _fetch_body_measures(
+        creds, 'weight', 'weight', 'weight_kg', _extract_weight_kg,
+        start_date, end_date,
+    )
+
+
+def fetch_body_fat(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    体脂肪率を期間で取得する（列は BODY_FAT_COLUMNS）
+
+    Fitbit 由来ではない。weight と同じく 2025 以降は HealthPlanet アプリが Health
+    Connect に書いたもので、HealthPlanet 非公式APIが落ちたときの予備経路になる。
+
+    既存の data/fitbit/body_fat.csv とは同一スキーマにできない（logId 空間が別物）ため、
+    data/googlehealth/body_fat.csv に別ファイルとして持つ。
+    """
+    return _fetch_body_measures(
+        creds, 'body-fat', 'bodyFat', 'body_fat_rate',
+        lambda payload: _num(payload.get('percentage')),
+        start_date, end_date,
+    )
+
+
 # sleep は 1回の取得で sleep.csv / sleep_levels.csv の2つの行リストを作るため、
 # 他のエンドポイントと違って (sleep_rows, level_rows) のタプルを返す。
 # googlehealth_fetcher 側で戻り値の形を見て分岐する。
@@ -917,4 +1044,6 @@ FETCHERS = {
     'temperature_core': fetch_temperature_core,
     'exercise': fetch_exercise,
     'caffeine': fetch_caffeine,
+    'weight': fetch_weight,
+    'body_fat': fetch_body_fat,
 }
