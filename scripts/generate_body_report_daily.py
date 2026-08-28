@@ -139,16 +139,22 @@ def calc_activity_stats_for_period(start_date, end_date):
     if len(df_period) == 0:
         return None
 
+    # active_minutes = lightly + fairly + very（3列とも欠測ならNaN。0埋めしない）
+    active_minutes_cols = ['lightlyActiveMinutes', 'fairlyActiveMinutes', 'veryActiveMinutes']
+    avg_active_minutes = df_period[active_minutes_cols].sum(axis=1, min_count=1).mean()
+
     # 統計を計算
     return {
         'days': len(df_period),
         'avg_calories_out': df_period['caloriesOut'].mean(),
         'total_calories_out': df_period['caloriesOut'].sum(),
-        'avg_activity_calories': df_period['activityCalories'].mean(),
+        'avg_active_minutes': avg_active_minutes,
         'avg_steps': df_period['steps'].mean(),
         'total_steps': df_period['steps'].sum(),
-        # 日別データ（歩数のみ）
-        'daily': df_period[['date', 'caloriesOut', 'activityCalories', 'steps']].to_dict('records'),
+        # 日別データ
+        'daily': df_period[
+            ['date', 'caloriesOut', 'steps'] + active_minutes_cols
+        ].to_dict('records'),
     }
 
 
@@ -340,9 +346,6 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     # EATデータをマージ
     if eat_stats:
         df_daily = activity.merge_eat_to_daily(df_daily, eat_stats)
-
-    # NEATを計算
-    df_daily = activity.calc_neat(df_daily)
 
     # TEFを計算
     df_daily = activity.calc_tef(df_daily)
