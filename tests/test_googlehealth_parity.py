@@ -248,3 +248,64 @@ def test_sleep_matches_existing_csv_within_tolerance(creds):
         assert abs(diff) <= tolerance, (
             f'{column}: 中央値の差が許容範囲外 ({diff:+.1f}分、許容 ±{tolerance}分)'
         )
+
+
+# =============================================================================
+# weight / body_fat: HealthPlanet 実測との突き合わせ（Issue #94）
+#
+# #77 本文の「2026-06-01 以降で検証する」はこの系統では成立しない。比較対象の
+# 既存 data/fitbit/body_weight.csv は 2024-04-23 で終わっており、2026-06 以降に
+# 比較対象が無いため、HealthPlanet 実測（data/healthplanet_innerscan.csv）と
+# 突き合わせる。
+# =============================================================================
+
+INNERSCAN_PATH = BASE_DIR / 'data' / 'healthplanet_innerscan.csv'
+
+
+def _load_innerscan() -> dict[str, dict]:
+    if not INNERSCAN_PATH.exists():
+        pytest.skip(f'{INNERSCAN_PATH} が無い')
+    with INNERSCAN_PATH.open() as f:
+        return {r['date']: r for r in csv.DictReader(f)}
+
+
+def test_weight_matches_healthplanet_innerscan(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    rows = gh.fetch_weight(creds, COMPARE_FROM, end)
+    assert rows, 'weight: Google から1件も取得できていない'
+
+    old = _load_innerscan()
+    compared = 0
+    mismatches = []
+    for row in rows:
+        ref = old.get(row['date'])
+        if ref is None or ref.get('weight') in (None, ''):
+            continue
+        compared += 1
+        got, want = row['weight_kg'], float(ref['weight'])
+        if abs(got - want) > 0.05:
+            mismatches.append(f"{row['date']}: Google={got} innerscan={want}")
+
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_body_fat_matches_healthplanet_innerscan(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    rows = gh.fetch_body_fat(creds, COMPARE_FROM, end)
+    assert rows, 'body_fat: Google から1件も取得できていない'
+
+    old = _load_innerscan()
+    compared = 0
+    mismatches = []
+    for row in rows:
+        ref = old.get(row['date'])
+        if ref is None or ref.get('body_fat_rate') in (None, ''):
+            continue
+        compared += 1
+        got, want = row['body_fat_rate'], float(ref['body_fat_rate'])
+        if abs(got - want) > 0.05:
+            mismatches.append(f"{row['date']}: Google={got} innerscan={want}")
+
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'

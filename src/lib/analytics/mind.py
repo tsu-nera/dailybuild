@@ -382,8 +382,6 @@ def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_zo
         if df_activity is not None and date in df_activity.index:
             val = pd.to_numeric(df_activity.loc[date, 'steps'], errors='coerce')
             row['steps'] = int(val) if pd.notna(val) else None
-            val = pd.to_numeric(df_activity.loc[date, 'sedentaryMinutes'], errors='coerce')
-            row['sedentary_min'] = int(val) if pd.notna(val) else None
             val = pd.to_numeric(df_activity.loc[date, 'lightlyActiveMinutes'], errors='coerce')
             row['lightly_min'] = int(val) if pd.notna(val) else None
             val = pd.to_numeric(df_activity.loc[date, 'fairlyActiveMinutes'], errors='coerce')
@@ -392,7 +390,6 @@ def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_zo
             row['very_min'] = int(val) if pd.notna(val) else None
         else:
             row['steps'] = None
-            row['sedentary_min'] = None
             row['lightly_min'] = None
             row['fairly_min'] = None
             row['very_min'] = None

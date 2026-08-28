@@ -102,6 +102,26 @@ ENDPOINTS = {
         'columns': googlehealth_api.CAFFEINE_COLUMNS,
         'allow_empty': True,
     },
+    # Fitbit 由来ではない（2025 以降は HealthPlanet アプリが Health Connect に
+    # 書いたもの）。既存の data/fitbit/body_weight.csv とはスキーマを揃えられない
+    # ため（bmi が返らない、logId 空間が別物）別ファイルにする。
+    # 体組成の計測は数日〜週おきで疎なので、短い窓では0件が正常状態（allow_empty）
+    'weight': {
+        'description': '体重',
+        'date_column': 'time',
+        'merge_key': 'id',
+        'output': GOOGLEHEALTH_DIR / 'weight.csv',
+        'columns': googlehealth_api.WEIGHT_COLUMNS,
+        'allow_empty': True,
+    },
+    'body_fat': {
+        'description': '体脂肪率',
+        'date_column': 'time',
+        'merge_key': 'id',
+        'output': GOOGLEHEALTH_DIR / 'body_fat.csv',
+        'columns': googlehealth_api.BODY_FAT_COLUMNS,
+        'allow_empty': True,
+    },
 }
 
 

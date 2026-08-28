@@ -44,7 +44,7 @@ uv sync
 型チェッカーは入れていない。品質チェックはテストのみで、これが正典コマンド:
 
 ```bash
-uv run pytest tests -q   # 126件・約37秒
+uv run pytest tests -q   # 148件・約78秒
 ```
 
 このリポジトリの失敗は**例外を出さず正常終了する**。壊れた値が CSV に書かれた
@@ -220,6 +220,22 @@ Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セ�
 - 日付ズレがあるのは spo2 だけで、他の daily 型（hrv/breathing_rate/
   temperature_skin/active_zone_minutes/heart_rate）は lag 0。
   `test_no_date_lag_in_daily_types` で恒久確認している
+
+### 体重・体脂肪率（Google Health 経由）
+
+`fetch_googlehealth.py` の `weight` / `body_fat` エンドポイントで
+`data/googlehealth/weight.csv` / `body_fat.csv` に取り込む。
+
+- 既存の `data/fitbit/body_weight.csv` / `body_fat.csv` とも
+  `data/healthplanet_innerscan.csv` とも統合しない。bmi が返らない
+  （Google は身長を持たない）のと、logId 空間が別物（Fitbit は epoch-ms、
+  Google は19桁の dataPoint ID）のため、統合すると同じ列に別空間の ID が
+  混在する
+- 2025 以降の dataSource は HealthPlanet アプリ（`jp.healthplanet.healthplanetapp`）
+  が Health Connect に書いたもので、Fitbit 由来ではない。HealthPlanet 非公式API
+  が落ちたときの予備経路になる
+- 体組成の計測は数日〜週おきで疎なので、0件を正常扱いにしてある（`allow_empty`）
+- マージキーは `exercise` / `caffeine` と同じく `id`（19桁の整数。`dtype=str` 必須）
 
 MF の明細は **2015-02 まで遡って取得できる**（閲覧期間の制限は無い。2015-01 以前は
 0 件 = MF 側に記録が無い）。`--unit year` の既定期間はこの最古年から当月までで、

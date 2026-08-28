@@ -35,9 +35,8 @@ COLUMN_CONFIG = {
     'calories_out': ('Out', '.0f'),
     'calorie_balance': ('Balance', '.0f'),
     'eat': ('EAT', '.0f'),
-    'neat': ('NEAT', '.0f'),
     'tef': ('TEF', '.0f'),
-    'activity_calories': ('活動C', '.0f'),
+    'active_minutes': ('活動分', '.0f'),
     'protein': ('プロテイン', '.1f'),
     'sleep_hours': ('睡眠', '.1f'),
 }
@@ -60,10 +59,10 @@ DAILY_CALORIE_COLUMNS = [
     'weight', 'basal_metabolic_rate', 'calories_in', 'calories_out', 'calorie_balance'
 ]
 
-# カロリー分析テーブル用カラム（TDEE分解：BMR, NEAT, TEF, EAT）
+# カロリー分析テーブル用カラム（TDEE分解：BMR, TEF, EAT + 活動量の目安）
 DAILY_CALORIE_ANALYSIS_COLUMNS = [
     'weight', 'calorie_balance', 'calories_in', 'calories_out',
-    'basal_metabolic_rate', 'neat', 'tef', 'eat'
+    'basal_metabolic_rate', 'active_minutes', 'tef', 'eat'
 ]
 
 # 統合テーブル用カラム（本質的な指標のみ）
@@ -243,7 +242,15 @@ def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None, sleep_d
     Returns
     -------
     DataFrame
-        マージされた日別データ（calories_in, calories_out, calorie_balance, sleep_hoursカラムを含む）
+        マージされた日別データ（calories_in, calories_out, calorie_balance,
+        active_minutes, sleep_hoursカラムを含む）
+
+        active_minutes は lightlyActiveMinutes + fairlyActiveMinutes +
+        veryActiveMinutes（Google Health の active-minutes 由来）。
+        activityCalories は Google Health に対応する型が無いため使わない
+        （Issue #82）。3列とも欠測の日は NaN のままにする（min_count=1）。
+        1つでも値があれば残りのレベルは 0 分として扱う（Google は 0 分の
+        レベルを配列に含めないため）。
     """
     df = df_body.copy()
 
@@ -261,20 +268,30 @@ def merge_daily_data(df_body, nutrition_stats=None, activity_stats=None, sleep_d
         )
         df = df.merge(df_nutrition_daily, on='date', how='left')
 
-    # アクティビティデータをマージ（消費カロリー）
+    # アクティビティデータをマージ（消費カロリー、活動分）
     if activity_stats and 'daily' in activity_stats:
         df_activity_daily = pd.DataFrame(activity_stats['daily'])
         df_activity_daily['date'] = pd.to_datetime(df_activity_daily['date'])
-        # caloriesOutとactivityCaloriesをマージ
+        # caloriesOutをマージ
         columns_to_merge = ['date', 'caloriesOut']
         rename_map = {'caloriesOut': 'calories_out'}
-        if 'activityCalories' in df_activity_daily.columns:
-            columns_to_merge.append('activityCalories')
-            rename_map['activityCalories'] = 'activity_calories'
+        active_minutes_cols = [
+            c for c in
+            ('lightlyActiveMinutes', 'fairlyActiveMinutes', 'veryActiveMinutes')
+            if c in df_activity_daily.columns
+        ]
+        columns_to_merge += active_minutes_cols
         df_activity_daily = df_activity_daily[columns_to_merge].rename(
             columns=rename_map
         )
         df = df.merge(df_activity_daily, on='date', how='left')
+
+        # active_minutes = lightly + fairly + very（Google active-minutes 由来）
+        # 3列とも欠測なら NaN のまま（min_count=1）。0埋めしない。
+        if active_minutes_cols:
+            df_numeric = df[active_minutes_cols].apply(pd.to_numeric, errors='coerce')
+            df['active_minutes'] = df_numeric.sum(axis=1, min_count=1)
+            df = df.drop(columns=active_minutes_cols)
 
     # カロリー収支を計算（摂取 - 消費）
     if 'calories_in' in df.columns and 'calories_out' in df.columns:

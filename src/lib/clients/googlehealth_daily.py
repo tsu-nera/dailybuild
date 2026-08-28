@@ -253,6 +253,11 @@ def fetch_activity(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
     activityCalories と sedentaryMinutes は Google に対応する型が無いため常に
     None にする。merge_csv はセル単位で df_new を優先しつつ NaN は df_old で
     埋めるため、この2列は過去の行の値を消さず、新しい日だけが空になる。
+
+    レポート側ではこの2列の代わりに lightlyActiveMinutes /
+    fairlyActiveMinutes / veryActiveMinutes（active-minutes）から導く
+    active_minutes 指標を使う（Issue #82）。CSV の列自体は履歴保持のため
+    残している。
     """
     steps_by_date = _rollup_by_date(creds, 'steps', 'steps', start_date, end_date)
     distance_by_date = _rollup_by_date(creds, 'distance', 'distance', start_date, end_date)
