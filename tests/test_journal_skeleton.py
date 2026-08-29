@@ -111,3 +111,43 @@ def test_index_row_added_once_and_summary_preserved(journal_dir):
     index.write_text(text.replace('（骨組みのみ・要約未記入）', '週の要約'), encoding='utf-8')
     assert js.ensure_index_row(dt.date(2026, 8, 29)) == 'exists'
     assert '週の要約' in index.read_text(encoding='utf-8')
+
+
+def _index_weeks(path):
+    import re
+    return re.findall(r'\[(\d{4}-W\d{2})\]', path.read_text(encoding='utf-8'))
+
+
+def test_index_stays_newest_first_when_backfilling(journal_dir):
+    """遡り生成では古い週を後から足す。常に先頭へ入れると順序が壊れる"""
+    index = journal_dir / 'JOURNAL.md'
+    index.write_text(
+        '# Health Journal Index\n\n'
+        '| 期間 | ファイル | 要約 |\n|---|---|---|\n'
+        '| 08/03-08/09 | [2026-W32](2026-W32.md) | 既存の要約 |\n',
+        encoding='utf-8')
+
+    # 当週を足したあとに、間の2週を古い順で埋める（--since の処理順）
+    js.ensure_index_row(dt.date(2026, 8, 29))   # W35
+    js.ensure_index_row(dt.date(2026, 8, 10))   # W33
+    js.ensure_index_row(dt.date(2026, 8, 17))   # W34
+
+    assert _index_weeks(index) == ['2026-W35', '2026-W34', '2026-W33', '2026-W32']
+    assert '既存の要約' in index.read_text(encoding='utf-8')
+
+
+def test_index_does_not_disturb_monthly_table(journal_dir):
+    """月ファイルの行は別表。週の追加で巻き込まない"""
+    index = journal_dir / 'JOURNAL.md'
+    index.write_text(
+        '| 期間 | ファイル | 要約 |\n|---|---|---|\n'
+        '| 08/03-08/09 | [2026-W32](2026-W32.md) | 週 |\n'
+        '\n## 月次\n\n| 月 | ファイル | 要約 |\n|---|---|---|\n'
+        '| 2026-04 | [2026-04](2026-04.md) | 月 |\n',
+        encoding='utf-8')
+
+    js.ensure_index_row(dt.date(2026, 8, 29))
+
+    text = index.read_text(encoding='utf-8')
+    assert _index_weeks(index) == ['2026-W35', '2026-W32']
+    assert text.index('[2026-W32]') < text.index('## 月次') < text.index('[2026-04]')

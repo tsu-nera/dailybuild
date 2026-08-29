@@ -294,7 +294,17 @@ def ensure_index_row(target: dt.date) -> str:
     row = (f'| {monday.strftime("%m/%d")}-{sunday.strftime("%m/%d")} '
            f'| [{name}]({name}.md) | （骨組みのみ・要約未記入） |')
 
-    # 表の1行目（ヘッダ区切りの直後）に差し込む。索引は新しい順
+    # 索引は新しい順。常に先頭へ入れると古い週を後から足したとき順序が崩れる
+    # （遡り生成で W33 → W34 の順に処理すると W34, W33, W35 と並ぶ）。
+    # 自分より古い最初の週行の手前へ入れ、無ければ最後の週行の直後へ置く。
+    # 月ファイルの行（YYYY-MM）は W パターンに掛からないので巻き込まない。
+    weeks = list(re.finditer(r'^\|[^\n]*\[(\d{4}-W\d{2})\]\([^\n]*\n', text, re.MULTILINE))
+    if weeks:
+        older = next((m for m in weeks if m.group(1) < name), None)
+        at = older.start() if older else weeks[-1].end()
+        path.write_text(text[:at] + row + '\n' + text[at:], encoding='utf-8')
+        return 'added'
+
     marker = re.search(r'^\|---\|---\|---\|\s*$', text, re.MULTILINE)
     if marker is None:
         return 'no-table'
