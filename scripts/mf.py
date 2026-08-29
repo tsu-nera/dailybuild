@@ -15,7 +15,8 @@ Usage:
     python scripts/mf.py fetch --year 2025          # 2025年を丸ごと
     python scripts/mf.py fetch --start 2026-01 --end 2026-08
 
-    python scripts/mf.py show                       # 月次（直近3ヶ月）
+    python scripts/mf.py show                       # 月次（当月）
+    python scripts/mf.py show --months 3            # 直近3ヶ月
     python scripts/mf.py show --months 12
     python scripts/mf.py show --unit year           # 年次（全期間）
     python scripts/mf.py show --year 2018           # 2018年を丸ごと
@@ -55,8 +56,10 @@ HEALTHY_STATUS = '正常'
 # 更新実行中。異常ではないので警告しない
 PENDING_STATUS = '更新中'
 
-# 取得・表示の既定月数
-DEFAULT_MONTHS = 3
+# fetch の既定取得月数。MF は後から明細を埋めるので当月だけでは取りこぼす
+DEFAULT_FETCH_MONTHS = 3
+# show の既定表示月数
+DEFAULT_SHOW_MONTHS = 1
 
 # show のセクション。--sections で選ぶ。名前は ASCII に揃える（表の見出しは
 # 日本語だが、指定側に全角を要求するとタイプもエスケープも面倒になる）
@@ -149,7 +152,7 @@ def run_fetch(args, out: IO[str]) -> None:
 def fetch_args_for_update() -> argparse.Namespace:
     """show --update から呼ぶ fetch 相当の引数（既定の直近Nヶ月を取り直す）"""
     return argparse.Namespace(
-        login=False, refresh=False, months=DEFAULT_MONTHS,
+        login=False, refresh=False, months=DEFAULT_FETCH_MONTHS,
         year=None, start=None, end=None,
     )
 
@@ -177,7 +180,7 @@ def default_months(args) -> int:
     if args.unit == 'year':
         today = dt.date.today()
         return (today.year - EARLIEST_YEAR) * 12 + today.month
-    return DEFAULT_MONTHS
+    return DEFAULT_SHOW_MONTHS
 
 
 def resolve_sections(spec: str) -> list[str]:
@@ -221,7 +224,8 @@ def cmd_show(args) -> None:
 
     week, month, year = parse_period_args(args)
 
-    df = store.load_entries()
+    df_all = store.load_entries()
+    df = df_all
     if df.empty:
         print(f"エラー: {store.DATA_DIR}/{store.CSV_GLOB} が存在しません", file=sys.stderr)
         sys.exit(1)
@@ -267,11 +271,15 @@ def cmd_show(args) -> None:
         print()
 
     if 'change' in sections:
-        change = render.render_period_change(exp, top=args.change_top)
+        # 比較相手は表示期間の外から取る（既定の表示は当月だけなので）
+        all_exp = render.expenses(render.add_bucket(df_all, args.unit))
+        cur_b = max(exp['bucket'])
+        prev_b = render.previous_bucket(all_exp, cur_b)
+        change = (render.render_period_change(all_exp, prev_b, cur_b, top=args.change_top)
+                  if prev_b else '')
         if change:
-            buckets = sorted(exp['bucket'].unique())
             print(f"## 前{render.bucket_label(args.unit)}比の増減"
-                  f"（{buckets[-2]} → {buckets[-1]}・中項目・支出）\n")
+                  f"（{prev_b} → {cur_b}・中項目・支出）\n")
             print(change)
             print()
 
@@ -311,7 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
                               help='ブラウザを開いて手動ログインし、セッションを保存する')
     fetch_parser.add_argument('--refresh', action='store_true',
                               help='取得後に金融機関からのデータ一括更新をキックする（完了は待たない）')
-    fetch_parser.add_argument('--months', type=int, default=DEFAULT_MONTHS,
+    fetch_parser.add_argument('--months', type=int, default=DEFAULT_FETCH_MONTHS,
                               help='取得月数（当月から遡る）')
     fetch_parser.add_argument('--year', type=int, help='指定年を丸ごと取得')
     fetch_parser.add_argument('--start', type=str, help='開始月（YYYY-MM）')
@@ -323,7 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
                              default='month',
                              help='集計単位（デフォルト: month）')
     show_parser.add_argument('--months', type=int, default=None,
-                             help=f'直近Nヶ月（--days/--week/--month 未指定時のデフォルト: {DEFAULT_MONTHS}）')
+                             help=f'直近Nヶ月（--days/--week/--month 未指定時のデフォルト: {DEFAULT_SHOW_MONTHS}）')
     show_parser.add_argument('--days', type=int, default=None,
                              help='直近N日')
     show_parser.add_argument('--week', type=str, default=None,

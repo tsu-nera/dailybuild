@@ -115,7 +115,8 @@ uv run scripts/toggl.py show --unit week     # Toggl 週次サマリ
 uv run scripts/toggl.py show --list          # 時系列のエントリ一覧（既定は当日）
 uv run scripts/toggl.py show --update        # 取得してから表示
 
-uv run scripts/mf.py show                    # MF 月次サマリ（直近3ヶ月）
+uv run scripts/mf.py show                    # MF 月次サマリ（当月）
+uv run scripts/mf.py show --months 3         # 直近3ヶ月
 uv run scripts/mf.py show --month 1 --year 2026  # 指定月
 uv run scripts/mf.py show --year 2018            # 指定年を丸ごと
 uv run scripts/mf.py show --unit year            # 年次（既定で全期間）

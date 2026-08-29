@@ -97,6 +97,7 @@ def render_balance(df: pd.DataFrame, unit: str) -> str:
     )
     balance = grouped['income'] - grouped['expense']
     prev = grouped['expense'].shift(1)
+    single = len(grouped) == 1
 
     out = pd.DataFrame({
         '収入': grouped['income'].map(format_yen),
@@ -106,28 +107,37 @@ def render_balance(df: pd.DataFrame, unit: str) -> str:
         'Δ%': [format_delta_pct(c, p) for c, p in zip(grouped['expense'], prev)],
     })
 
-    # 合計と平均。増減列は行をまたいだ意味を持たないので空にする
-    n = len(grouped)
-    out.loc['合計'] = [format_yen(grouped['income'].sum()),
-                       format_yen(grouped['expense'].sum()),
-                       format_yen(balance.sum()), '', '']
-    out.loc[f'平均/{bucket_label(unit)}'] = [
-        format_yen(grouped['income'].mean()),
-        format_yen(grouped['expense'].mean()),
-        format_yen(balance.mean()), '', '']
+    # 合計と平均。増減列は行をまたいだ意味を持たないので空にする。
+    # bucket が1つのときは本体行の写しにしかならないので出さない
+    if not single:
+        out.loc['合計'] = [format_yen(grouped['income'].sum()),
+                           format_yen(grouped['expense'].sum()),
+                           format_yen(balance.sum()), '', '']
+        out.loc[f'平均/{bucket_label(unit)}'] = [
+            format_yen(grouped['income'].mean()),
+            format_yen(grouped['expense'].mean()),
+            format_yen(balance.mean()), '', '']
+
+    if single:
+        out = out.drop(columns=['支出Δ', 'Δ%'])
 
     out.index.name = bucket_label(unit)
     return out.to_markdown()
 
 
-def render_period_change(df: pd.DataFrame, top: int = 5) -> str:
-    """直近2つの bucket を中項目で突き合わせ、増えた/減った順に並べる。
-    bucket が1つしか無ければ空文字を返す（呼び出し側が節ごと落とす）"""
-    buckets = sorted(df['bucket'].unique())
-    if len(buckets) < 2:
-        return ''
-    prev_b, cur_b = buckets[-2], buckets[-1]
+def previous_bucket(df: pd.DataFrame, cur_bucket: str) -> str | None:
+    """cur_bucket の1つ前の bucket。表示期間の外にあっても拾う。
 
+    既定の表示が当月だけなので、期間内だけを見ると比較対象が常に存在しない。
+    """
+    prior = sorted(b for b in df['bucket'].unique() if b < cur_bucket)
+    return prior[-1] if prior else None
+
+
+def render_period_change(df: pd.DataFrame, prev_b: str, cur_b: str,
+                         top: int = 5) -> str:
+    """2つの bucket を中項目で突き合わせ、増えた/減った順に並べる。
+    差が全く無ければ空文字を返す（呼び出し側が節ごと落とす）"""
     key = [COL_CATEGORY, COL_SUBCATEGORY]
     df = fill_keys(df, key)
     cur = df[df['bucket'] == cur_b].groupby(key)[COL_AMOUNT].sum()
@@ -168,7 +178,8 @@ def render_category_matrix(df: pd.DataFrame, unit: str) -> str:
     # 合計の多いカテゴリを上に
     pivot = pivot.loc[pivot.sum(axis=1).sort_values(ascending=False).index]
 
-    pivot['合計'] = pivot.sum(axis=1)
+    if len(pivot.columns) > 1:
+        pivot['合計'] = pivot.sum(axis=1)
     pivot.loc['合計'] = pivot.sum()
 
     pivot.index.name = f'カテゴリ \\ {bucket_label(unit)}'
