@@ -18,12 +18,15 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import body
+from lib.utils import targets
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
 
 # 目標設定（パラメータ）
-TARGET_FFMI = 21.0  # 目標FFMI
+# 目標FFMI は config/targets.yaml が単一の真実。ここに書き写すと yaml だけ
+# 更新されて古い値が残る（実際 21.0 のまま yaml は 19.0 になっていた）
+TARGET_FFMI = targets.get_target('ffmi', 19.0)
 MONTHLY_WEIGHT_GAIN = 0.75  # 月間体重増加目標（kg）
 HEIGHT_CM = 170  # 身長（cm）
 
@@ -67,7 +70,7 @@ def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_wei
         weekly_data.append({
             'week_label': week_label,
             'weight': f"{row['weight']:.2f}",
-            # 増量目標（MONTHLY_WEIGHT_GAIN=+0.75kg/月、TARGET_FFMI=21.0）なので
+            # 増量目標（MONTHLY_WEIGHT_GAIN=+0.75kg/月、FFMI は targets.yaml）なので
             # 体重の増加が良い変化。以前は positive_is_good=False で減少を
             # 良い変化として太字にしており、同じレポートが掲げる目標と逆だった
             'weight_diff': format_change(row['weight_diff'], ''),
@@ -85,6 +88,11 @@ def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_wei
         'progress': {
             'target_ffmi': target_ffmi,
             'target_weight': f"{progress_info['target_weight']:.1f}",
+            # 到達予測は「体脂肪率12.5%を保ったまま体重を増やす」前提で
+            # target_weight を逆算している。現在の体脂肪率がそれより高いと
+            # 目標体重を先に超え、ETA が負になって「約-0.6ヶ月後」と出る。
+            # 前提が外れている状態なので、数字ではなく理由を出す
+            'reachable': progress_info['months_to_target'] > 0,
             'months_to_target': f"{progress_info['months_to_target']:.1f}",
             'weeks_to_target': progress_info['weeks_to_target'],
             'monthly_weight_gain': monthly_weight_gain,

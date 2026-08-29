@@ -1,7 +1,9 @@
 ## 🎯 目標進捗
 
 **目標**: FFMI {{ progress.target_ffmi }} (体重 {{ progress.target_weight }}kg)
-**予測到達**: 約{{ progress.months_to_target }}ヶ月後 ({{ progress.weeks_to_target }}週後)
+{% if progress.reachable %}**予測到達**: 約{{ progress.months_to_target }}ヶ月後 ({{ progress.weeks_to_target }}週後)
+{% else %}**予測到達**: 算出不可。体重は目標水準（{{ progress.target_weight }}kg）に達しており、残差は体脂肪率にある。この予測は体脂肪率12.5%を保ったまま体重を増やす前提なので、現在の体脂肪率では成立しない
+{% endif %}
 **増量ペース**: +{{ progress.monthly_weight_gain }}kg/月
 
 ![Progress]({{ progress.progress_image }})

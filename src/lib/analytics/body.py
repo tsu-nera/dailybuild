@@ -384,7 +384,7 @@ def format_body_composition_section(df):
     return section
 
 
-def plot_progress_chart(weekly_df, save_path, target_ffmi=21.0, monthly_weight_gain=0.75, current_weight=None, current_ffmi=None, height_cm=DEFAULT_HEIGHT_CM):
+def plot_progress_chart(weekly_df, save_path, target_ffmi, monthly_weight_gain=0.75, current_weight=None, current_ffmi=None, height_cm=DEFAULT_HEIGHT_CM):
     """
     FFMI目標達成までの進捗グラフを生成
 
