@@ -68,6 +68,11 @@ step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
 step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
 
+# 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
+# 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、
+# ここが書くのは skeleton マーカーの内側だけ
+step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
+
 echo ""
 echo "Finished at $(date)"
 
