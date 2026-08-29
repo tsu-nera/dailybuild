@@ -120,6 +120,9 @@ uv run scripts/mf.py show --month 1 --year 2026  # 指定月
 uv run scripts/mf.py show --year 2018            # 指定年を丸ごと
 uv run scripts/mf.py show --unit year            # 年次（既定で全期間）
 uv run scripts/mf.py show --unit day --days 14   # 日次
+uv run scripts/mf.py show --sections all    # 中項目別・店舗別・金融機関別も出す
+uv run scripts/mf.py show --sections +change    # 既定に前月比の増減を足す
+uv run scripts/mf.py show --sections +merchant  # 既定に店舗別だけ足す
 uv run scripts/mf.py show --list             # 明細一覧
 uv run scripts/mf.py show --update           # 取得してから表示
 ```

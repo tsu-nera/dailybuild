@@ -21,6 +21,9 @@ Usage:
     python scripts/mf.py show --year 2018           # 2018年を丸ごと
     python scripts/mf.py show --month 1 --year 2026 # 指定月
     python scripts/mf.py show --unit day --days 14  # 日次
+    python scripts/mf.py show --sections all        # 全セクション
+    python scripts/mf.py show --sections +change    # 既定 + 前期比の増減
+    python scripts/mf.py show --sections +merchant  # 既定 + 店舗別
     python scripts/mf.py show --list                # 明細一覧
     python scripts/mf.py show --update              # 取得してから表示
 
@@ -54,6 +57,13 @@ PENDING_STATUS = '更新中'
 
 # 取得・表示の既定月数
 DEFAULT_MONTHS = 3
+
+# show のセクション。--sections で選ぶ。名前は ASCII に揃える（表の見出しは
+# 日本語だが、指定側に全角を要求するとタイプもエスケープも面倒になる）
+SECTIONS = ['balance', 'change', 'matrix', 'category',
+            'subcategory', 'merchant', 'account']
+# 既定は全体像まで。列挙系（中項目・店舗・金融機関）は指定したときだけ出す
+DEFAULT_SECTIONS = ['balance', 'matrix', 'category']
 
 # MF に明細が存在する最古の年（2015-02 が初出。それ以前は 0 件）。
 # --unit year の既定期間を全期間にするために使う
@@ -170,6 +180,33 @@ def default_months(args) -> int:
     return DEFAULT_MONTHS
 
 
+def resolve_sections(spec: str) -> list[str]:
+    """--sections の指定を解決する。
+
+    'all' で全部、'+name' で既定への追加、それ以外は列挙したものだけ。
+    追加と列挙の混在は意図が読めないのでエラーにする。
+    """
+    if spec == 'all':
+        return list(SECTIONS)
+
+    names = [n.strip() for n in spec.split(',') if n.strip()]
+    if not names:
+        raise SystemExit('--sections が空')
+
+    additive = [n.startswith('+') for n in names]
+    if any(additive) and not all(additive):
+        raise SystemExit("--sections は '+name' での追加と名前の列挙を混ぜられない")
+
+    names = [n.lstrip('+') for n in names]
+    unknown = [n for n in names if n not in SECTIONS]
+    if unknown:
+        raise SystemExit(f"未知のセクション: {', '.join(unknown)}\n"
+                         f"指定できるのは: {', '.join(SECTIONS)}, all")
+
+    selected = set(DEFAULT_SECTIONS) | set(names) if all(additive) else set(names)
+    return [s for s in SECTIONS if s in selected]
+
+
 def cmd_fetch(args) -> None:
     if args.login and (args.refresh or args.year or args.start or args.end):
         args.parser.error('--login は他のオプションと同時に指定できない')
@@ -216,35 +253,53 @@ def cmd_show(args) -> None:
         print(render.render_totals(render.expenses(df), store.COL_CATEGORY, 'カテゴリ'))
         return
 
+    sections = resolve_sections(args.sections)
+
     df = render.add_bucket(df, args.unit)
     exp = render.expenses(df)
 
     unit_label = render.unit_label(args.unit)
     print(f"# Money サマリ（{unit_label}: {start} 〜 {end}）\n")
 
-    print(f"## {unit_label}収支\n")
-    print(render.render_balance(df, args.unit))
-    print()
+    if 'balance' in sections:
+        print(f"## {unit_label}収支\n")
+        print(render.render_balance(df, args.unit))
+        print()
 
-    print("## カテゴリ別内訳（支出）\n")
-    print(render.render_category_matrix(exp, args.unit))
-    print()
+    if 'change' in sections:
+        change = render.render_period_change(exp, top=args.change_top)
+        if change:
+            buckets = sorted(exp['bucket'].unique())
+            print(f"## 前{render.bucket_label(args.unit)}比の増減"
+                  f"（{buckets[-2]} → {buckets[-1]}・中項目・支出）\n")
+            print(change)
+            print()
 
-    print("## カテゴリ別合計（期間全体・支出）\n")
-    print(render.render_totals(exp, store.COL_CATEGORY, 'カテゴリ'))
-    print()
+    if 'matrix' in sections:
+        print("## カテゴリ別内訳（支出）\n")
+        print(render.render_category_matrix(exp, args.unit))
+        print()
 
-    print(f"## 中項目別（上位{args.top}・支出）\n")
-    print(render.render_totals(
-        exp, [store.COL_CATEGORY, store.COL_SUBCATEGORY], 'カテゴリ', top=args.top))
-    print()
+    if 'category' in sections:
+        print("## カテゴリ別合計（期間全体・支出）\n")
+        print(render.render_totals(exp, store.COL_CATEGORY, 'カテゴリ'))
+        print()
 
-    print(f"## 店舗別（上位{args.top}・支出）\n")
-    print(render.render_totals(exp, store.COL_NAME, '店舗', top=args.top))
-    print()
+    if 'subcategory' in sections:
+        print(f"## 中項目別（上位{args.top}・支出）\n")
+        print(render.render_totals(
+            exp, [store.COL_CATEGORY, store.COL_SUBCATEGORY], 'カテゴリ', top=args.top))
+        print()
 
-    print("## 金融機関別（支出）\n")
-    print(render.render_totals(exp, store.COL_ACCOUNT, '金融機関'))
+    if 'merchant' in sections:
+        print(f"## 店舗別（上位{args.top}・支出）\n")
+        print(render.render_totals(exp, store.COL_NAME, '店舗', top=args.top))
+        print()
+
+    if 'account' in sections:
+        print("## 金融機関別（支出）\n")
+        print(render.render_totals(exp, store.COL_ACCOUNT, '金融機関'))
+        print()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -279,6 +334,13 @@ def build_parser() -> argparse.ArgumentParser:
                              help='年。単独指定でその年を丸ごと（--week/--month と併用も可）')
     show_parser.add_argument('--top', type=int, default=10,
                              help='中項目別・店舗別で表示する件数（デフォルト: 10）')
+    show_parser.add_argument('--sections', type=str, default=','.join(DEFAULT_SECTIONS),
+                             help='表示するセクション（カンマ区切り）。'
+                                  f"指定可能: {', '.join(SECTIONS)}, all。"
+                                  "'+merchant' のように + を付けると既定に追加。"
+                                  f"デフォルト: {','.join(DEFAULT_SECTIONS)}")
+    show_parser.add_argument('--change-top', type=int, default=5,
+                             help='前期比の増減で表示する増加・減少それぞれの件数（デフォルト: 5）')
     show_parser.add_argument('--list', action='store_true',
                              help='集計せず明細を時系列で一覧表示する')
     show_parser.add_argument('--update', action='store_true',
