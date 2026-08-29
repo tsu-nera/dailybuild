@@ -354,24 +354,28 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     summary_metrics = [
         {
             'label': '体重',
+            'n': stats['weight']['n'],
             'first': f"{stats['weight']['first']:.2f}kg",
             'last': f"{stats['weight']['last']:.2f}kg",
             'change': body.format_change(stats['weight']['change'], 'kg')
         },
         {
             'label': '筋肉量',
+            'n': stats['muscle_mass']['n'],
             'first': f"{stats['muscle_mass']['first']:.2f}kg",
             'last': f"{stats['muscle_mass']['last']:.2f}kg",
             'change': body.format_change(stats['muscle_mass']['change'], 'kg')
         },
         {
             'label': '体脂肪率',
+            'n': stats['body_fat_rate']['n'],
             'first': f"{stats['body_fat_rate']['first']:.1f}%",
             'last': f"{stats['body_fat_rate']['last']:.1f}%",
             'change': body.format_change(stats['body_fat_rate']['change'], '%', positive_is_good=False)
         },
         {
             'label': 'FFMI',
+            'n': stats['ffmi']['n'],
             'first': f"{stats['ffmi']['first']:.1f}",
             'last': f"{stats['ffmi']['last']:.1f}",
             'change': body.format_change(stats['ffmi']['change'], '')

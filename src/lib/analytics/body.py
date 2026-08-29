@@ -162,10 +162,16 @@ def calc_body_stats(df, columns=None):
         if col in df.columns:
             vals = df[col].dropna()
             if len(vals) >= 1:
+                # change は端点差。体組成の計測は数日おきで疎なため、7日窓に
+                # 3点しか入らないことがある（実測 08/23 → 08/25 → 08/27）。
+                # その3点だと平均差も回帰の傾きも端点差と一致するので、計算方法を
+                # 変えてもノイズは減らない。減らせるのは点の数だけ。
+                # そこで n を返し、読み手が何点に基づく数字かを判断できるようにする。
                 stats[col] = {
                     'first': vals.iloc[0],
                     'last': vals.iloc[-1],
                     'change': vals.iloc[-1] - vals.iloc[0] if len(vals) > 1 else 0,
+                    'n': len(vals),
                     'mean': vals.mean(),
                 }
     return stats
