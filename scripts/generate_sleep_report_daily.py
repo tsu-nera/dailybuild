@@ -735,19 +735,13 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
         'timeInBed': 'sum'
     })
 
-    # 欠損日を0埋め（Rise app互換: データ欠損日も負債としてカウント）
+    # 計測が無い日は行を作らない。以前は Rise app 互換として日付を連続化し
+    # fill_value=0 で埋めていたが、これは「計測していない」を「0時間寝た」として
+    # 負債に計上する。2026-08-11 は Fitbit の行が無いだけで、負債が 8.0h から
+    # 16.8h へ跳ね、14日窓から抜けるまで2週間ぶん系列全体が嵩上げされていた。
+    # 直近365日では74日（20.3%）が欠測なので、遡るほど負債は実態より大きく出る。
+    # 窓に入る行が減るぶん重みの合計も減り、欠測日は負債が増えも減りもしない。
     df_daily_total_sleep['dateOfSleep'] = pd.to_datetime(df_daily_total_sleep['dateOfSleep'])
-    full_range = pd.date_range(
-        df_daily_total_sleep['dateOfSleep'].min(),
-        df_daily_total_sleep['dateOfSleep'].max(),
-        freq='D'
-    )
-    df_daily_total_sleep = (
-        df_daily_total_sleep.set_index('dateOfSleep')
-        .reindex(full_range, fill_value=0)
-        .rename_axis('dateOfSleep')
-        .reset_index()
-    )
 
     calculator = sleep.SleepDebtCalculator(
         sleep_data=df_daily_total_sleep,  # 日別総睡眠時間（昼寝込み）
