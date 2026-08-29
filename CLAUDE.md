@@ -92,7 +92,8 @@ uv run scripts/toggl.py projects         # プロジェクト名一覧（既定�
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
 uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得
 uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
-uv run scripts/phq9.py fetch         # PHQ-9（隔週、Google Form回答）取得
+uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
+uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
 # 室内環境は所要が長い（1日ぶん約11分）ため daily-routine.sh から外してある。
 # 別途1日1回、手動で回す。Tuya のログは最大7日しか遡れないので放置すると穴が空く
@@ -348,13 +349,23 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
   タイトル → questionId で引いている CSV 側から二度と読めない（実際に一度
   発生させ、回答に残っていた古い ID を明示指定して復旧した）
 
-### PHQ-9（隔週）
+### PHQ-9（週次）
 
 うつの重症度を測る自己記入式の質問紙（0〜27点）。`mind_score`（毎日・1〜5）とは
 別に、検証済みの尺度で施策の前後を判定するために足した（Issue #100）。
 `mind_score` は廃止しない。気分記録（#87）とは別フォームにしてある（頻度が
-毎日 vs 隔週で違うため）。想起期間が2週間のため、週次だと連続する2点が
-重なって独立にならず、隔週で運用する。
+毎日 vs 週次で違うため）。
+
+**週次で運用し、`/weekly-review` の手順に組み込んである。** 想起期間が2週間なので
+連続する2点は1週分の期間を共有するが、害は「平滑化」であって偏りではなく、
+2週窓を週1でサンプリングした移動平均として読めばよい。**主要判定（ベースライン
+と8週後）の2つの窓は重ならないので、MCID 5点の判定は隔週でも週次でも同一。**
+週次にする理由は、8週間で取れる点数が4点→8点になること（4点では傾きも引けない）と、
+既存の日曜の儀式に相乗りできること。隔週は「今週はやる週か」を覚えておく必要があり、
+手動記録が続かない要因になる。
+
+**週ごとの差を「変化」と読まない。** 窓が半分重なるので1週で5点動くことは
+構造的に起きにくい。MCID 5点を当てるのは窓が重ならない比較（0週 vs 4週、0週 vs 8週）。
 
 **日本語版の設問文を追跡対象のファイルに書いてはいけない。** 出典・著作権:
 
@@ -386,7 +397,7 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
   （既定は含める）
 - 9項目目は死や自傷についての設問を含むが、データとして特別扱いはしない
 - マージキーは気分記録と同じく `timestamp`
-- **回答0件をエラーにしない。** 隔週なので大半の日は0件が正常（カフェインと
+- **回答0件をエラーにしない。** 週1回なので大半の日は0件が正常（カフェインと
   同じ扱い）
 - レポート・可視化への反映、`mind_score` との統合はスコープ外（Issue #100）。
   データが数点しか無いうちは意味がない
@@ -579,7 +590,7 @@ df_filtered = filter_dataframe_by_period(
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
 - `gforms_token.json` - 気分記録フォームのトークン（`emotion.py` が生成。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
-- `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（隔週）」節）
+- `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
 

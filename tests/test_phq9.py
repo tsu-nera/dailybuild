@@ -146,7 +146,7 @@ def test_build_dataframe_column_order_without_impairment():
 
 
 def test_build_dataframe_empty_ok():
-    """回答0件は隔週の質問紙として正常。エラーにしない"""
+    """回答0件は週1回の質問紙として正常。エラーにしない"""
     df = phq9.build_dataframe(_form(), [], CONF)
     assert df.empty
     assert 'total' in df.columns

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-PHQ-9（隔週）
+PHQ-9（週次）
 
 setup-form でフォームを生成し、fetch で回答を直接取得する。
 scripts/emotion.py と同じ構成（Google Form 直読み、回答先スプレッドシートは
@@ -115,6 +115,16 @@ def cmd_setup_form(args):
     print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
 
 
+def cmd_url(args):
+    """回答用URLを表示する（/weekly-review が回答を促すのに使う）"""
+    conf = load_def()
+    if not conf.get('form_id'):
+        raise SystemExit(f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
+    service = gforms_api.create_service(interactive=not args.non_interactive)
+    form = gforms_api.get_form(service, conf['form_id'])
+    print(responder_uri(form))
+
+
 def build_dataframe(form, responses, conf):
     """回答リストを CSV スキーマの DataFrame にする
 
@@ -196,7 +206,7 @@ def cmd_fetch(args):
     responses = gforms_api.list_responses(service, conf['form_id'])
     print(f"取得: {len(responses)}件", file=sys.stderr)
 
-    # 隔週の質問紙なので大半の日は0件が正常。0件をエラーにしない
+    # 週1回の質問紙なので大半の日は0件が正常。0件をエラーにしない
     # （data/googlehealth/caffeine.csv と同じ扱い）
     df = build_dataframe(form, responses, conf)
 
@@ -213,7 +223,7 @@ def cmd_fetch(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='PHQ-9（隔週）')
+    parser = argparse.ArgumentParser(description='PHQ-9（週次）')
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_setup = sub.add_parser('setup-form', help='フォームを生成する')
@@ -225,6 +235,11 @@ def main():
     p_fetch.add_argument('--non-interactive', action='store_true',
                          help='トークンが無効ならブラウザを開かず落とす（cron 用）')
     p_fetch.set_defaults(func=cmd_fetch)
+
+    p_url = sub.add_parser('url', help='回答用URLを表示する')
+    p_url.add_argument('--non-interactive', action='store_true',
+                       help='トークンが無効ならブラウザを開かず落とす')
+    p_url.set_defaults(func=cmd_url)
 
     args = parser.parse_args()
     args.func(args)
