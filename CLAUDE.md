@@ -44,7 +44,7 @@ uv sync
 型チェッカーは入れていない。品質チェックはテストのみで、これが正典コマンド:
 
 ```bash
-uv run pytest tests -q   # 151件・約47秒
+uv run pytest tests -q   # 165件・約48秒
 ```
 
 このリポジトリの失敗は**例外を出さず正常終了する**。壊れた値が CSV に書かれた
@@ -92,6 +92,8 @@ uv run scripts/toggl.py projects         # プロジェクト名一覧（既定�
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
 uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得
 uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
+uv run scripts/phq9.py fetch         # PHQ-9（隔週、Google Form回答）取得
+uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
 # 室内環境は所要が長い（1日ぶん約11分）ため daily-routine.sh から外してある。
 # 別途1日1回、手動で回す。Tuya のログは最大7日しか遡れないので放置すると穴が空く
 uv run scripts/fetch_indoor.py --update  # 室内環境（CO2/温度/湿度）差分取得
@@ -346,6 +348,49 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
   タイトル → questionId で引いている CSV 側から二度と読めない（実際に一度
   発生させ、回答に残っていた古い ID を明示指定して復旧した）
 
+### PHQ-9（隔週）
+
+うつの重症度を測る自己記入式の質問紙（0〜27点）。`mind_score`（毎日・1〜5）とは
+別に、検証済みの尺度で施策の前後を判定するために足した（Issue #100）。
+`mind_score` は廃止しない。気分記録（#87）とは別フォームにしてある（頻度が
+毎日 vs 隔週で違うため）。想起期間が2週間のため、週次だと連続する2点が
+重なって独立にならず、隔週で運用する。
+
+**日本語版の設問文を追跡対象のファイルに書いてはいけない。** 出典・著作権:
+
+> ©kumiko.muramatsu「PHQ-9 日本語版 2018版」
+> Muramatsu K, Miyaoka H, Kamijima K et al. *General Hospital Psychiatry*
+> 52: 64-69, 2018. https://www.cocoro.chiba-u.jp/recruit/tubuanDB/files/PHQ-9.pdf
+
+日本語版は村松公美子氏が別途著作権を持ち、配布物に「無断複写・転載・改変を
+禁じます」と明記されている（英語原版は複製・翻訳・配布に許可不要だが、日本語版は
+別物）。設問文の実体は `config/phq9_def.yaml`（`.gitignore` 済み、手元にのみ置く）
+が持ち、`config/phq9_def.yaml.sample` は構造・選択肢の配点・出典URLのみで設問文は
+空。setup-form を回す前に `cp config/phq9_def.yaml.sample config/phq9_def.yaml` して
+出典から書き写すこと。**agent による英語版からの翻訳で代替しない。** 規準値・MCID
+（意味のある変化=5点）はその文言・その順序で検証された数字で、訳し直した時点で
+自作スコアに戻る。
+
+- **設問文・選択肢・並び順は凍結する。yaml の q1〜q9 の並び順を変えないこと。**
+  PHQ-9 は9問すべて同型（ラジオボタン）で、`gforms_api.sync_questions()` は
+  タイトルを見ず「種類ごとの出現順（FIFO）」で既存質問と対応付ける。気分記録は
+  3問とも型が違う（scale/checkbox/text）ので問題にならなかったが、同型が9問
+  並ぶ PHQ-9 では、質問順を変えて `setup-form --update` を回すと questionId が
+  別の設問に引き継がれ、過去の回答が別の質問の回答として読めてしまう。
+  対応は運用規約とテスト（`tests/test_phq9.py` が出現順対応を固定）で行い、
+  `sync_questions()` 自体は変更しない
+- 合計（`total`）は9問すべてに回答があるときだけ算出する。**未回答を0点として
+  足さない。** 1つでも未回答なら NaN（成分表の「-」＝未測定と同じ原則）
+- **機能障害の設問（10問目）は合計に含めない。** `impairment` 列に採点対象外の
+  生ラベルで残す。yaml のフラグ（`impairment.enabled`）で有無を切り替えられる
+  （既定は含める）
+- 9項目目は死や自傷についての設問を含むが、データとして特別扱いはしない
+- マージキーは気分記録と同じく `timestamp`
+- **回答0件をエラーにしない。** 隔週なので大半の日は0件が正常（カフェインと
+  同じ扱い）
+- レポート・可視化への反映、`mind_score` との統合はスコープ外（Issue #100）。
+  データが数点しか無いうちは意味がない
+
 ### MoneyForward ME
 
 公式 API が無いため、Playwright で保持したログインセッションを使って
@@ -519,6 +564,7 @@ df_filtered = filter_dataframe_by_period(
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
 - `gforms_token.json` - 気分記録フォームのトークン（`emotion.py` が生成。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
+- `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（隔週）」節）
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
 
