@@ -67,7 +67,10 @@ def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_wei
         weekly_data.append({
             'week_label': week_label,
             'weight': f"{row['weight']:.2f}",
-            'weight_diff': format_change(row['weight_diff'], '', positive_is_good=False),
+            # 増量目標（MONTHLY_WEIGHT_GAIN=+0.75kg/月、TARGET_FFMI=21.0）なので
+            # 体重の増加が良い変化。以前は positive_is_good=False で減少を
+            # 良い変化として太字にしており、同じレポートが掲げる目標と逆だった
+            'weight_diff': format_change(row['weight_diff'], ''),
             'muscle': f"{row['muscle_mass']:.2f}",
             'muscle_diff': format_change(row['muscle_diff'], ''),
             'fat_rate': f"{row['body_fat_rate']:.1f}%",
