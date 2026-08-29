@@ -720,36 +720,17 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
 
     # 睡眠負債計算の基準値（Rise app の必要睡眠時間に合わせる）
     # 注: 表示用の sleep_need とは別物。Rise負債値の再現を目的とした実効値。
-    SLEEP_NEED_FOR_DEBT_DEFAULT = 7.75
     sleep_need_for_debt = (
         sleep_need_override if sleep_need_override is not None
-        else SLEEP_NEED_FOR_DEBT_DEFAULT
+        else sleep.SLEEP_NEED_FOR_DEBT_DEFAULT
     )
     print(f'  → 睡眠負債計算の基準値: {sleep_need_for_debt:.2f}h'
           f'{" (override)" if sleep_need_override is not None else " (default)"}')
 
-    # 日別に全睡眠時間（主睡眠+昼寝）を集計
+    # 日別集計と計算機の組み立ては build_debt_calculator が持つ。ジャーナルの
+    # 骨組みも同じ関数を使う（片方だけ条件を変えると同じ日について2つの負債が出る）
     print('計算中: 睡眠負債...')
-    df_daily_total_sleep = df_all_sleep.groupby('dateOfSleep', as_index=False).agg({
-        'minutesAsleep': 'sum',  # 同じ日の全睡眠時間を合計
-        'timeInBed': 'sum'
-    })
-
-    # 計測が無い日は行を作らない。以前は Rise app 互換として日付を連続化し
-    # fill_value=0 で埋めていたが、これは「計測していない」を「0時間寝た」として
-    # 負債に計上する。2026-08-11 は Fitbit の行が無いだけで、負債が 8.0h から
-    # 16.8h へ跳ね、14日窓から抜けるまで2週間ぶん系列全体が嵩上げされていた。
-    # 直近365日では74日（20.3%）が欠測なので、遡るほど負債は実態より大きく出る。
-    # 窓に入る行が減るぶん重みの合計も減り、欠測日は負債が増えも減りもしない。
-    df_daily_total_sleep['dateOfSleep'] = pd.to_datetime(df_daily_total_sleep['dateOfSleep'])
-
-    calculator = sleep.SleepDebtCalculator(
-        sleep_data=df_daily_total_sleep,  # 日別総睡眠時間（昼寝込み）
-        sleep_need_hours=sleep_need_for_debt,
-        window_days=14,
-        min_data_points=5,
-        rise_last_night_ratio=0.20,  # 最新日20%、残り80%を線形配分
-    )
+    calculator = sleep.build_debt_calculator(df_all_sleep, sleep_need_for_debt)
 
     # フィルタリング期間の睡眠負債履歴を取得
     try:

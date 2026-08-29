@@ -493,3 +493,33 @@ def print_debt_report(result: SleepDebtResult):
 
     print()
     print("=" * 60)
+
+
+# 睡眠負債の計算条件。レポートとジャーナルの骨組みが同じ値を出すよう、
+# 定数と計算機の組み立てをここに集約する。片方だけ変えると同じ日について
+# 2つの負債が出て、どちらが正か分からなくなる
+SLEEP_NEED_FOR_DEBT_DEFAULT = 7.75
+DEBT_WINDOW_DAYS = 14
+DEBT_MIN_DATA_POINTS = 5
+DEBT_LAST_NIGHT_RATIO = 0.20
+DEBT_WEIGHT_METHOD = 'recency_linear'
+
+
+def build_debt_calculator(df_all_sleep, sleep_need_hours=None):
+    """主睡眠+昼寝を日別合計して SleepDebtCalculator を組み立てる
+
+    計測が無い日は行を作らない（0埋めしない）。詳細は CLAUDE.md「睡眠負債」。
+    """
+    daily = df_all_sleep.groupby('dateOfSleep', as_index=False).agg({
+        'minutesAsleep': 'sum',
+        'timeInBed': 'sum',
+    })
+    daily['dateOfSleep'] = pd.to_datetime(daily['dateOfSleep'])
+    return SleepDebtCalculator(
+        sleep_data=daily,
+        sleep_need_hours=(SLEEP_NEED_FOR_DEBT_DEFAULT if sleep_need_hours is None
+                          else sleep_need_hours),
+        window_days=DEBT_WINDOW_DAYS,
+        min_data_points=DEBT_MIN_DATA_POINTS,
+        rise_last_night_ratio=DEBT_LAST_NIGHT_RATIO,
+    )

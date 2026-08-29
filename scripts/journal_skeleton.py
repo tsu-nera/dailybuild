@@ -32,6 +32,7 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
+from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
 
@@ -94,6 +95,29 @@ def _sleep_timing(lo, hi):
     return calc_sleep_timing(df)
 
 
+def _sleep_debt_series(lo, hi):
+    """lo〜hi の各日について睡眠負債(h)を返す
+
+    レポートと同じ build_debt_calculator を使う。条件（必要睡眠 7.75h・14日窓・
+    recency_linear）を片方だけ変えると、同じ日について2つの負債が出て
+    どちらが正か分からなくなる。
+    """
+    df = _read('data/fitbit/sleep.csv', 'dateOfSleep')
+    if df.empty:
+        return pd.DataFrame()
+    calc = sleep_lib.build_debt_calculator(df)
+    rows = []
+    for day in pd.date_range(lo, hi, freq='D'):
+        try:
+            result = calc.calculate(end_date=day,
+                                    weight_method=sleep_lib.DEBT_WEIGHT_METHOD)
+        except ValueError:
+            # 窓内のデータが min_data_points 未満。負債を出せない日は落とす
+            continue
+        rows.append({'_date': day, 'debt': result.sleep_debt_hours})
+    return pd.DataFrame(rows)
+
+
 def _main_sleep(df):
     """主睡眠だけに絞る。昼寝を睡眠時間として数えないため"""
     if df.empty or 'isMainSleep' not in df.columns:
@@ -120,6 +144,7 @@ def collect_metrics(target: dt.date) -> list[dict]:
     # （Fitbit / HealthPlanet / Google Health）あるが統合しない方針なので、
     # レポートと違う経路を読むと骨組みとレポートで数字が食い違う
     body = _read('data/healthplanet_innerscan.csv', 'date')
+    debt = _sleep_debt_series(prior[0], ts)
 
     timing = _sleep_timing(prior[0], ts)
     if timing:
@@ -138,6 +163,7 @@ def collect_metrics(target: dt.date) -> list[dict]:
         ('入眠潜時', tdf, lambda d: d['fall_asleep'], '分', 0),
         ('起床後臥床', tdf, lambda d: d['after_wake'], '分', 0),
         ('中途覚醒', sleep, lambda d: d['wakeCount'], '回', 0),
+        ('睡眠負債', debt, lambda d: d['debt'], 'h', 1),
         ('HRV', hrv, lambda d: d['daily_rmssd'], 'ms', 1),
         ('RHR', rhr, lambda d: d['resting_heart_rate'], 'bpm', 0),
         ('BR', br, lambda d: d['breathing_rate'], '/min', 1),
