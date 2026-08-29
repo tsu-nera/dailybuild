@@ -368,7 +368,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
             'label': '体脂肪率',
             'first': f"{stats['body_fat_rate']['first']:.1f}%",
             'last': f"{stats['body_fat_rate']['last']:.1f}%",
-            'change': body.format_change(stats['body_fat_rate']['change'], '%')
+            'change': body.format_change(stats['body_fat_rate']['change'], '%', positive_is_good=False)
         },
         {
             'label': 'FFMI',
