@@ -42,6 +42,7 @@ import io
 from typing import IO
 
 import pandas as pd
+import yaml
 
 from lib.mf import client as mf_client
 from lib.mf import render, store
@@ -50,6 +51,7 @@ from lib.utils.report_args import filter_dataframe_by_period, parse_period_args
 
 BASE_DIR = Path(__file__).parent.parent
 STATE_FILE = BASE_DIR / 'config' / 'mf_state.json'
+SHOW_CONFIG_FILE = BASE_DIR / 'config' / 'mf_show.yaml'
 
 # 連携が生きている状態。これ以外は明細が欠けている可能性がある
 HEALTHY_STATUS = '正常'
@@ -183,6 +185,35 @@ def default_months(args) -> int:
     return DEFAULT_SHOW_MONTHS
 
 
+def non_living_categories() -> list[str]:
+    """--scope living で除外するカテゴリ。config/mf_show.yaml が実体。
+
+    コードに埋めない。MF 側のカテゴリ改定や事業経費の扱いで動くため。
+    """
+    if not SHOW_CONFIG_FILE.exists():
+        raise SystemExit(f"{SHOW_CONFIG_FILE} が無い。--scope all なら不要")
+    with open(SHOW_CONFIG_FILE, encoding='utf-8') as f:
+        return (yaml.safe_load(f) or {}).get('non_living_categories', [])
+
+
+def resolve_excluded(args, df: pd.DataFrame) -> tuple[list[str], str]:
+    """除外するカテゴリと、残る側に付ける見出しラベルを決める"""
+    excluded = non_living_categories() if args.scope == 'living' else []
+    label = '生活費' if excluded else '対象支出'
+
+    if args.exclude_category:
+        extra = [c.strip() for c in args.exclude_category.split(',') if c.strip()]
+        known = set(df[store.COL_CATEGORY].dropna().unique())
+        unknown = [c for c in extra if c not in known]
+        if unknown:
+            # 名前を打ち間違えても黙って「除外0件」になるだけなので落とす
+            raise SystemExit(f"期間内に存在しないカテゴリ: {', '.join(unknown)}\n"
+                             f"あるのは: {', '.join(sorted(known))}")
+        excluded = list(dict.fromkeys(excluded + extra))
+
+    return excluded, label
+
+
 def resolve_sections(spec: str) -> list[str]:
     """--sections の指定を解決する。
 
@@ -258,22 +289,30 @@ def cmd_show(args) -> None:
         return
 
     sections = resolve_sections(args.sections)
+    excluded, focus_label = resolve_excluded(args, df)
 
     df = render.add_bucket(df, args.unit)
     exp = render.expenses(df)
+    # 収支表は除外ぶんも列に残すので df 全体を使う。他のセクションは除外後だけ
+    exp_focus = exp[~exp[store.COL_CATEGORY].isin(excluded)]
 
     unit_label = render.unit_label(args.unit)
     print(f"# Money サマリ（{unit_label}: {start} 〜 {end}）\n")
 
+    if excluded:
+        off = exp[exp[store.COL_CATEGORY].isin(excluded)][store.COL_AMOUNT].sum()
+        print(f"除外: {' / '.join(excluded)}（{render.format_yen(off)}）\n")
+
     if 'balance' in sections:
         print(f"## {unit_label}収支\n")
-        print(render.render_balance(df, args.unit))
+        print(render.render_balance(df, args.unit, excluded, focus_label))
         print()
 
     if 'change' in sections:
         # 比較相手は表示期間の外から取る（既定の表示は当月だけなので）
         all_exp = render.expenses(render.add_bucket(df_all, args.unit))
-        cur_b = max(exp['bucket'])
+        all_exp = all_exp[~all_exp[store.COL_CATEGORY].isin(excluded)]
+        cur_b = max(exp_focus['bucket'])
         prev_b = render.previous_bucket(all_exp, cur_b)
         change = (render.render_period_change(all_exp, prev_b, cur_b, top=args.change_top)
                   if prev_b else '')
@@ -285,28 +324,28 @@ def cmd_show(args) -> None:
 
     if 'matrix' in sections:
         print("## カテゴリ別内訳（支出）\n")
-        print(render.render_category_matrix(exp, args.unit))
+        print(render.render_category_matrix(exp_focus, args.unit))
         print()
 
     if 'category' in sections:
         print("## カテゴリ別合計（期間全体・支出）\n")
-        print(render.render_totals(exp, store.COL_CATEGORY, 'カテゴリ'))
+        print(render.render_totals(exp_focus, store.COL_CATEGORY, 'カテゴリ'))
         print()
 
     if 'subcategory' in sections:
         print(f"## 中項目別（上位{args.top}・支出）\n")
         print(render.render_totals(
-            exp, [store.COL_CATEGORY, store.COL_SUBCATEGORY], 'カテゴリ', top=args.top))
+            exp_focus, [store.COL_CATEGORY, store.COL_SUBCATEGORY], 'カテゴリ', top=args.top))
         print()
 
     if 'merchant' in sections:
         print(f"## 店舗別（上位{args.top}・支出）\n")
-        print(render.render_totals(exp, store.COL_NAME, '店舗', top=args.top))
+        print(render.render_totals(exp_focus, store.COL_NAME, '店舗', top=args.top))
         print()
 
     if 'account' in sections:
         print("## 金融機関別（支出）\n")
-        print(render.render_totals(exp, store.COL_ACCOUNT, '金融機関'))
+        print(render.render_totals(exp_focus, store.COL_ACCOUNT, '金融機関'))
         print()
 
 
@@ -342,6 +381,11 @@ def build_parser() -> argparse.ArgumentParser:
                              help='年。単独指定でその年を丸ごと（--week/--month と併用も可）')
     show_parser.add_argument('--top', type=int, default=10,
                              help='中項目別・店舗別で表示する件数（デフォルト: 10）')
+    show_parser.add_argument('--scope', choices=['living', 'all'], default='living',
+                             help='living は config/mf_show.yaml のカテゴリを除外する'
+                                  '（デフォルト: living）')
+    show_parser.add_argument('--exclude-category', type=str, default=None,
+                             help='除外するカテゴリを追加（カンマ区切り・カテゴリ名そのまま）')
     show_parser.add_argument('--sections', type=str, default=','.join(DEFAULT_SECTIONS),
                              help='表示するセクション（カンマ区切り）。'
                                   f"指定可能: {', '.join(SECTIONS)}, all。"

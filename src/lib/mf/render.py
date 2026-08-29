@@ -89,37 +89,59 @@ def expenses(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def render_balance(df: pd.DataFrame, unit: str) -> str:
-    """集計単位ごとの収入・支出・収支と、支出の前期比"""
+def render_balance(df: pd.DataFrame, unit: str,
+                   excluded: list[str] = None, focus_label: str = '支出') -> str:
+    """集計単位ごとの収入・支出・収支と、支出の前期比。
+
+    excluded を渡すと支出を「対象」と「除外」に割る。除外ぶんを黙って落とすと
+    収入は満額のまま支出だけ減り、収支が嘘になるため、必ず両方を列に残す。
+    前期比は着目している側（除外後）に付ける。
+    """
+    df = df.copy()
+    df['excluded'] = df[COL_CATEGORY].isin(excluded or [])
+
     grouped = df.groupby('bucket').agg(
         income=(COL_AMOUNT, lambda s: s[s > 0].sum()),
         expense=(COL_AMOUNT, lambda s: -s[s < 0].sum()),
     )
+    off = (df[df['excluded'] & (df[COL_AMOUNT] < 0)]
+           .groupby('bucket')[COL_AMOUNT].sum().mul(-1)
+           .reindex(grouped.index).fillna(0))
+    focus = grouped['expense'] - off
+
     balance = grouped['income'] - grouped['expense']
-    prev = grouped['expense'].shift(1)
+    prev = focus.shift(1)
     single = len(grouped) == 1
 
-    out = pd.DataFrame({
-        '収入': grouped['income'].map(format_yen),
-        '支出': grouped['expense'].map(format_yen),
-        '収支': balance.map(format_yen),
-        '支出Δ': (grouped['expense'] - prev).map(format_delta),
-        'Δ%': [format_delta_pct(c, p) for c, p in zip(grouped['expense'], prev)],
-    })
+    columns = {'収入': grouped['income'].map(format_yen)}
+    if excluded:
+        columns[focus_label] = focus.map(format_yen)
+        columns['除外'] = off.map(format_yen)
+        columns['支出計'] = grouped['expense'].map(format_yen)
+    else:
+        columns['支出'] = grouped['expense'].map(format_yen)
+    columns['収支'] = balance.map(format_yen)
+    columns[f'{focus_label}Δ'] = (focus - prev).map(format_delta)
+    columns['Δ%'] = [format_delta_pct(c, p) for c, p in zip(focus, prev)]
+
+    out = pd.DataFrame(columns)
 
     # 合計と平均。増減列は行をまたいだ意味を持たないので空にする。
     # bucket が1つのときは本体行の写しにしかならないので出さない
-    if not single:
-        out.loc['合計'] = [format_yen(grouped['income'].sum()),
-                           format_yen(grouped['expense'].sum()),
-                           format_yen(balance.sum()), '', '']
-        out.loc[f'平均/{bucket_label(unit)}'] = [
-            format_yen(grouped['income'].mean()),
-            format_yen(grouped['expense'].mean()),
-            format_yen(balance.mean()), '', '']
+    def summary(agg) -> list[str]:
+        row = [format_yen(agg(grouped['income']))]
+        if excluded:
+            row += [format_yen(agg(focus)), format_yen(agg(off)),
+                    format_yen(agg(grouped['expense']))]
+        else:
+            row.append(format_yen(agg(grouped['expense'])))
+        return row + [format_yen(agg(balance)), '', '']
 
-    if single:
-        out = out.drop(columns=['支出Δ', 'Δ%'])
+    if not single:
+        out.loc['合計'] = summary(lambda s: s.sum())
+        out.loc[f'平均/{bucket_label(unit)}'] = summary(lambda s: s.mean())
+    else:
+        out = out.drop(columns=[f'{focus_label}Δ', 'Δ%'])
 
     out.index.name = bucket_label(unit)
     return out.to_markdown()
