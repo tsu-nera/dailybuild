@@ -44,16 +44,23 @@ WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
 START_MARKER = '<!-- skeleton:start -->'
 END_MARKER = '<!-- skeleton:end -->'
 
-# 欠測の検出対象。(ラベル, パス, 日付列)
-SOURCES = [
+# 毎日あるはずのソース。当日の行が無ければ欠測として出す。(ラベル, パス, 日付列)
+DAILY_SOURCES = [
     ('sleep', 'data/fitbit/sleep.csv', 'dateOfSleep'),
     ('hrv', 'data/fitbit/hrv.csv', 'date'),
     ('rhr', 'data/fitbit/heart_rate.csv', 'date'),
     ('breathing_rate', 'data/fitbit/breathing_rate.csv', 'date'),
     ('activity', 'data/fitbit/activity.csv', 'date'),
     ('temperature_skin', 'data/fitbit/temperature_skin.csv', 'date'),
-    ('temperature_core', 'data/fitbit/temperature_core.csv', 'date_time'),
     ('manual', 'data/manual.csv', 'date'),
+]
+
+# 疎なソース。測る日と測らない日があるのが常態なので、当日の不在を欠測として
+# 出さない。毎日「欠測」と書くと故障と未記録が同じ見た目になり、しかも毎日出る
+# 警告は読み飛ばされる。代わりに最終記録からの経過日数を出し、判断は読み手に渡す。
+# (ラベル, パス, 日付列, 表示名)
+SPARSE_SOURCES = [
+    ('temperature_core', 'data/fitbit/temperature_core.csv', 'date_time', '深部体温'),
 ]
 
 
@@ -159,14 +166,31 @@ def collect_metrics(target: dt.date) -> list[dict]:
 
 
 def collect_missing(target: dt.date) -> list[str]:
-    """当日の行が無いソースを列挙する"""
+    """毎日あるはずのソースのうち、当日の行が無いものを列挙する"""
     ts = pd.Timestamp(target)
     missing = []
-    for label, path, col in SOURCES:
+    for label, path, col in DAILY_SOURCES:
         df = _read(path, col)
         if df.empty or not (df['_date'] == ts).any():
             missing.append(label)
     return missing
+
+
+def collect_last_seen(target: dt.date) -> list[str]:
+    """疎なソースの最終記録を「表示名 N日前（MM-DD）」で返す"""
+    ts = pd.Timestamp(target)
+    out = []
+    for _label, path, col, name in SPARSE_SOURCES:
+        df = _read(path, col)
+        past = df[df['_date'] <= ts] if not df.empty else df
+        if past.empty:
+            out.append(f'{name} 記録なし')
+            continue
+        last = past['_date'].max()
+        days = (ts - last).days
+        when = last.strftime('%m-%d')
+        out.append(f'{name} {"当日" if days == 0 else f"{days}日前"}（{when}）')
+    return out
 
 
 def collect_comment(target: dt.date) -> str | None:
@@ -211,6 +235,10 @@ def render_skeleton(target: dt.date) -> str:
         lines.append(f'**コメント（手動記録）**: {comment}')
         lines.append('')
     lines.append(f"**欠測**: {'、'.join(missing) if missing else 'なし'}")
+    last_seen = collect_last_seen(target)
+    if last_seen:
+        lines.append('')
+        lines.append(f"**最終記録（疎な指標）**: {'、'.join(last_seen)}")
     lines.append('')
     lines.append(END_MARKER)
     return '\n'.join(lines)
