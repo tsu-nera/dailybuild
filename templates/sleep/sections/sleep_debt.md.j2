@@ -25,7 +25,7 @@
 {{ sleep_debt.debt_table }}
 
 {% endif %}
-{% if sleep_debt.trend_image %}
+{% if show_charts and sleep_debt.trend_image %}
 ![睡眠負債トレンド]({{ sleep_debt.trend_image }})
 {% endif %}
 

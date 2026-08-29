@@ -322,7 +322,7 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
     return context
 
 
-def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None):
+def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None, show_charts=True):
     """
     マークダウンレポートを生成（Jinja2テンプレート版）
 
@@ -339,6 +339,7 @@ def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sl
 
     # コンテキストデータ準備
     context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=hr_zone_meta)
+    context['show_charts'] = show_charts
 
     # テンプレートレンダリング
     renderer = MindReportRenderer()
@@ -486,8 +487,10 @@ def main():
         print(f'皮膚温データ: {len(data["temperature_skin"])}日分')
 
     # 出力ディレクトリ（既に設定済み）
+    ensure_dir(output_dir)
     img_dir = output_dir / 'img'
-    ensure_dir(img_dir)
+    if not args.no_charts:
+        ensure_dir(img_dir)
 
     # 3. ベースライン計算
     print()
@@ -602,23 +605,25 @@ def main():
     period_str = f'{target_start.strftime("%Y-%m-%d")} 〜 {target_end.strftime("%Y-%m-%d")}'
 
     # グラフ生成
-    print()
-    print('グラフ生成中...')
-    plot_hrv_chart(responsiveness_daily, img_dir / 'hrv.png')
-    plot_hrv_rhr_chart(responsiveness_daily, img_dir / 'hrv_rhr.png')
-    plot_comprehensive_trend(responsiveness_daily, sleep_patterns_daily, img_dir / 'comprehensive_trend.png')
+    if not args.no_charts:
+        print()
+        print('グラフ生成中...')
+        plot_hrv_chart(responsiveness_daily, img_dir / 'hrv.png')
+        plot_hrv_rhr_chart(responsiveness_daily, img_dir / 'hrv_rhr.png')
+        plot_comprehensive_trend(responsiveness_daily, sleep_patterns_daily, img_dir / 'comprehensive_trend.png')
 
     # レポート生成
     print()
     print('レポート生成中...')
-    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta)
+    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta, show_charts=not args.no_charts)
 
     print()
     print('='*60)
     print('レポート生成完了!')
     print('='*60)
     print(f'レポート: {output_dir / "REPORT.md"}')
-    print(f'画像: {img_dir}/')
+    if not args.no_charts:
+        print(f'画像: {img_dir}/')
 
     return 0
 

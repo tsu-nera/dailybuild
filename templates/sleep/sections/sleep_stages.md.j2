@@ -19,12 +19,16 @@
 | レム睡眠 | {{ stages.rem_minutes }}分 | {{ stages.rem_pct }}% | {{ stages.rem_count }}回 | 20-25% |
 | 覚醒 | {{ stages.wake_minutes }}分 | - | - | - |
 
+{% if show_charts %}
 ![睡眠時間・ステージ推移]({{ stages.stacked_image }})
+{% endif %}
 
 {{ stages.table }}
 
+{% if show_charts %}
 ### 睡眠ステージ タイムライン
 
 ![睡眠タイムライン]({{ stages.timeline_image }})
 
 - 🟠 覚醒 / 🟣 レム / 🔵 浅い / 🔷 深い
+{% endif %}

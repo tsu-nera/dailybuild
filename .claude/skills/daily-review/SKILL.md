@@ -61,14 +61,17 @@ Fitbit / HealthPlanet / 手動記録の失敗だけで、その場合はどの�
 
 ```bash
 # 体組成レポート（直近7日）-- --only body または指定なしの場合
-uv run python scripts/generate_body_report_daily.py --days 7
+uv run python scripts/generate_body_report_daily.py --days 7 --no-charts
 
 # 睡眠レポート（直近30日）-- --only sleep または指定なしの場合
-uv run python scripts/generate_sleep_report_daily.py --days 30
+uv run python scripts/generate_sleep_report_daily.py --days 30 --no-charts
 
 # メンタルレポート（直近14日）-- --only mind または指定なしの場合
-uv run python scripts/generate_mind_report_daily.py --days 14
+uv run python scripts/generate_mind_report_daily.py --days 14 --no-charts
 ```
+
+`--no-charts` は Step 3 のレビューが画像を読まないため。人が `mdcat` で見るときは
+外して叩くとグラフ付きで出る。
 
 エラーがあれば報告する。
 

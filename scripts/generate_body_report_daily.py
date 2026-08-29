@@ -655,7 +655,7 @@ def _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats):
     return recovery_data
 
 
-def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None, nutrition_stats=None, eat_stats=None, target_end=None):
+def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None, hrv_stats=None, nutrition_stats=None, eat_stats=None, target_end=None, show_charts=True):
     """マークダウンレポートを生成（Jinja2テンプレート版）"""
     from lib.templates.renderer import BodyReportRenderer
 
@@ -665,6 +665,7 @@ def generate_report(output_dir, df, stats, sleep_stats=None, activity_stats=None
     context = prepare_report_data(df, stats, sleep_stats, activity_stats,
                                   hrv_stats, nutrition_stats, eat_stats,
                                   target_end=target_end)
+    context['show_charts'] = show_charts
 
     # テンプレートレンダリング
     renderer = BodyReportRenderer()
@@ -715,8 +716,10 @@ def main():
 
     # Output directory
     output_dir = determine_output_dir(BASE_DIR, 'body', args.output, week, month, year)
+    ensure_dir(output_dir)
     img_dir = output_dir / 'img'
-    ensure_dir(img_dir)
+    if not args.no_charts:
+        ensure_dir(img_dir)
 
     # Calculate stats
     stats = body.calc_body_stats(df)
@@ -750,10 +753,11 @@ def main():
         print(f'EAT data: {eat_stats["days"]} days, avg {eat_stats["avg_eat"]:.0f} kcal/day')
 
     # Generate chart
-    plot_main_chart(df, img_dir / 'trend.png')
+    if not args.no_charts:
+        plot_main_chart(df, img_dir / 'trend.png')
 
     # Generate report
-    generate_report(output_dir, df, stats, sleep_stats, activity_stats, hrv_stats, nutrition_stats, eat_stats, target_end=target_end)
+    generate_report(output_dir, df, stats, sleep_stats, activity_stats, hrv_stats, nutrition_stats, eat_stats, target_end=target_end, show_charts=not args.no_charts)
 
     return 0
 
