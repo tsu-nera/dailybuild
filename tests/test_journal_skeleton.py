@@ -151,3 +151,53 @@ def test_index_does_not_disturb_monthly_table(journal_dir):
     text = index.read_text(encoding='utf-8')
     assert _index_weeks(index) == ['2026-W35', '2026-W32']
     assert text.index('[2026-W32]') < text.index('## 月次') < text.index('[2026-04]')
+
+
+@pytest.fixture
+def data_root(tmp_path, monkeypatch):
+    """CSV の読み先を一時ディレクトリへ向ける"""
+    monkeypatch.setattr(js, 'BASE_DIR', tmp_path)
+    (tmp_path / 'd').mkdir()
+    return tmp_path
+
+
+def _write(root, name, rows):
+    (root / 'd' / name).write_text('date,v\n' + ''.join(f'{d},1\n' for d in rows),
+                                   encoding='utf-8')
+
+
+def test_sparse_source_absence_is_not_reported_as_missing(data_root, monkeypatch):
+    """疎な指標は当日に記録が無くても欠測として出さない
+
+    毎日「欠測」と書くと故障と未記録が同じ見た目になり、毎日出る警告は
+    読み飛ばされる。実際 temperature_core がこれで、測らなかった日すべてに
+    警告が出ていた。
+    """
+    _write(data_root, 'daily.csv', ['2026-08-29'])
+    _write(data_root, 'sparse.csv', ['2026-08-23'])
+    monkeypatch.setattr(js, 'DAILY_SOURCES', [('daily', 'd/daily.csv', 'date')])
+    monkeypatch.setattr(js, 'SPARSE_SOURCES',
+                        [('sparse', 'd/sparse.csv', 'date', '疎な指標')])
+
+    target = dt.date(2026, 8, 29)
+    assert js.collect_missing(target) == []
+    assert js.collect_last_seen(target) == ['疎な指標 6日前（08-23）']
+
+
+def test_daily_source_absence_is_still_reported(data_root, monkeypatch):
+    """毎日あるはずのソースが欠けたら従来どおり欠測として出す"""
+    _write(data_root, 'daily.csv', ['2026-08-28'])
+    monkeypatch.setattr(js, 'DAILY_SOURCES', [('daily', 'd/daily.csv', 'date')])
+    monkeypatch.setattr(js, 'SPARSE_SOURCES', [])
+
+    assert js.collect_missing(dt.date(2026, 8, 29)) == ['daily']
+
+
+def test_sparse_source_never_recorded(data_root, monkeypatch):
+    """一度も記録が無い疎な指標は「記録なし」と出す（0日前と誤読させない）"""
+    _write(data_root, 'sparse.csv', [])
+    monkeypatch.setattr(js, 'DAILY_SOURCES', [])
+    monkeypatch.setattr(js, 'SPARSE_SOURCES',
+                        [('sparse', 'd/sparse.csv', 'date', '疎な指標')])
+
+    assert js.collect_last_seen(dt.date(2026, 8, 29)) == ['疎な指標 記録なし']

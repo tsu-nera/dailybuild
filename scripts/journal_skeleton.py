@@ -61,6 +61,7 @@ DAILY_SOURCES = [
 # (ラベル, パス, 日付列, 表示名)
 SPARSE_SOURCES = [
     ('temperature_core', 'data/fitbit/temperature_core.csv', 'date_time', '深部体温'),
+    ('body_composition', 'data/healthplanet_innerscan.csv', 'date', '体組成'),
 ]
 
 
@@ -115,6 +116,10 @@ def collect_metrics(target: dt.date) -> list[dict]:
     br = _read('data/fitbit/breathing_rate.csv', 'date')
     act = _read('data/fitbit/activity.csv', 'date')
     man = _read('data/manual.csv', 'date')
+    # body レポートと同じ healthplanet_innerscan.csv を使う。体組成は3経路
+    # （Fitbit / HealthPlanet / Google Health）あるが統合しない方針なので、
+    # レポートと違う経路を読むと骨組みとレポートで数字が食い違う
+    body = _read('data/healthplanet_innerscan.csv', 'date')
 
     timing = _sleep_timing(prior[0], ts)
     if timing:
@@ -137,6 +142,8 @@ def collect_metrics(target: dt.date) -> list[dict]:
         ('RHR', rhr, lambda d: d['resting_heart_rate'], 'bpm', 0),
         ('BR', br, lambda d: d['breathing_rate'], '/min', 1),
         ('歩数', act, lambda d: d['steps'], '', 0),
+        ('体重', body, lambda d: d['weight'], 'kg', 1),
+        ('体脂肪率', body, lambda d: d['body_fat_rate'], '%', 1),
         ('主観 mind', man, lambda d: d['mind_score'], '', 1),
         ('主観 body', man, lambda d: d['body_score'], '', 1),
         ('主観 sleep', man, lambda d: d['sleep_score'], '', 1),
