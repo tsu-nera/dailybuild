@@ -95,6 +95,8 @@ uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml �
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
+uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-routine.sh が実行）
+uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
 # 室内環境は所要が長い（1日ぶん約11分）ため daily-routine.sh から外してある。
 # 別途1日1回、手動で回す。Tuya のログは最大7日しか遡れないので放置すると穴が空く
 uv run scripts/fetch_indoor.py --update  # 室内環境（CO2/温度/湿度）差分取得
@@ -139,7 +141,7 @@ stdout）。
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
 | `fetch_indoor.py` / Tuya を扱うとき | [docs/indoor.md](docs/indoor.md) — レート制限と7日の遡り限界 |
 | `emotion.py` / `phq9.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
-| Habitica を扱うとき（取得は未実装） | [docs/habitica.md](docs/habitica.md) — dailybuild は結果指標、Habitica は行動の記録先 |
+| `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
 

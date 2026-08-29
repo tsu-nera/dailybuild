@@ -90,3 +90,27 @@ HP を行動の履行度として読む設計も壊れる（罰の倍率が変�
   保存する**
 - `GET /user` の `needsCron` は `userFields` を指定すると返らない（指定なしの
   ときだけ計算される）
+
+## 運用
+
+`scripts/habitica.py cron` を `daily-routine.sh` から毎日実行する。`needsCron` が
+立っているときだけ `POST /cron` を叩き、結果を `data/habitica/cron_log.csv` に
+1日1行で記録する（同日の再実行は上書き）。
+
+```
+date, ran_at, last_cron_prev, last_cron_get, needs_cron, cron_posted,
+last_cron_final, hp, lvl, exp, gp
+```
+
+**この CSV が達成率の分母の台帳になる。** history は cron を走らせた日にしか
+増えないので、行が無い日は「未達」ではなく「欠測」。達成率を出すときは
+history の長さではなくこの CSV の行を母数にする。
+
+`last_cron_prev`（前回実行時の `lastCron`）を残しているのは、`GET /user` だけで
+cron が走るのか、人がアプリを開いて走らせたのかを後から判別するため。
+`needs_cron=False` なのに `last_cron_get` が `last_cron_prev` より進んでいれば、
+こちらの POST 以外の経路で走っている。
+
+**`daily-routine.sh` は自動実行されていない**（crontab / systemd timer に登録が
+無く、`/daily-review` から呼ばれる）。したがって Habitica の分母の被覆率は
+`/daily-review` を回した日数と一致する。PC が起動していない日は取りこぼす。
