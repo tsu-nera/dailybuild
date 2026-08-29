@@ -114,6 +114,22 @@ def checkbox_item(title: str, choices: list, required: bool = True) -> dict:
     }
 
 
+def radio_item(title: str, choices: list, required: bool = True) -> dict:
+    """ラジオボタン（choiceQuestion, type RADIO）の item spec"""
+    return {
+        'title': title,
+        'questionItem': {
+            'question': {
+                'required': required,
+                'choiceQuestion': {
+                    'type': 'RADIO',
+                    'options': [{'value': c} for c in choices],
+                },
+            },
+        },
+    }
+
+
 def text_item(title: str, required: bool = False) -> dict:
     """記述式（textQuestion）の item spec"""
     return {

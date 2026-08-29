@@ -58,6 +58,7 @@ step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "手動記録"       uv run python scripts/fetch_manual.py
 step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
+step "PHQ-9"         uv run python scripts/phq9.py fetch --non-interactive
 # 室内環境（Tuya）は日次から外している。5分刻みで1点1リクエスト、レート制限で
 # 1リクエスト1.5秒以上かかるため、1日ぶん288点で8〜10分。他の全ステップ合計が
 # 1分強なのに対して所要時間の9割を1ステップが占めていた。取得は手動で回す:
