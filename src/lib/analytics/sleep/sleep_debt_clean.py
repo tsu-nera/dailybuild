@@ -508,7 +508,7 @@ DEBT_WEIGHT_METHOD = 'recency_linear'
 def build_debt_calculator(df_all_sleep, sleep_need_hours=None):
     """主睡眠+昼寝を日別合計して SleepDebtCalculator を組み立てる
 
-    計測が無い日は行を作らない（0埋めしない）。詳細は CLAUDE.md「睡眠負債」。
+    計測が無い日は行を作らない（0埋めしない）。詳細は docs/reports.md「睡眠負債」。
     """
     daily = df_all_sleep.groupby('dateOfSleep', as_index=False).agg({
         'minutesAsleep': 'sum',

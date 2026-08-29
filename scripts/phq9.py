@@ -9,7 +9,7 @@ scripts/emotion.py と同じ構成（Google Form 直読み、回答先スプレ�
 
 設問文の著作権上、config/phq9_def.yaml は追跡対象外（.gitignore 済み）。
 config/phq9_def.yaml.sample をコピーして出典から書き写すこと。
-CLAUDE.md の「PHQ-9」節を参照。
+docs/forms.md の「PHQ-9」節を参照。
 """
 
 import argparse
@@ -32,7 +32,7 @@ OUT_FILE = require_private_path(BASE_DIR / 'data/phq9.csv')
 TZ = 'Asia/Tokyo'
 
 # yaml の質問キー（q1〜q9）。sync_questions は同型の質問を出現順で
-# 突き合わせるため、この順序を変えてはいけない（CLAUDE.md 参照）
+# 突き合わせるため、この順序を変えてはいけない（docs/forms.md 参照）
 QUESTION_KEYS = [f'q{i}' for i in range(1, 10)]
 
 
@@ -41,7 +41,7 @@ def load_def():
         raise FileNotFoundError(
             f'{DEF_FILE} が無い。著作権の都合でこのファイルはコミットされて'
             f'いない。{SAMPLE_FILE} をコピーし、出典から設問文を書き写すこと'
-            '（CLAUDE.md の「PHQ-9」節を参照）:\n'
+            '（docs/forms.md の「PHQ-9」節を参照）:\n'
             f'  cp {SAMPLE_FILE} {DEF_FILE}'
         )
     with open(DEF_FILE) as f:

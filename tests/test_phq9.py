@@ -182,7 +182,7 @@ def test_sync_questions_matches_nine_radio_questions_by_order():
     """PHQ-9 は9問すべて同型（ラジオ）。sync_questions はタイトルを見ず
     出現順（FIFO）で対応付けるため、この挙動をテストで固定する。
     yaml の質問順を変えると questionId が別の設問に引き継がれ、過去の
-    回答が別の質問の回答として読めてしまう（CLAUDE.md 参照）。
+    回答が別の質問の回答として読めてしまう（docs/forms.md 参照）。
     """
     existing_items = []
     for i in range(1, 10):

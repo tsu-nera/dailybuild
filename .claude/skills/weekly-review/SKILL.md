@@ -72,7 +72,7 @@ uv run python scripts/show_targets.py --interval monthly quarterly
 
 うつの重症度（0〜27点）を週1回測る。**主観の唯一の検証済み計器**で、`mind_score`
 （1〜5・自作）が下限に張り付いて日次では情報を運べない期間でも、項目ごとに割れて
-変化を拾う。定義と運用の詳細は CLAUDE.md の「PHQ-9（週次）」節。
+変化を拾う。定義と運用の詳細は docs/forms.md の「PHQ-9（週次）」節。
 
 ```bash
 uv run scripts/phq9.py fetch
