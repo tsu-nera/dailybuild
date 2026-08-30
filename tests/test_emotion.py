@@ -16,6 +16,7 @@ BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR / 'src'))
 
 from lib.clients import gforms_api
+from lib.emotion import render, store
 
 
 def _load_script():
@@ -274,3 +275,54 @@ def test_sync_questions_raises_on_unmatched_existing_item():
     service = MagicMock()
     with pytest.raises(gforms_api.GoogleFormsError):
         gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+
+
+# --- show（集計・表示）側 -------------------------------------------------
+# 方針どおり markdown の文面はテストしない。欠測を捏造しないことだけを見る。
+
+VMAP = {'落ち着いている': 'pos', 'つらい・重い': 'neg', '何も感じない': 'neu'}
+
+
+def test_load_entries_keeps_missing_score_as_na(tmp_path, monkeypatch):
+    """score 未設問時代（2026-08-26 より前）の空欄が 0 に潰れないこと
+
+    0 に潰すと尺度の最下端「最悪の気分」として集計に混ざり、
+    設問が無かっただけの期間を最悪だった期間として捏造する。
+    """
+    csv = tmp_path / 'emotion.csv'
+    csv.write_text(
+        'timestamp,date,emotions,note,score\n'
+        '2026-08-25 22:02:09,2026-08-25,何も感じない,,\n'
+        '2026-08-26 22:42:15,2026-08-26,落ち着いている,,3\n'
+    )
+    monkeypatch.setattr(store, 'CSV_FILE', csv)
+
+    df = store.load_entries()
+
+    assert df['score'].isna().tolist() == [True, False]
+    assert df['score'].dropna().tolist() == [3]
+
+
+def test_intraday_ignores_records_without_score():
+    """score の無い記録から日内の差を作らないこと"""
+    df = pd.DataFrame({
+        'timestamp': pd.to_datetime(['2026-08-30 07:00', '2026-08-30 08:00']),
+        'score': pd.array([pd.NA, 2], dtype='Int64'),
+    })
+
+    assert '2件以上' in render.render_intraday(df)
+
+
+def test_unknown_label_is_neither_positive_nor_dropped():
+    """旧語彙版で記録された語は現在の定義から引けない
+
+    極性が引けない語を陽性に数えると回復の指標が水増しされ、
+    表から落とすと記録そのものが消える。どちらもしない。
+    """
+    assert not render.has_positive('廃止された語', VMAP)
+    assert render.has_positive('廃止された語;落ち着いている', VMAP)
+
+    table = render.render_vocab(
+        pd.DataFrame({'emotions': ['廃止された語;落ち着いている']}), VMAP)
+    assert '廃止された語' in table
+    assert render.VALENCE_UNKNOWN in table

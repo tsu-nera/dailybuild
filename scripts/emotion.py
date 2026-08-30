@@ -19,12 +19,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import pandas as pd
 import yaml
 from lib.clients import gforms_api
+from lib.emotion import render, store
 from lib.utils import csv_utils
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 DEF_FILE = BASE_DIR / 'config/emotion_def.yaml'
-OUT_FILE = require_private_path(BASE_DIR / 'data/emotion.csv')
+# show 側と同じパスを指すよう store から借りる
+OUT_FILE = store.CSV_FILE
 VOCAB_HISTORY_FILE = require_private_path(
     BASE_DIR / 'data/emotion_vocab_history.csv')
 
@@ -120,7 +122,8 @@ def build_dataframe(form, responses, conf):
 
     if unknown_all:
         print(f"警告: 定義にない選択肢 {sorted(unknown_all)}"
-              f"（config/emotion_def.yaml の vocabulary と不一致）")
+              f"（config/emotion_def.yaml の vocabulary と不一致）",
+              file=sys.stderr)
 
     columns = ['timestamp', 'date', 'score', 'emotions', 'note']
     df = pd.DataFrame(rows, columns=['timestamp', 'score', 'emotions', 'note'])
@@ -193,7 +196,9 @@ def update_vocab_history(revision_id, labels, path, now=None) -> bool:
     return True
 
 
-def cmd_fetch(args):
+def cmd_fetch(args, out=None):
+    # show --update から呼ぶときは stdout を markdown 専用に保つため stderr を渡す
+    out = out or sys.stdout
     conf = load_def()
     if not conf.get('form_id'):
         raise ValueError(
@@ -235,8 +240,41 @@ def cmd_fetch(args):
         sort_by=['timestamp'],
     )
     df.to_csv(OUT_FILE, index=False)
-    print(f"保存完了: {OUT_FILE} ({len(df)}件)")
-    print(df.tail())
+    print(f"保存完了: {OUT_FILE} ({len(df)}件)", file=out)
+    print(df.tail(), file=out)
+
+
+def cmd_show(args):
+    if args.update:
+        # 取得ログは stderr に寄せ、stdout は markdown 専用に保つ
+        cmd_fetch(argparse.Namespace(non_interactive=False), out=sys.stderr)
+
+    if not OUT_FILE.exists():
+        print(f'エラー: {OUT_FILE} が存在しません', file=sys.stderr)
+        sys.exit(1)
+
+    vmap = render.valence_map(load_def())
+    df_all = store.load_entries()
+
+    today = dt.date.today()
+    start = today - dt.timedelta(days=args.days - 1)
+    df = df_all[df_all['timestamp'].dt.date >= start].reset_index(drop=True)
+
+    print(f'# 気分記録（{start:%Y-%m-%d} 〜 {today:%Y-%m-%d}）\n')
+    # 記録が無いのは故障ではない（断続的な記録でもトレンド用途は成立する）ので
+    # 0件でも正常終了する。CSV 自体が無い場合だけ上で落としてある。
+    # 被覆は統計の但し書きとして出すだけで、上げるべき目標としては出さない
+    print(f"記録 {len(df)}件 / {df['date'].nunique()}日に記録あり"
+          f'（{args.days}日中）\n')
+
+    print('## 記録\n')
+    print(render.render_entries(df))
+    print('\n## 日内の変化\n')
+    print(render.render_intraday(df))
+    print('\n## 陽性感情\n')
+    print(render.render_positive(df, df_all, vmap, today))
+    print('\n## 語の出現回数\n')
+    print(render.render_vocab(df, vmap))
 
 
 def main():
@@ -252,6 +290,13 @@ def main():
     p_fetch.add_argument('--non-interactive', action='store_true',
                          help='トークンが無効ならブラウザを開かず落とす（cron 用）')
     p_fetch.set_defaults(func=cmd_fetch)
+
+    p_show = sub.add_parser('show', help='記録のサマリを markdown で表示する')
+    p_show.add_argument('--days', type=int, default=7,
+                        help='直近N日（既定 7）')
+    p_show.add_argument('--update', action='store_true',
+                        help='表示前に fetch で最新データを取得する')
+    p_show.set_defaults(func=cmd_show)
 
     args = parser.parse_args()
     args.func(args)

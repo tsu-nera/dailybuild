@@ -91,6 +91,7 @@ uv run scripts/toggl.py current          # 計測中のエントリを表示
 uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
 uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得
+uv run scripts/emotion.py show       # 気分記録のサマリ（既定は直近7日）
 uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
