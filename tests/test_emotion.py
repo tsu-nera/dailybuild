@@ -413,6 +413,144 @@ def test_question_id_by_title_reads_grid_rows():
     assert by_title['頭の冴え'] == 'q_head'
 
 
+# --- sync_questions: scale -> grid の型移行（現在の本番フォームが起点） ---
+# 本番フォームは scale/checkbox/text の3問で、グリッドはまだ無い。ここへ
+# grid/checkbox/text の新 spec を当てると、旧 scaleQuestion がどの kind
+# バケットにも一致せず leftover になる。無条件に削除すると「画面で手編集
+# された想定外の質問」の検出ができなくなるため、allow_kind_replace を
+# 明示したときだけ削除を許す opt-in にしてある。
+
+def _existing_scale_form():
+    """移行前の本番フォームと同じ形（scale / checkbox / text）"""
+    return {
+        'items': [
+            {
+                'itemId': 'i_scale',
+                'title': 'いまの気分',
+                'questionItem': {'question': {
+                    'questionId': 'q_scale',
+                    'scaleQuestion': {'low': 1, 'high': 5},
+                }},
+            },
+            {
+                'itemId': 'i_emotions',
+                'title': 'いまの気持ち',
+                'questionItem': {'question': {
+                    'questionId': 'q_emotions',
+                    'choiceQuestion': {
+                        'type': 'CHECKBOX',
+                        'options': [{'value': '落ち着いている'}],
+                    },
+                }},
+            },
+            {
+                'itemId': 'i_note',
+                'title': '何があった？',
+                'questionItem': {'question': {
+                    'questionId': 'q_note',
+                    'textQuestion': {'paragraph': False},
+                }},
+            },
+        ],
+    }
+
+
+def _migration_items():
+    return [
+        gforms_api.grid_item('いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え'],
+                             1, 5, '悪い', '良い'),
+        gforms_api.checkbox_item('いまの気持ち', ['落ち着いている'], required=True),
+        gforms_api.text_item('何があった？'),
+    ]
+
+
+def test_sync_questions_scale_to_grid_migration_blocked_without_flag():
+    """既定（allow_kind_replace を渡さない）では、型移行の起点になる
+    scale + checkbox + text のフォームへ grid の新 spec を当てると
+    GoogleFormsError で止まる。ガードが生きていることの固定"""
+    existing_form = _existing_scale_form()
+    service = MagicMock()
+    with pytest.raises(gforms_api.GoogleFormsError) as exc_info:
+        gforms_api.sync_questions(service, 'form1', _migration_items(),
+                                  existing_form=existing_form)
+    assert 'いまの気分' in str(exc_info.value)
+    assert 'scaleQuestion' in str(exc_info.value)
+
+
+def test_sync_questions_scale_to_grid_migration_with_flag_deletes_old_scale():
+    """allow_kind_replace=True なら例外を出さず、旧 scaleQuestion の
+    deleteItem が発行される。checkbox / text の questionId は保持される"""
+    existing_form = _existing_scale_form()
+    requests = _run_sync_with_flag(_migration_items(), existing_form,
+                                   allow_kind_replace=True)
+
+    deletes = [r['deleteItem'] for r in requests if 'deleteItem' in r]
+    creates = [r['createItem'] for r in requests if 'createItem' in r]
+    updates = [r['updateItem'] for r in requests if 'updateItem' in r]
+
+    assert deletes == [{'itemId': 'i_scale'}]
+    assert len(creates) == 1
+    assert 'questionGroupItem' in creates[0]['item']
+
+    checkbox_update = next(u for u in updates
+                           if 'choiceQuestion' in u['item']['questionItem']['question'])
+    text_update = next(u for u in updates
+                       if 'textQuestion' in u['item']['questionItem']['question'])
+    assert checkbox_update['item']['questionItem']['question']['questionId'] == 'q_emotions'
+    assert text_update['item']['questionItem']['question']['questionId'] == 'q_note'
+
+    # delete が create/update より先に来ること（location.index は delete 後の
+    # 状態を前提に計算しているため）
+    delete_pos = requests.index({'deleteItem': deletes[0]})
+    create_pos = requests.index({'createItem': creates[0]})
+    assert delete_pos < create_pos
+
+
+def _run_sync_with_flag(items, existing_form, allow_kind_replace=False):
+    service = MagicMock()
+    captured = {}
+
+    def fake_batch_update(formId, body):
+        captured['body'] = body
+        m = MagicMock()
+        m.execute.return_value = {}
+        return m
+
+    service.forms.return_value.batchUpdate.side_effect = fake_batch_update
+    gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form,
+                              allow_kind_replace=allow_kind_replace)
+    return captured['body']['requests']
+
+
+def test_preview_kind_mismatch_lists_leftover_before_sync():
+    """setup-form --allow-kind-replace が実行前に削除対象を列挙できるよう、
+    leftover の事前確認ができること"""
+    existing_form = _existing_scale_form()
+    leftover = gforms_api.preview_kind_mismatch(_migration_items(), existing_form)
+    assert [i['title'] for i in leftover] == ['いまの気分']
+
+
+def test_sync_questions_raises_on_unmatched_existing_item_default_flag():
+    """既存の不一致検出テストが、allow_kind_replace を渡さない既定の
+    呼び方のままで通ること（フラグ追加による後退が無いことの確認）"""
+    existing_form = {
+        'items': [
+            {
+                'itemId': 'i1',
+                'title': '謎の質問',
+                'questionItem': {'question': {
+                    'questionId': 'q1',
+                    'dateQuestion': {},
+                }},
+            },
+        ],
+    }
+    items = [gforms_api.text_item('何があった？')]
+    service = MagicMock()
+    with pytest.raises(gforms_api.GoogleFormsError):
+        gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+
+
 # --- show（集計・表示）側 -------------------------------------------------
 # 方針どおり markdown の文面はテストしない。欠測を捏造しないことだけを見る。
 

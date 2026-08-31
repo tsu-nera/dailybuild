@@ -41,6 +41,20 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
   化ける（`gforms_api.sync_questions()`）。グリッド（`questionGroupItem`）も
   1つの種類として扱うが、**フォーム全体でグリッドは1個の運用が前提**（現状の
   3問構成では他に同型が無いのでタイトルで揉めることは起きない）
+- **既存 item のうち items のどの kind にも対応しないもの（leftover）が
+  残ると、既定では `GoogleFormsError` で止まる。** 画面で手編集された想定外の
+  質問を検出するためのガードで、無条件には外さない。質問の種類そのものを
+  作り変える意図的な移行（scaleQuestion → questionGroupItem 化など）のときは
+  `sync_questions(..., allow_kind_replace=True)`（CLI では
+  `setup-form --update --allow-kind-replace`）を明示したときだけ leftover を
+  `deleteItem` で削除する opt-in にしてある（#103/#105 の
+  `preserve_existing_on_nan` と同じ「既定は安全、意図的な変更のみ opt-in」の
+  考え方）。削除される質問は実行前に `gforms_api.preview_kind_mismatch()` で
+  列挙し、CLI が標準出力に出してから実行する（黙って消さない）。
+  `deleteItem` は `createItem`/`updateItem` より先に適用する
+  （`location.index` は delete 後に残る item だけで数えた最終順序を前提に
+  計算しているため。先に delete しないと未削除の leftover が残った状態で
+  絶対 index を適用することになり、意図しない位置へ挿入・移動される）
 - **グリッドの行（questions[] の中身）はタイトルでなく出現順（FIFO）で
   対応付ける。** これは気分記録が3問とも型が違う（scale/checkbox/text）ため
   問題にならなかった旧構成とは事情が異なる。**グリッド化で「同型が複数並ぶ」
@@ -61,9 +75,28 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
 本番フォームと既存回答を書き換える取り消しにくい操作なので、**人間が手動で
 実行する**（この Issue の PR ではコード・テストのみで実行しない）。
 
+**この移行で起きること:** 現在の本番フォームは `いまの気分`（scaleQuestion）・
+`いまの気持ち`（choiceQuestion）・`何があった？`（textQuestion）の3問で、
+グリッドはまだ無い。ここへグリッド化した `config/emotion_def.yaml` を当てると、
+旧 `いまの気分`（scaleQuestion）はどの新 kind（questionGroupItem/choice/text）
+にも一致しない leftover になり、`sync_questions()` は既定で `GoogleFormsError`
+を投げて止まる（`setup-form --update` 単体では移行できない）。意図的な型移行
+なので `setup-form --update --allow-kind-replace` で明示的に許可する必要が
+あり、これを付けると **旧 `いまの気分` の質問は `deleteItem` で削除され、
+その questionId は失われる**（= フォーム側からは過去14件の回答をもう
+引けなくなる）。ただし `data/emotion.csv` に既に materialize 済みの `score`
+列の値は、**#105（merge 済み）で入れた `merge_csv_by_columns` の
+`preserve_existing_on_nan=True`** により、再 fetch で NaN 上書きされず保持
+される。フォーム側の過去回答を失っても CSV 側のデータは失われない、という
+のが**この移行を「記録が14件しかない今」やる理由**（後になるほど失う回答が
+増える）。
+
 1. `data/emotion.csv` をバックアップする（例: `cp data/emotion.csv /tmp/emotion.csv.bak`）
-2. `uv run scripts/emotion.py setup-form --update` を実行し、画面の質問構成を
-   `config/emotion_def.yaml`（グリッド3行）に合わせる
+2. `uv run scripts/emotion.py setup-form --update --allow-kind-replace` を
+   実行し、画面の質問構成を `config/emotion_def.yaml`（グリッド3行）に合わせる。
+   実行前に削除される質問のタイトル・種類が標準出力に列挙される
+   （`gforms_api.preview_kind_mismatch()`）ので、`いまの気分（scaleQuestion）`
+   だけが対象になっていることを確認してから進める
 3. `uv run scripts/emotion.py fetch` を実行し、最新の回答を取得する
 4. 既存14件の `score` が保持されていることを差分確認する
    （例: `diff <(cut -d, -f1,3 /tmp/emotion.csv.bak) <(cut -d, -f1,3 data/emotion.csv)` で
@@ -71,11 +104,14 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
    場合は列名で見る）。`body` / `head` は移行前の回答では空欄のままでよい
    （まだ聞いていなかったので NA が正しい）
 
-失敗時（`score` が別の値に化けている等、行順の付け替えを疑う場合）は、
-バックアップした `data/emotion.csv` を戻し、フォーム側は Forms API の編集画面
-（`setup-form` が出す「編集用URL」）で `questionId` を確認しながら手動修正する。
-`gforms_api.sync_questions()` 自体は変更せず、`grid_rows` の並びを元に戻して
-`setup-form --update` を再実行するのが基本の復旧手順。
+失敗時（`score` が別の値に化けている等、行順の付け替えを疑う場合、あるいは
+`preview_kind_mismatch` の出力に `いまの気分` 以外の質問が含まれていた場合は
+即座に中断する）は、バックアップした `data/emotion.csv` を戻す。フォーム側は
+`gforms_api.sync_questions()` 自体を変更せず、`grid_rows` の並びを元に戻して
+`setup-form --update`（グリッド化前の構成に戻す場合は `--allow-kind-replace`
+も付けて再度型を戻す）を再実行するのが基本の復旧手順。フォーム側の
+questionId は一度削除すると復元できないため、`--allow-kind-replace` を
+付けた実行は必ず1で取ったバックアップの確認後に行うこと。
 
 ## PHQ-9（週次）
 

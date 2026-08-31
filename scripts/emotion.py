@@ -84,8 +84,18 @@ def cmd_setup_form(args):
             print('選択肢や質問文を yaml に合わせ直すなら --update')
             return
         existing_form = gforms_api.get_form(service, conf['form_id'])
+        if args.allow_kind_replace:
+            leftover = gforms_api.preview_kind_mismatch(items, existing_form)
+            if leftover:
+                print('質問の種類が変わるため、次の既存の質問を削除する'
+                      '（過去の回答はフォーム側から引けなくなる。'
+                      'data/emotion.csv に materialize 済みの値は保持される）:')
+                for i in leftover:
+                    print(f"  - {i.get('title')} "
+                         f"({gforms_api._question_kind(i)})")
         gforms_api.sync_questions(service, conf['form_id'], items,
-                                  existing_form=existing_form)
+                                  existing_form=existing_form,
+                                  allow_kind_replace=args.allow_kind_replace)
         print('フォームを yaml に合わせて更新した')
         form = gforms_api.get_form(service, conf['form_id'])
     else:
@@ -322,6 +332,11 @@ def main():
     p_setup = sub.add_parser('setup-form', help='フォームを生成する')
     p_setup.add_argument('--update', action='store_true',
                          help='既存フォームの質問文・選択肢を yaml に合わせる')
+    p_setup.add_argument('--allow-kind-replace', action='store_true',
+                         help='質問の種類が変わる移行を許可し、対応しない既存の'
+                              '質問を削除する（--update と併用。'
+                              '例: scaleQuestion → questionGroupItem 化。'
+                              '削除される質問は実行前に列挙する）')
     p_setup.set_defaults(func=cmd_setup_form)
 
     p_fetch = sub.add_parser('fetch', help='回答を取得して CSV に保存する')

@@ -192,8 +192,34 @@ def _question_kind(item: dict) -> str | None:
     return None
 
 
+def preview_kind_mismatch(items: list, existing_form: dict) -> list:
+    """sync_questions が leftover と判定する既存 item を事前に返す
+
+    sync_questions を allow_kind_replace=True で呼ぶ前に、削除される質問を
+    人間が確認できるようにする用途（CLI 側で使う）。マッチングのロジックは
+    sync_questions と同じ（kind ごとの出現順で消費し、余った既存 item を
+    返す）。ここでは createItem/updateItem のリクエストは組み立てない。
+    """
+    existing_items = [i for i in existing_form.get('items', [])
+                      if 'questionItem' in i or 'questionGroupItem' in i]
+    existing_by_kind = {}
+    for item in existing_items:
+        kind = _question_kind(item)
+        existing_by_kind.setdefault(kind, []).append(item)
+
+    used_item_ids = set()
+    for spec in items:
+        kind = _question_kind(spec)
+        bucket = existing_by_kind.get(kind, [])
+        if bucket:
+            used_item_ids.add(bucket.pop(0).get('itemId'))
+
+    return [i for i in existing_items if i.get('itemId') not in used_item_ids]
+
+
 def sync_questions(service, form_id: str, items: list,
-                   existing_form: dict = None) -> dict:
+                   existing_form: dict = None,
+                   allow_kind_replace: bool = False) -> dict:
     """フォームの質問を items（望ましい item spec のリスト）に合わせる
 
     existing_form が None なら全 item を新規作成する。
@@ -219,6 +245,19 @@ def sync_questions(service, form_id: str, items: list,
     （行順の変更は意図的な質問構成の変更であり、questionId を新しい行へ
     付け替えるのが正しい）。行が増えた分（既存より後ろ）は questionId を
     付けず、API に新規採番させる。
+
+    既存 item のうち、items のどの kind にも対応しないものが残った場合
+    （= leftover）は、既定では GoogleFormsError を投げて止まる。これは
+    「画面で手編集された想定外の質問」を検出するためのガードで、
+    質問の型を意図的に作り変える移行（例: scaleQuestion 1問 →
+    questionGroupItem 化）のときだけ無条件に外すと事故る。そのため
+    `allow_kind_replace=True` を明示したときだけ leftover を
+    deleteItem で削除する opt-in にしてある（#103/#105 の
+    `preserve_existing_on_nan` と同じ「既定は安全、意図的な変更のみ
+    opt-in」という考え方）。deleteItem で消した item の questionId は
+    フォーム側から失われ、過去の回答はフォームからは二度と引けなくなる
+    （CSV 側に materialize 済みの値は別途保持されるので、そちらのデータは
+    失われない。詳細は docs/forms.md の気分記録の節）。
     """
     if existing_form is None:
         requests = [
@@ -296,16 +335,27 @@ def sync_questions(service, form_id: str, items: list,
         final_index += 1
 
     leftover = [i for i in existing_items if i.get('itemId') not in used_item_ids]
+    delete_requests = []
     if leftover:
-        raise GoogleFormsError(
-            '望ましい質問構成に対応しない既存の質問が残っている'
-            '（画面で手編集された可能性がある）: '
-            f"{[(i.get('title'), _question_kind(i)) for i in leftover]}"
-        )
+        if not allow_kind_replace:
+            raise GoogleFormsError(
+                '望ましい質問構成に対応しない既存の質問が残っている'
+                '（画面で手編集された可能性がある）: '
+                f"{[(i.get('title'), _question_kind(i)) for i in leftover]}"
+            )
+        delete_requests = [
+            {'deleteItem': {'itemId': i.get('itemId')}} for i in leftover
+        ]
 
-    # createItem を先に適用し、updateItem の index は create 適用後
-    # （= 最終的な望ましい順序）の index を使う
-    requests = create_requests + update_requests
+    # delete を create/update より先に適用する。create/update の
+    # location.index は「delete 後に残る item だけで数えた最終的な
+    # 望ましい順序」の 0-origin 連番（leftover が無い場合と同じ計算式）。
+    # batchUpdate は requests を先頭から順に現在の状態へ適用するため、
+    # delete を後回しにすると leftover item がまだ残っている間に
+    # create/update の絶対 index を適用することになり、意図しない位置へ
+    # 挿入・移動されてしまう。deleteItem 自体は itemId 指定で index に
+    # 依存しないので、delete 同士の順序は問わない
+    requests = delete_requests + create_requests + update_requests
     return service.forms().batchUpdate(
         formId=form_id, body={'requests': requests}).execute()
 
