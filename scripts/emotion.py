@@ -238,6 +238,7 @@ def cmd_fetch(args, out=None):
         key_columns=['timestamp'],
         parse_dates=['timestamp'],
         sort_by=['timestamp'],
+        preserve_existing_on_nan=True,
     )
     df.to_csv(OUT_FILE, index=False)
     print(f"保存完了: {OUT_FILE} ({len(df)}件)", file=out)

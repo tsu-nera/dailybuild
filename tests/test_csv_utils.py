@@ -1,10 +1,10 @@
-"""merge_csv() / replace_csv_period() のテスト（Issue #43, #75）"""
+"""merge_csv() / merge_csv_by_columns() / replace_csv_period() のテスト（Issue #43, #75, #103）"""
 
 from pathlib import Path
 
 import pandas as pd
 
-from lib.utils.csv_utils import merge_csv, replace_csv_period
+from lib.utils.csv_utils import merge_csv, merge_csv_by_columns, replace_csv_period
 
 
 def _write_csv(path: Path, df: pd.DataFrame) -> None:
@@ -178,6 +178,150 @@ def test_large_integer_ids_are_not_rounded(tmp_path: Path):
     df_roundtrip = pd.read_csv(roundtrip_path, index_col="date")
     assert str(df_roundtrip.loc["2026-01-01", "logId"]) == "5667773472718017992"
     assert str(df_roundtrip.loc["2026-01-02", "logId"]) == "8694685614035756360"
+
+
+# =============================================================================
+# merge_csv_by_columns（Issue #103: preserve_existing_on_nan=True でセル単位
+# マージに切り替える。既定は従来通りの行単位置換で後方互換を固定する）
+# =============================================================================
+
+def test_merge_by_columns_preserve_existing_keeps_nan_overwritten_score(tmp_path: Path):
+    """preserve_existing_on_nan=True で、再fetchのNaNが既存scoreを消さないこと（本件の再現）"""
+    csv_path = tmp_path / "emotion.csv"
+    df_old = pd.DataFrame({
+        "timestamp": ["2026-08-26 22:42:00", "2026-08-27 05:30:00"],
+        "date": ["2026-08-26", "2026-08-27"],
+        "emotions": ["落ち着いている", "落ち着いている"],
+        "score": [3, 3],
+    })
+    _write_csv(csv_path, df_old)
+
+    df_new = pd.DataFrame({
+        "timestamp": ["2026-08-26 22:42:00", "2026-08-27 05:30:00"],
+        "date": ["2026-08-26", "2026-08-27"],
+        "emotions": ["落ち着いている", "落ち着いている"],
+        "score": [None, None],
+    })
+
+    df_merged = merge_csv_by_columns(
+        df_new, csv_path,
+        key_columns=["timestamp"],
+        parse_dates=["timestamp"],
+        preserve_existing_on_nan=True,
+    )
+
+    scores = df_merged.set_index("timestamp")["score"]
+    assert scores["2026-08-26 22:42:00"] == 3
+    assert scores["2026-08-27 05:30:00"] == 3
+
+
+def test_merge_by_columns_preserve_existing_adds_new_row(tmp_path: Path):
+    """preserve_existing_on_nan=True で、新規行の追加が入り新列に値が入ること"""
+    csv_path = tmp_path / "emotion.csv"
+    df_old = pd.DataFrame({
+        "timestamp": ["2026-08-26 22:42:00"],
+        "score": [3],
+    })
+    _write_csv(csv_path, df_old)
+
+    df_new = pd.DataFrame({
+        "timestamp": ["2026-08-27 05:30:00"],
+        "score": [4],
+        "body": ["肩"],
+    })
+
+    df_merged = merge_csv_by_columns(
+        df_new, csv_path,
+        key_columns=["timestamp"],
+        parse_dates=["timestamp"],
+        preserve_existing_on_nan=True,
+    )
+
+    assert len(df_merged) == 2
+    new_row = df_merged.set_index("timestamp").loc["2026-08-27 05:30:00"]
+    assert new_row["score"] == 4
+    assert new_row["body"] == "肩"
+
+
+def test_merge_by_columns_preserve_existing_updates_value(tmp_path: Path):
+    """preserve_existing_on_nan=True で、既存行の値の更新（3->5）が反映されること"""
+    csv_path = tmp_path / "emotion.csv"
+    df_old = pd.DataFrame({
+        "timestamp": ["2026-08-26 22:42:00"],
+        "score": [3],
+    })
+    _write_csv(csv_path, df_old)
+
+    df_new = pd.DataFrame({
+        "timestamp": ["2026-08-26 22:42:00"],
+        "score": [5],
+    })
+
+    df_merged = merge_csv_by_columns(
+        df_new, csv_path,
+        key_columns=["timestamp"],
+        parse_dates=["timestamp"],
+        preserve_existing_on_nan=True,
+    )
+
+    assert df_merged.set_index("timestamp").loc["2026-08-26 22:42:00", "score"] == 5
+
+
+def test_merge_by_columns_preserve_existing_large_integer_ids_not_rounded(tmp_path: Path):
+    """preserve_existing_on_nan=True で、19桁の整数IDがfloat化で丸められないこと"""
+    csv_path = tmp_path / "entries.csv"
+    df_old = pd.DataFrame({
+        "timestamp": ["2026-01-01", "2026-01-02"],
+        "entry_id": [5667773472718017992, 8694685614035756360],
+    })
+    _write_csv(csv_path, df_old)
+
+    df_new = pd.DataFrame({
+        "timestamp": ["2026-01-03"],
+        "entry_id": [1001717290611444584],
+    })
+
+    df_merged = merge_csv_by_columns(
+        df_new, csv_path,
+        key_columns=["timestamp"],
+        preserve_existing_on_nan=True,
+    )
+
+    merged = df_merged.set_index("timestamp")
+    assert str(merged.loc["2026-01-01", "entry_id"]) == "5667773472718017992"
+    assert str(merged.loc["2026-01-02", "entry_id"]) == "8694685614035756360"
+    assert str(merged.loc["2026-01-03", "entry_id"]) == "1001717290611444584"
+
+    roundtrip_path = tmp_path / "entries_roundtrip.csv"
+    df_merged.to_csv(roundtrip_path, index=False)
+    df_roundtrip = pd.read_csv(roundtrip_path)
+    roundtrip = df_roundtrip.set_index("timestamp")
+    assert str(roundtrip.loc["2026-01-01", "entry_id"]) == "5667773472718017992"
+    assert str(roundtrip.loc["2026-01-02", "entry_id"]) == "8694685614035756360"
+
+
+def test_merge_by_columns_default_still_overwrites_whole_row(tmp_path: Path):
+    """既定（引数なし）では現行の行ごと置換のままであること（後方互換の固定）"""
+    csv_path = tmp_path / "emotion.csv"
+    df_old = pd.DataFrame({
+        "timestamp": ["2026-08-26 22:42:00"],
+        "score": [3],
+    })
+    _write_csv(csv_path, df_old)
+
+    df_new = pd.DataFrame({
+        "timestamp": ["2026-08-26 22:42:00"],
+        "score": [None],
+    })
+
+    df_merged = merge_csv_by_columns(
+        df_new, csv_path,
+        key_columns=["timestamp"],
+        parse_dates=["timestamp"],
+    )
+
+    # 従来通り、新データのNaNが既存値を消す（行ごと置換）
+    assert pd.isna(df_merged.set_index("timestamp").loc["2026-08-26 22:42:00", "score"])
 
 
 # =============================================================================
