@@ -488,7 +488,10 @@ def test_sync_questions_scale_to_grid_migration_with_flag_deletes_old_scale():
     creates = [r['createItem'] for r in requests if 'createItem' in r]
     updates = [r['updateItem'] for r in requests if 'updateItem' in r]
 
-    assert deletes == [{'itemId': 'i_scale'}]
+    # deleteItem に itemId フィールドは無い（Google Forms API の実際の
+    # エラー: "Unknown name 'itemId' at 'requests[0].delete_item'"）。
+    # location.index で指定する。i_scale はフォームの item 配列上 index 0。
+    assert deletes == [{'location': {'index': 0}}]
     assert len(creates) == 1
     assert 'questionGroupItem' in creates[0]['item']
 
@@ -520,6 +523,95 @@ def _run_sync_with_flag(items, existing_form, allow_kind_replace=False):
     gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form,
                               allow_kind_replace=allow_kind_replace)
     return captured['body']['requests']
+
+
+def test_sync_questions_delete_requests_never_contain_item_id():
+    """deleteItem リクエストはどれも itemId を持たない（location.index の
+    みで指定する）ことの固定。#104 で本番 400 を起こした形の再発防止本丸"""
+    existing_form = _existing_scale_form()
+    requests = _run_sync_with_flag(_migration_items(), existing_form,
+                                   allow_kind_replace=True)
+    deletes = [r['deleteItem'] for r in requests if 'deleteItem' in r]
+    assert deletes
+    for delete in deletes:
+        assert 'itemId' not in delete
+        assert 'index' in delete['location']
+
+
+def test_sync_questions_multiple_leftovers_delete_in_descending_index_order():
+    """leftover が複数あるとき、deleteItem は index の降順で並ぶこと。
+
+    batchUpdate は requests を逐次適用するため、ある item を index N で
+    消すと後続 item の index が 1 つずつ詰まる。昇順で削除すると2件目以降の
+    index がずれて意図しない item を消してしまうため、降順必須。
+    """
+    existing_form = {
+        'items': [
+            {
+                'itemId': 'i_scale',
+                'title': 'いまの気分',
+                'questionItem': {'question': {
+                    'questionId': 'q_scale',
+                    'scaleQuestion': {'low': 1, 'high': 5},
+                }},
+            },
+            {
+                'itemId': 'i_date',
+                'title': '謎の日付質問',
+                'questionItem': {'question': {
+                    'questionId': 'q_date',
+                    'dateQuestion': {},
+                }},
+            },
+            {
+                'itemId': 'i_note',
+                'title': '何があった？',
+                'questionItem': {'question': {
+                    'questionId': 'q_note',
+                    'textQuestion': {'paragraph': False},
+                }},
+            },
+        ],
+    }
+    items = [gforms_api.text_item('何があった？')]
+    requests = _run_sync_with_flag(items, existing_form, allow_kind_replace=True)
+    deletes = [r['deleteItem'] for r in requests if 'deleteItem' in r]
+    indices = [d['location']['index'] for d in deletes]
+    assert indices == sorted(indices, reverse=True)
+    assert set(indices) == {0, 1}
+
+
+def test_sync_questions_scale_to_grid_migration_full_request_sequence():
+    """3問（scale/checkbox/text）→ grid/checkbox/text 移行で生成される
+    リクエスト列（種類と index）が期待どおりであることの固定。
+
+    手検証:
+      既存: [scale(idx0), checkbox(idx1), text(idx2)]
+      leftover は scale(idx0) のみ → delete index=0
+      適用後の残り: [checkbox(0), text(1)]
+      create（grid）は final_index=0 → [grid(0), checkbox(1), text(2)]
+      update（checkbox）final_index=1、update（text）final_index=2
+      → 最終順序 [grid(0), checkbox(1), text(2)] は期待どおり
+    """
+    existing_form = _existing_scale_form()
+    requests = _run_sync_with_flag(_migration_items(), existing_form,
+                                   allow_kind_replace=True)
+
+    assert requests[0] == {'deleteItem': {'location': {'index': 0}}}
+
+    create = requests[1]['createItem']
+    assert 'questionGroupItem' in create['item']
+    assert create['location']['index'] == 0
+
+    checkbox_update = next(r['updateItem'] for r in requests
+                           if 'updateItem' in r
+                           and 'choiceQuestion' in r['updateItem']['item']['questionItem']['question'])
+    assert checkbox_update['location']['index'] == 1
+
+    text_update = next(r['updateItem'] for r in requests
+                       if 'updateItem' in r
+                       and 'textQuestion' in r['updateItem']['item']['questionItem']['question'])
+    assert text_update['location']['index'] == 2
 
 
 def test_preview_kind_mismatch_lists_leftover_before_sync():
