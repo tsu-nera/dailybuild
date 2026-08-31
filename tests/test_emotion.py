@@ -3,6 +3,7 @@
 実機の Google Forms API は叩かず、変換ロジックだけを検証する。
 """
 
+import argparse
 import datetime as dt
 import importlib.util
 import sys
@@ -413,6 +414,60 @@ def test_question_id_by_title_reads_grid_rows():
     assert by_title['頭の冴え'] == 'q_head'
 
 
+# --- gforms_api.grid_item: 行ごとの required ---
+
+def test_grid_item_required_per_row():
+    """required にリストを渡すと行ごとに反映される（いまの気分だけ必須の運用）"""
+    item = gforms_api.grid_item(
+        'いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え'], 1, 5, '悪い', '良い',
+        required=[True, False, False])
+    questions = item['questionGroupItem']['questions']
+    assert questions[0]['rowQuestion']['title'] == 'いまの気分'
+    assert questions[0]['required'] is True
+    assert questions[1]['rowQuestion']['title'] == '身体の軽さ'
+    assert questions[1]['required'] is False
+    assert questions[2]['rowQuestion']['title'] == '頭の冴え'
+    assert questions[2]['required'] is False
+
+
+def test_grid_item_required_bool_broadcasts_to_all_rows():
+    """required に bool を渡す従来どおりの呼び方は全行に同じ値が当たる"""
+    item = gforms_api.grid_item(
+        'いまの状態', ['a', 'b', 'c'], 1, 5, '悪い', '良い', required=False)
+    questions = item['questionGroupItem']['questions']
+    assert [q['required'] for q in questions] == [False, False, False]
+
+
+def test_grid_item_required_list_length_mismatch_raises():
+    with pytest.raises(ValueError):
+        gforms_api.grid_item(
+            'いまの状態', ['a', 'b', 'c'], 1, 5, '悪い', '良い',
+            required=[True, False])
+
+
+def test_build_items_required_matches_grid_required_config():
+    """emotion.py の build_items が yaml の grid_required を行ごとに反映すること。
+    いまの気分だけ required、身体の軽さ・頭の冴えは任意"""
+    conf = {**CONF, 'grid_title': 'いまの状態',
+            'grid_required': {'score': True, 'body': False, 'head': False}}
+    items = emotion.build_items(conf)
+    grid_spec = next(i for i in items if 'questionGroupItem' in i)
+    questions = grid_spec['questionGroupItem']['questions']
+    by_title = {q['rowQuestion']['title']: q['required'] for q in questions}
+    assert by_title['いまの気分'] is True
+    assert by_title['身体の軽さ'] is False
+    assert by_title['頭の冴え'] is False
+
+
+def test_build_items_missing_grid_required_defaults_to_required():
+    """grid_required が無い/一部欠けている行は既定で required（安全側）"""
+    conf = {**CONF, 'grid_title': 'いまの状態'}
+    items = emotion.build_items(conf)
+    grid_spec = next(i for i in items if 'questionGroupItem' in i)
+    questions = grid_spec['questionGroupItem']['questions']
+    assert all(q['required'] is True for q in questions)
+
+
 # --- sync_questions: scale -> grid の型移行（現在の本番フォームが起点） ---
 # 本番フォームは scale/checkbox/text の3問で、グリッドはまだ無い。ここへ
 # grid/checkbox/text の新 spec を当てると、旧 scaleQuestion がどの kind
@@ -641,6 +696,96 @@ def test_sync_questions_raises_on_unmatched_existing_item_default_flag():
     service = MagicMock()
     with pytest.raises(gforms_api.GoogleFormsError):
         gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+
+
+# --- has_unfetched_responses / cmd_setup_form の削除前ガード -------------
+# 実際に1件失いかけたインシデントの再発防止: 日次 fetch の後に投稿された
+# 回答が CSV に materialize されないまま --allow-kind-replace を実行すると、
+# 削除で questionId の対応付けが失われ、その回答の値が読めなくなる。
+
+def test_has_unfetched_responses_true_when_response_newer_than_csv():
+    csv_max = pd.Timestamp('2026-08-31 15:01:00')
+    responses = [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}]  # JST 15:05
+    assert emotion.has_unfetched_responses(responses, csv_max) is True
+
+
+def test_has_unfetched_responses_false_when_no_response_newer_than_csv():
+    csv_max = pd.Timestamp('2026-08-31 15:01:00')
+    responses = [{'lastSubmittedTime': '2026-08-31T05:00:00Z'}]  # JST 14:00
+    assert emotion.has_unfetched_responses(responses, csv_max) is False
+
+
+def test_has_unfetched_responses_false_when_no_responses_at_all():
+    assert emotion.has_unfetched_responses([], pd.Timestamp('2026-08-31 15:01:00')) is False
+
+
+def test_has_unfetched_responses_true_when_csv_missing_but_responses_exist():
+    """CSV がまだ無い（＝全件未取り込み）のに回答があるなら未取り込み扱い"""
+    responses = [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}]
+    assert emotion.has_unfetched_responses(responses, None) is True
+
+
+def _setup_form_conf(tmp_path):
+    return {**CONF, 'form_id': 'form1', 'grid_title': 'いまの状態'}
+
+
+def test_setup_form_aborts_and_skips_delete_when_unfetched_response_exists(
+        tmp_path, monkeypatch):
+    """CSV 未取り込みの回答がある状態では、deleteItem を含む sync_questions を
+    一切呼ばず中止すること（本文の 15:05 投稿インシデントの再現）"""
+    csv = tmp_path / 'emotion.csv'
+    csv.write_text(
+        'timestamp,date,emotions,note,score,body,head\n'
+        '2026-08-31 15:01:00,2026-08-31,,,3,,\n'
+    )
+    monkeypatch.setattr(emotion, 'OUT_FILE', csv)
+    monkeypatch.setattr(emotion, 'load_def', lambda: _setup_form_conf(tmp_path))
+
+    existing_form = _existing_scale_form()
+    service = MagicMock()
+    monkeypatch.setattr(gforms_api, 'create_service', lambda: service)
+    monkeypatch.setattr(gforms_api, 'get_form', lambda svc, fid: existing_form)
+    monkeypatch.setattr(
+        gforms_api, 'list_responses',
+        lambda svc, fid: [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}])  # 15:05 JST
+
+    sync_called = MagicMock()
+    monkeypatch.setattr(gforms_api, 'sync_questions', sync_called)
+
+    args = argparse.Namespace(update=True, allow_kind_replace=True)
+    with pytest.raises(SystemExit):
+        emotion.cmd_setup_form(args)
+
+    sync_called.assert_not_called()
+
+
+def test_setup_form_proceeds_when_no_unfetched_response(tmp_path, monkeypatch):
+    """CSV が最新回答まで取り込み済みなら、従来どおり sync_questions
+    （delete 込み）まで進むこと"""
+    csv = tmp_path / 'emotion.csv'
+    csv.write_text(
+        'timestamp,date,emotions,note,score,body,head\n'
+        '2026-08-31 15:05:00,2026-08-31,,,3,,\n'
+    )
+    monkeypatch.setattr(emotion, 'OUT_FILE', csv)
+    monkeypatch.setattr(emotion, 'load_def', lambda: _setup_form_conf(tmp_path))
+
+    existing_form = {**_existing_scale_form(), 'formId': 'form1',
+                     'responderUri': 'https://example.invalid/viewform'}
+    service = MagicMock()
+    monkeypatch.setattr(gforms_api, 'create_service', lambda: service)
+    monkeypatch.setattr(gforms_api, 'get_form', lambda svc, fid: existing_form)
+    monkeypatch.setattr(
+        gforms_api, 'list_responses',
+        lambda svc, fid: [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}])  # 15:05 JST
+
+    sync_called = MagicMock(return_value={'replies': []})
+    monkeypatch.setattr(gforms_api, 'sync_questions', sync_called)
+
+    args = argparse.Namespace(update=True, allow_kind_replace=True)
+    emotion.cmd_setup_form(args)
+
+    sync_called.assert_called_once()
 
 
 # --- show（集計・表示）側 -------------------------------------------------

@@ -144,7 +144,7 @@ def text_item(title: str, required: bool = False) -> dict:
 
 
 def grid_item(title: str, rows: list, low: int, high: int, low_label: str,
-             high_label: str, required: bool = True) -> dict:
+             high_label: str, required: bool | list = True) -> dict:
     """選択式グリッド（questionGroupItem + grid）の item spec
 
     列は low..high の連番（文字列化）。scaleQuestion と違い Grid に
@@ -155,14 +155,27 @@ def grid_item(title: str, rows: list, low: int, high: int, low_label: str,
     sync_questions() は行の対応付けもタイトルでなく出現順（FIFO）で行うため、
     rows の並びを変えると既存回答の questionId が別の行に付け替わる
     （docs/forms.md 参照。PHQ-9 の9問と同じ制約が行単位で効く）。
+
+    required は bool なら全行に同じ値を、rows と同じ長さのリストなら
+    行ごとの値を当てる（全行必須にすると、一部の行だけ記録したいときも
+    毎回すべて答える必要が生じ、記録コストが上がる）。
     """
+    if isinstance(required, bool):
+        required_per_row = [required] * len(rows)
+    else:
+        required_per_row = list(required)
+        if len(required_per_row) != len(rows):
+            raise ValueError(
+                f'required の長さ({len(required_per_row)})が'
+                f'rows の長さ({len(rows)})と一致しない')
     columns = [str(n) for n in range(low, high + 1)]
     return {
         'title': title,
         'description': f'{low_label} ← → {high_label}',
         'questionGroupItem': {
             'questions': [
-                {'required': required, 'rowQuestion': {'title': r}} for r in rows
+                {'required': r, 'rowQuestion': {'title': t}}
+                for t, r in zip(rows, required_per_row)
             ],
             'grid': {
                 'columns': {
@@ -255,9 +268,12 @@ def sync_questions(service, form_id: str, items: list,
     deleteItem で削除する opt-in にしてある（#103/#105 の
     `preserve_existing_on_nan` と同じ「既定は安全、意図的な変更のみ
     opt-in」という考え方）。deleteItem で消した item の questionId は
-    フォーム側から失われ、過去の回答はフォームからは二度と引けなくなる
-    （CSV 側に materialize 済みの値は別途保持されるので、そちらのデータは
-    失われない。詳細は docs/forms.md の気分記録の節）。
+    フォーム側から失われるが、回答の値自体は API のレスポンスに残る。
+    失われるのは questionId とどの質問かの対応付けだけで、旧 questionId を
+    控えておけば生レスポンスから読める。ただし CSV に materialize されて
+    いない回答（fetch していない最新回答）があると、その対応付けが取れる
+    のは削除前のこの瞬間だけなので、値を失う前に必ず fetch を済ませておく
+    こと（詳細は docs/forms.md の気分記録の節）。
     """
     if existing_form is None:
         requests = [
