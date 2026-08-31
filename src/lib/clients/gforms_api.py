@@ -343,8 +343,21 @@ def sync_questions(service, form_id: str, items: list,
                 '（画面で手編集された可能性がある）: '
                 f"{[(i.get('title'), _question_kind(i)) for i in leftover]}"
             )
+        # DeleteItemRequest に itemId フィールドは無く、location.index で
+        # 指定する（実機で 400: "Unknown name 'itemId' ... Cannot find
+        # field" を確認済み）。index はフォーム全体の item 配列（質問以外の
+        # item も含む）上の現在位置で数える必要があるため、
+        # existing_items（質問だけに絞った配列）ではなく
+        # existing_form['items'] の生の並びから引く。
+        full_items = existing_form.get('items', [])
+        item_id_to_index = {
+            item.get('itemId'): i for i, item in enumerate(full_items)
+        }
         delete_requests = [
-            {'deleteItem': {'itemId': i.get('itemId')}} for i in leftover
+            {'deleteItem': {'location': {'index': item_id_to_index[i.get('itemId')]}}}
+            for i in sorted(leftover,
+                            key=lambda i: item_id_to_index[i.get('itemId')],
+                            reverse=True)
         ]
 
     # delete を create/update より先に適用する。create/update の
@@ -353,8 +366,24 @@ def sync_questions(service, form_id: str, items: list,
     # batchUpdate は requests を先頭から順に現在の状態へ適用するため、
     # delete を後回しにすると leftover item がまだ残っている間に
     # create/update の絶対 index を適用することになり、意図しない位置へ
-    # 挿入・移動されてしまう。deleteItem 自体は itemId 指定で index に
-    # 依存しないので、delete 同士の順序は問わない
+    # 挿入・移動されてしまう。
+    #
+    # deleteItem も location.index 指定になったため、delete 同士の順序は
+    # 無関係ではない。batchUpdate は requests を逐次・累積的に適用するので、
+    # ある item を index N で消すと、それより後ろの item は 1 つずつ index が
+    # 詰まる。複数 leftover を削除するときに元の index の昇順で並べると、
+    # 1件目の削除後に後続の削除対象の index がずれて誤った item を消す。
+    # 降順（index の大きいものから）に並べれば、後の削除が先の削除対象の
+    # index に影響しないため安全。
+    #
+    # 検証（3問 scale/checkbox/text → grid/checkbox/text 移行、
+    # #104 のケース）:
+    #   既存: [scale(idx0), checkbox(idx1), text(idx2)]
+    #   leftover は scale(idx0) のみ → delete: index=0
+    #   適用後の残り: [checkbox(0), text(1)]
+    #   create（grid）は final_index=0 → [grid(0), checkbox(1), text(2)]
+    #   update（checkbox）は final_index=1、update（text）は final_index=2
+    #   → 最終順序 [grid(0), checkbox(1), text(2)] は期待どおり
     requests = delete_requests + create_requests + update_requests
     return service.forms().batchUpdate(
         formId=form_id, body={'requests': requests}).execute()
