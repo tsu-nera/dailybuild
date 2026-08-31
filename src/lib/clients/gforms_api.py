@@ -143,8 +143,48 @@ def text_item(title: str, required: bool = False) -> dict:
     }
 
 
+def grid_item(title: str, rows: list, low: int, high: int, low_label: str,
+             high_label: str, required: bool = True) -> dict:
+    """選択式グリッド（questionGroupItem + grid）の item spec
+
+    列は low..high の連番（文字列化）。scaleQuestion と違い Grid に
+    低/高ラベル専用のフィールドが無いため、item の description に埋め込む
+    （画面上は列見出しの上に説明文として出る）。
+
+    行（rows）は questionGroupItem.questions[] の **出現順**で管理される。
+    sync_questions() は行の対応付けもタイトルでなく出現順（FIFO）で行うため、
+    rows の並びを変えると既存回答の questionId が別の行に付け替わる
+    （docs/forms.md 参照。PHQ-9 の9問と同じ制約が行単位で効く）。
+    """
+    columns = [str(n) for n in range(low, high + 1)]
+    return {
+        'title': title,
+        'description': f'{low_label} ← → {high_label}',
+        'questionGroupItem': {
+            'questions': [
+                {'required': required, 'rowQuestion': {'title': r}} for r in rows
+            ],
+            'grid': {
+                'columns': {
+                    'type': 'RADIO',
+                    'options': [{'value': c} for c in columns],
+                },
+            },
+        },
+    }
+
+
 def _question_kind(item: dict) -> str | None:
-    """item から質問の種類を取り出す（scaleQuestion / choiceQuestion / textQuestion）"""
+    """item から質問の種類を取り出す
+
+    scaleQuestion / choiceQuestion / textQuestion に加え、グリッド
+    （questionGroupItem）も1つの種類として扱う。フォーム全体で
+    questionGroupItem は高々1個の運用を前提にしているため、これで
+    kind ベースの突き合わせに乗せられる（行単位の対応付けは
+    sync_questions() 側で別途 FIFO で行う）。
+    """
+    if 'questionGroupItem' in item:
+        return 'questionGroupItem'
     question = item.get('questionItem', {}).get('question', {})
     for kind in ('scaleQuestion', 'choiceQuestion', 'textQuestion'):
         if kind in question:
@@ -152,8 +192,34 @@ def _question_kind(item: dict) -> str | None:
     return None
 
 
+def preview_kind_mismatch(items: list, existing_form: dict) -> list:
+    """sync_questions が leftover と判定する既存 item を事前に返す
+
+    sync_questions を allow_kind_replace=True で呼ぶ前に、削除される質問を
+    人間が確認できるようにする用途（CLI 側で使う）。マッチングのロジックは
+    sync_questions と同じ（kind ごとの出現順で消費し、余った既存 item を
+    返す）。ここでは createItem/updateItem のリクエストは組み立てない。
+    """
+    existing_items = [i for i in existing_form.get('items', [])
+                      if 'questionItem' in i or 'questionGroupItem' in i]
+    existing_by_kind = {}
+    for item in existing_items:
+        kind = _question_kind(item)
+        existing_by_kind.setdefault(kind, []).append(item)
+
+    used_item_ids = set()
+    for spec in items:
+        kind = _question_kind(spec)
+        bucket = existing_by_kind.get(kind, [])
+        if bucket:
+            used_item_ids.add(bucket.pop(0).get('itemId'))
+
+    return [i for i in existing_items if i.get('itemId') not in used_item_ids]
+
+
 def sync_questions(service, form_id: str, items: list,
-                   existing_form: dict = None) -> dict:
+                   existing_form: dict = None,
+                   allow_kind_replace: bool = False) -> dict:
     """フォームの質問を items（望ましい item spec のリスト）に合わせる
 
     existing_form が None なら全 item を新規作成する。
@@ -170,6 +236,28 @@ def sync_questions(service, form_id: str, items: list,
     しまう**（title だけの変更でも起きる）。これをやると過去回答の
     questionId が古いままになり、CSV 側から二度と引けなくなる。
     そのため update する item には既存の questionId を明示的に埋め込む。
+
+    グリッド（questionGroupItem）も同じ原則が要る。item 自体は他の kind と
+    同様「questionGroupItem」という1つの kind として突き合わせるが、
+    その中の行（questions[]）は **出現順（FIFO）**で対応付け、行ごとの
+    questionId を明示的に引き継ぐ。タイトルで対応付けないのは PHQ-9 の
+    9問と同じ理由: 行順を変える変更を検知できなくなるため
+    （行順の変更は意図的な質問構成の変更であり、questionId を新しい行へ
+    付け替えるのが正しい）。行が増えた分（既存より後ろ）は questionId を
+    付けず、API に新規採番させる。
+
+    既存 item のうち、items のどの kind にも対応しないものが残った場合
+    （= leftover）は、既定では GoogleFormsError を投げて止まる。これは
+    「画面で手編集された想定外の質問」を検出するためのガードで、
+    質問の型を意図的に作り変える移行（例: scaleQuestion 1問 →
+    questionGroupItem 化）のときだけ無条件に外すと事故る。そのため
+    `allow_kind_replace=True` を明示したときだけ leftover を
+    deleteItem で削除する opt-in にしてある（#103/#105 の
+    `preserve_existing_on_nan` と同じ「既定は安全、意図的な変更のみ
+    opt-in」という考え方）。deleteItem で消した item の questionId は
+    フォーム側から失われ、過去の回答はフォームからは二度と引けなくなる
+    （CSV 側に materialize 済みの値は別途保持されるので、そちらのデータは
+    失われない。詳細は docs/forms.md の気分記録の節）。
     """
     if existing_form is None:
         requests = [
@@ -180,7 +268,7 @@ def sync_questions(service, form_id: str, items: list,
             formId=form_id, body={'requests': requests}).execute()
 
     existing_items = [i for i in existing_form.get('items', [])
-                      if 'questionItem' in i]
+                      if 'questionItem' in i or 'questionGroupItem' in i]
     existing_by_kind = {}
     for item in existing_items:
         kind = _question_kind(item)
@@ -196,24 +284,50 @@ def sync_questions(service, form_id: str, items: list,
         if bucket:
             existing_item = bucket.pop(0)
             used_item_ids.add(existing_item.get('itemId'))
-            existing_question_id = existing_item.get(
-                'questionItem', {}).get('question', {}).get('questionId')
-            update_item = {
-                'title': spec['title'],
-                'questionItem': {
-                    'question': {
-                        **spec['questionItem']['question'],
-                        'questionId': existing_question_id,
+            if kind == 'questionGroupItem':
+                existing_questions = existing_item.get(
+                    'questionGroupItem', {}).get('questions', [])
+                spec_questions = spec['questionGroupItem']['questions']
+                new_questions = []
+                for i, row in enumerate(spec_questions):
+                    if i < len(existing_questions):
+                        row = {**row,
+                              'questionId': existing_questions[i].get('questionId')}
+                    new_questions.append(row)
+                update_item = {
+                    'title': spec['title'],
+                    'description': spec.get('description', ''),
+                    'questionGroupItem': {
+                        **spec['questionGroupItem'],
+                        'questions': new_questions,
                     },
-                },
-            }
-            update_requests.append({
-                'updateItem': {
-                    'item': update_item,
-                    'location': {'index': final_index},
-                    'updateMask': 'title,questionItem.question',
-                },
-            })
+                }
+                update_requests.append({
+                    'updateItem': {
+                        'item': update_item,
+                        'location': {'index': final_index},
+                        'updateMask': 'title,description,questionGroupItem',
+                    },
+                })
+            else:
+                existing_question_id = existing_item.get(
+                    'questionItem', {}).get('question', {}).get('questionId')
+                update_item = {
+                    'title': spec['title'],
+                    'questionItem': {
+                        'question': {
+                            **spec['questionItem']['question'],
+                            'questionId': existing_question_id,
+                        },
+                    },
+                }
+                update_requests.append({
+                    'updateItem': {
+                        'item': update_item,
+                        'location': {'index': final_index},
+                        'updateMask': 'title,questionItem.question',
+                    },
+                })
         else:
             create_requests.append({
                 'createItem': {'item': spec, 'location': {'index': final_index}},
@@ -221,16 +335,27 @@ def sync_questions(service, form_id: str, items: list,
         final_index += 1
 
     leftover = [i for i in existing_items if i.get('itemId') not in used_item_ids]
+    delete_requests = []
     if leftover:
-        raise GoogleFormsError(
-            '望ましい質問構成に対応しない既存の質問が残っている'
-            '（画面で手編集された可能性がある）: '
-            f"{[(i.get('title'), _question_kind(i)) for i in leftover]}"
-        )
+        if not allow_kind_replace:
+            raise GoogleFormsError(
+                '望ましい質問構成に対応しない既存の質問が残っている'
+                '（画面で手編集された可能性がある）: '
+                f"{[(i.get('title'), _question_kind(i)) for i in leftover]}"
+            )
+        delete_requests = [
+            {'deleteItem': {'itemId': i.get('itemId')}} for i in leftover
+        ]
 
-    # createItem を先に適用し、updateItem の index は create 適用後
-    # （= 最終的な望ましい順序）の index を使う
-    requests = create_requests + update_requests
+    # delete を create/update より先に適用する。create/update の
+    # location.index は「delete 後に残る item だけで数えた最終的な
+    # 望ましい順序」の 0-origin 連番（leftover が無い場合と同じ計算式）。
+    # batchUpdate は requests を先頭から順に現在の状態へ適用するため、
+    # delete を後回しにすると leftover item がまだ残っている間に
+    # create/update の絶対 index を適用することになり、意図しない位置へ
+    # 挿入・移動されてしまう。deleteItem 自体は itemId 指定で index に
+    # 依存しないので、delete 同士の順序は問わない
+    requests = delete_requests + create_requests + update_requests
     return service.forms().batchUpdate(
         formId=form_id, body={'requests': requests}).execute()
 
@@ -240,12 +365,25 @@ def get_form(service, form_id: str) -> dict:
 
 
 def question_id_by_title(form: dict) -> dict:
-    """質問タイトル -> questionId。回答の突き合わせに使う"""
+    """質問タイトル -> questionId。回答の突き合わせに使う
+
+    グリッドは item 自体にタイトルは無い（グリッドの見出しは行ごとの
+    rowQuestion.title）。行名をそのままキーにする（build_dataframe 側は
+    グリッド化前と同じ「質問タイトル」で引けるようにするため）。
+    """
     result = {}
     for item in form.get('items', []):
         question = item.get('questionItem', {}).get('question')
         if question and 'questionId' in question:
             result[item.get('title')] = question['questionId']
+
+        group = item.get('questionGroupItem')
+        if group:
+            for row in group.get('questions', []):
+                title = row.get('rowQuestion', {}).get('title')
+                question_id = row.get('questionId')
+                if title and question_id:
+                    result[title] = question_id
     return result
 
 
