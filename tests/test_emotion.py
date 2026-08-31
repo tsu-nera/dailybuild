@@ -33,7 +33,11 @@ emotion = _load_script()
 
 
 CONF = {
-    'questions': {'score': 'いまの気分', 'emotions': 'いまの気持ち', 'note': '何があった？'},
+    'questions': {
+        'score': 'いまの気分', 'body': '身体の軽さ', 'head': '頭の冴え',
+        'emotions': 'いまの気持ち', 'note': '何があった？',
+    },
+    'grid_rows': ['score', 'body', 'head'],
     'score': {'low': 1, 'high': 5, 'low_label': '悪い', 'high_label': '良い'},
     'vocabulary': [
         {'label': '楽しい・うれしい', 'valence': 'pos', 'arousal': 'high'},
@@ -46,11 +50,21 @@ def _form():
     return {
         'items': [
             {
-                'title': 'いまの気分',
-                'questionItem': {'question': {
-                    'questionId': 'q_score',
-                    'scaleQuestion': {'low': 1, 'high': 5},
-                }},
+                'title': 'いまの状態',
+                'questionGroupItem': {
+                    'questions': [
+                        {'questionId': 'q_score', 'required': True,
+                         'rowQuestion': {'title': 'いまの気分'}},
+                        {'questionId': 'q_body', 'required': True,
+                         'rowQuestion': {'title': '身体の軽さ'}},
+                        {'questionId': 'q_head', 'required': True,
+                         'rowQuestion': {'title': '頭の冴え'}},
+                    ],
+                    'grid': {'columns': {
+                        'type': 'RADIO',
+                        'options': [{'value': str(n)} for n in range(1, 6)],
+                    }},
+                },
             },
             {
                 'title': 'いまの気持ち',
@@ -73,10 +87,14 @@ def _form():
     }
 
 
-def _response(timestamp, score=None, emotions=None, note=None):
+def _response(timestamp, score=None, body=None, head=None, emotions=None, note=None):
     answers = {}
     if score is not None:
         answers['q_score'] = {'textAnswers': {'answers': [{'value': score}]}}
+    if body is not None:
+        answers['q_body'] = {'textAnswers': {'answers': [{'value': body}]}}
+    if head is not None:
+        answers['q_head'] = {'textAnswers': {'answers': [{'value': head}]}}
     if emotions is not None:
         answers['q_emotions'] = {
             'textAnswers': {'answers': [{'value': e} for e in emotions]}}
@@ -100,13 +118,34 @@ def test_build_dataframe_score_is_nullable_int_and_survives_missing():
 
 def test_build_dataframe_column_order():
     df = emotion.build_dataframe(_form(), [], CONF)
-    assert list(df.columns) == ['timestamp', 'date', 'score', 'emotions', 'note']
+    assert list(df.columns) == \
+        ['timestamp', 'date', 'score', 'body', 'head', 'emotions', 'note']
 
 
 def test_build_dataframe_empty_has_score_column():
     df = emotion.build_dataframe(_form(), [], CONF)
     assert df.empty
     assert 'score' in df.columns
+
+
+def test_build_dataframe_body_head_are_nullable_int_and_survive_missing():
+    """身体・頭（Issue #104）も score と同じ扱い。値が無い過去回答は NA になり、
+    0（最悪）に潰さない"""
+    responses = [
+        _response('2026-08-20T10:00:00Z', score='3', body='4', head='2',
+                  emotions=['イライラ'], note='仕事'),
+        # グリッド化前の回答を模す: score だけ無い時代とは別に、body/head が
+        # 未設問だった時代（今回の移行直後）を model 化する
+        _response('2026-08-21T10:00:00Z', score='5', emotions=['楽しい・うれしい'],
+                  note='散歩'),
+    ]
+    df = emotion.build_dataframe(_form(), responses, CONF)
+    assert str(df['body'].dtype) == 'Int64'
+    assert str(df['head'].dtype) == 'Int64'
+    assert df['body'].iloc[0] == 4
+    assert df['head'].iloc[0] == 2
+    assert pd.isna(df['body'].iloc[1])
+    assert pd.isna(df['head'].iloc[1])
 
 
 # --- update_vocab_history ---
@@ -275,6 +314,103 @@ def test_sync_questions_raises_on_unmatched_existing_item():
     service = MagicMock()
     with pytest.raises(gforms_api.GoogleFormsError):
         gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+
+
+def _existing_grid_form(row_ids):
+    """行タイトルは実際のフォームの並びのまま（q_score/q_body/q_head の
+    questionId を持つ3行）。row_ids は questionId のリスト（出現順）"""
+    titles = ['いまの気分', '身体の軽さ', '頭の冴え']
+    return {
+        'items': [
+            {
+                'itemId': 'i_grid',
+                'title': 'いまの状態',
+                'questionGroupItem': {
+                    'questions': [
+                        {'questionId': qid, 'required': True,
+                         'rowQuestion': {'title': t}}
+                        for qid, t in zip(row_ids, titles)
+                    ],
+                    'grid': {'columns': {'type': 'RADIO',
+                                         'options': [{'value': str(n)} for n in range(1, 6)]}},
+                },
+            },
+        ],
+    }
+
+
+def _run_sync(items, existing_form):
+    service = MagicMock()
+    captured = {}
+
+    def fake_batch_update(formId, body):
+        captured['body'] = body
+        m = MagicMock()
+        m.execute.return_value = {}
+        return m
+
+    service.forms.return_value.batchUpdate.side_effect = fake_batch_update
+    gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+    return captured['body']['requests']
+
+
+def test_sync_questions_grid_row_order_change_is_detected():
+    """グリッドの行順を変えると、過去の「いまの気分」の questionId が
+    別の行（頭の冴え）に付け替わることを検知する
+
+    行の対応付けはタイトルでなく出現順（FIFO）。PHQ-9 の9問と同じ制約が
+    グリッドの行にも効くことを固定するテスト（docs/forms.md 参照）。
+    """
+    existing_form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
+    # 行順を入れ替えた spec: 頭の冴え / 身体の軽さ / いまの気分
+    reordered = gforms_api.grid_item(
+        'いまの状態', ['頭の冴え', '身体の軽さ', 'いまの気分'], 1, 5, '悪い', '良い')
+
+    requests = _run_sync([reordered], existing_form)
+    updates = [r['updateItem'] for r in requests if 'updateItem' in r]
+    assert len(updates) == 1
+    questions = updates[0]['item']['questionGroupItem']['questions']
+
+    # 出現順で対応付けているため、旧「いまの気分」(q_score) の questionId が
+    # 新しい先頭行「頭の冴え」に付け替わってしまう
+    assert questions[0]['rowQuestion']['title'] == '頭の冴え'
+    assert questions[0]['questionId'] == 'q_score'
+    # 逆に、末尾の「いまの気分」行は元の「頭の冴え」の questionId を引き継ぐ
+    assert questions[2]['rowQuestion']['title'] == 'いまの気分'
+    assert questions[2]['questionId'] == 'q_head'
+
+
+def test_sync_questions_grid_add_row_preserves_existing_row_ids():
+    """行を追加しても既存3行の questionId は保持される
+
+    将来 快・達成感 の行を足すコストがこれで決まる。既存行の questionId が
+    保持されていれば yaml の grid_rows に行を足すだけで済む。
+    """
+    existing_form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
+    extended = gforms_api.grid_item(
+        'いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え', '快'], 1, 5, '悪い', '良い')
+
+    requests = _run_sync([extended], existing_form)
+    updates = [r['updateItem'] for r in requests if 'updateItem' in r]
+    assert len(updates) == 1
+    questions = updates[0]['item']['questionGroupItem']['questions']
+
+    assert len(questions) == 4
+    assert questions[0]['questionId'] == 'q_score'
+    assert questions[1]['questionId'] == 'q_body'
+    assert questions[2]['questionId'] == 'q_head'
+    # 追加された行には questionId を付けない（API に新規採番させる）
+    assert 'questionId' not in questions[3]
+    assert questions[3]['rowQuestion']['title'] == '快'
+
+
+def test_question_id_by_title_reads_grid_rows():
+    """question_id_by_title がグリッドの行名 -> questionId を引けること"""
+    form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
+    by_title = gforms_api.question_id_by_title(form)
+    assert by_title['いまの気分'] == 'q_score'
+    assert by_title['身体の軽さ'] == 'q_body'
+    assert by_title['頭の冴え'] == 'q_head'
 
 
 # --- show（集計・表示）側 -------------------------------------------------

@@ -45,13 +45,20 @@ def _score_str(value) -> str:
 
 
 def render_entries(df: pd.DataFrame) -> str:
-    """記録の素の一覧。集計せず時刻順に並べる"""
+    """記録の素の一覧。集計せず時刻順に並べる
+
+    身体・頭（Issue #104 のグリッド化）は気分と同じ 1-5・高=良好の表示に
+    揃える。陽性感情の集計（render_positive）には入れない
+    （emotions 列とは別の構成概念のため）。
+    """
     if df.empty:
         return '（この期間に記録がありません）'
     out = pd.DataFrame({
         '日': [_day_label(t) for t in df['timestamp']],
         '時刻': [t.strftime('%H:%M') for t in df['timestamp']],
         '気分': [_score_str(v) for v in df['score']],
+        '身体': [_score_str(v) for v in df['body']],
+        '頭': [_score_str(v) for v in df['head']],
         '気持ち': [' / '.join(store.split_labels(e)) for e in df['emotions']],
         'メモ': list(df['note']),
     })

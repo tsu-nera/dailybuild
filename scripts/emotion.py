@@ -29,6 +29,13 @@ DEF_FILE = BASE_DIR / 'config/emotion_def.yaml'
 OUT_FILE = store.CSV_FILE
 VOCAB_HISTORY_FILE = require_private_path(
     BASE_DIR / 'data/emotion_vocab_history.csv')
+# グリッドの行構成（並び順）の版履歴。仕組みは VOCAB_HISTORY_FILE と同じ
+# （update_vocab_history は labels の版管理そのものなので、行タイトルの
+# リストを渡してそのまま流用する。ファイルだけ分けているのは、語彙と
+# グリッド行が別の構成要素で、同じファイルに混ぜると「何の版か」が
+# revision_id だけでは読み取れなくなるため）
+GRID_HISTORY_FILE = require_private_path(
+    BASE_DIR / 'data/emotion_grid_history.csv')
 
 TZ = 'Asia/Tokyo'
 
@@ -56,9 +63,10 @@ def build_items(conf):
     """yaml の定義からフォームの item spec リストを組み立てる"""
     q, s = conf['questions'], conf['score']
     choices = [v['label'] for v in conf['vocabulary']]
+    rows = [q[key] for key in conf['grid_rows']]
     return [
-        gforms_api.scale_item(q['score'], s['low'], s['high'],
-                              s['low_label'], s['high_label'], required=True),
+        gforms_api.grid_item(conf['grid_title'], rows, s['low'], s['high'],
+                             s['low_label'], s['high_label'], required=True),
         gforms_api.checkbox_item(q['emotions'], choices, required=True),
         gforms_api.text_item(q['note'], required=False),
     ]
@@ -94,11 +102,17 @@ def cmd_setup_form(args):
 
 
 def build_dataframe(form, responses, conf):
-    """回答リストを CSV スキーマの DataFrame にする"""
+    """回答リストを CSV スキーマの DataFrame にする
+
+    グリッドの行（conf['grid_rows']、既定は score/body/head）は列として
+    そのまま出力する。行を足すだけで列が増える構成にしてあるので、将来
+    快・達成感の行を足しても build_dataframe 自体は変更不要。
+    """
     by_title = gforms_api.question_id_by_title(form)
     q = conf['questions']
-    missing = [t for t in (q['score'], q['emotions'], q['note'])
-              if t not in by_title]
+    grid_rows = conf['grid_rows']
+    required_titles = [q[key] for key in grid_rows] + [q['emotions'], q['note']]
+    missing = [t for t in required_titles if t not in by_title]
     if missing:
         raise ValueError(
             f'フォームに質問がない: {missing} / 実際: {list(by_title)}。'
@@ -108,25 +122,29 @@ def build_dataframe(form, responses, conf):
     rows = []
     unknown_all = set()
     for res in responses:
-        score = gforms_api.answer_values(res, by_title[q['score']])
+        grid_values = {}
+        for key in grid_rows:
+            v = gforms_api.answer_values(res, by_title[q[key]])
+            grid_values[key] = v[0] if v else pd.NA
         emotions = gforms_api.answer_values(res, by_title[q['emotions']])
         note = gforms_api.answer_values(res, by_title[q['note']])
         unknown_all |= {e for e in emotions if e not in known}
-        rows.append({
+        row = {
             'timestamp': res.get('lastSubmittedTime') or res.get('createTime'),
-            'score': score[0] if score else pd.NA,
             # 複数選択は配列で返るので分割不要。区切り文字は CSV 側の都合
             'emotions': ';'.join(emotions) if emotions else pd.NA,
             'note': note[0] if note and note[0] else pd.NA,
-        })
+        }
+        row.update(grid_values)
+        rows.append(row)
 
     if unknown_all:
         print(f"警告: 定義にない選択肢 {sorted(unknown_all)}"
               f"（config/emotion_def.yaml の vocabulary と不一致）",
               file=sys.stderr)
 
-    columns = ['timestamp', 'date', 'score', 'emotions', 'note']
-    df = pd.DataFrame(rows, columns=['timestamp', 'score', 'emotions', 'note'])
+    columns = ['timestamp', 'date'] + grid_rows + ['emotions', 'note']
+    df = pd.DataFrame(rows, columns=['timestamp'] + grid_rows + ['emotions', 'note'])
     if df.empty:
         return df.assign(date=pd.Series(dtype='object'))[columns]
 
@@ -137,9 +155,10 @@ def build_dataframe(form, responses, conf):
     df['timestamp'] = ts.dt.tz_convert(TZ).dt.tz_localize(None).dt.floor('s')
     # 日境界の補正はしない（深夜の記録もその日付のまま）
     df['date'] = df['timestamp'].dt.date
-    # scaleQuestion の回答は textAnswers に文字列で入る（"3"）。
+    # グリッド（RADIO）の回答は textAnswers に文字列で入る（"3"）。
     # 未回答・パース不能でも落ちないよう coerce → nullable Int64 にする
-    df['score'] = pd.to_numeric(df['score'], errors='coerce').astype('Int64')
+    for key in grid_rows:
+        df[key] = pd.to_numeric(df[key], errors='coerce').astype('Int64')
     return df[columns]
 
 
@@ -152,6 +171,16 @@ def _checkbox_choices(form, title):
             'choiceQuestion')
         if choice:
             return [o['value'] for o in choice.get('options', [])]
+    return None
+
+
+def _grid_row_titles(form):
+    """フォームの実際のグリッド行タイトルを出現順で返す。無ければ None"""
+    for item in form.get('items', []):
+        group = item.get('questionGroupItem')
+        if group:
+            return [q.get('rowQuestion', {}).get('title')
+                   for q in group.get('questions', [])]
     return None
 
 
@@ -231,6 +260,14 @@ def cmd_fetch(args, out=None):
     elif update_vocab_history(revision_id, labels, VOCAB_HISTORY_FILE):
         print(f'語彙バージョン履歴を追記: revision {revision_id} / '
               f'{len(labels)}個', file=sys.stderr)
+
+    grid_rows_titles = _grid_row_titles(form)
+    if grid_rows_titles is None:
+        print('警告: フォームにグリッド質問がない。'
+              'グリッド行構成の履歴を更新できない', file=sys.stderr)
+    elif update_vocab_history(revision_id, grid_rows_titles, GRID_HISTORY_FILE):
+        print(f'グリッド行構成の履歴を追記: revision {revision_id} / '
+              f'{len(grid_rows_titles)}行', file=sys.stderr)
 
     ensure_dir(OUT_FILE.parent)
     df = csv_utils.merge_csv_by_columns(
