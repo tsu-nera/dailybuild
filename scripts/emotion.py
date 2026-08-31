@@ -63,13 +63,55 @@ def build_items(conf):
     """yaml の定義からフォームの item spec リストを組み立てる"""
     q, s = conf['questions'], conf['score']
     choices = [v['label'] for v in conf['vocabulary']]
-    rows = [q[key] for key in conf['grid_rows']]
+    grid_rows = conf['grid_rows']
+    rows = [q[key] for key in grid_rows]
+    grid_required = conf.get('grid_required', {})
+    # 未指定の行は required 扱い（既定は安全側）
+    required = [grid_required.get(key, True) for key in grid_rows]
     return [
         gforms_api.grid_item(conf['grid_title'], rows, s['low'], s['high'],
-                             s['low_label'], s['high_label'], required=True),
+                             s['low_label'], s['high_label'], required=required),
         gforms_api.checkbox_item(q['emotions'], choices, required=True),
         gforms_api.text_item(q['note'], required=False),
     ]
+
+
+def _csv_max_timestamp():
+    """data/emotion.csv の最新 timestamp。ファイルが無い/空なら None"""
+    if not OUT_FILE.exists():
+        return None
+    df = pd.read_csv(OUT_FILE, usecols=['timestamp'], parse_dates=['timestamp'])
+    if df.empty:
+        return None
+    return df['timestamp'].max()
+
+
+def _response_timestamp(res):
+    """フォーム回答1件の送信時刻を JST naive で返す。取れなければ None"""
+    ts = res.get('lastSubmittedTime') or res.get('createTime')
+    if not ts:
+        return None
+    return pd.to_datetime(ts, format='ISO8601', utc=True).tz_convert(TZ).tz_localize(None)
+
+
+def has_unfetched_responses(responses, csv_max_timestamp) -> bool:
+    """フォーム側の回答に data/emotion.csv へ未取り込みのものがあるか
+
+    allow_kind_replace の deleteItem は questionId → どの質問かの対応付けを
+    失わせるため、CSV に materialize されていない回答があると、その回答の
+    値は削除後は読めなくなる（#105 の preserve_existing_on_nan は「CSV に
+    既にある値」しか守れない）。判定は timestamp ベース: CSV の最新
+    timestamp より新しい回答が1件でもあれば未取り込みとみなす
+    """
+    if not responses:
+        return False
+    if csv_max_timestamp is None:
+        return True
+    for res in responses:
+        ts = _response_timestamp(res)
+        if ts is not None and ts > csv_max_timestamp:
+            return True
+    return False
 
 
 def cmd_setup_form(args):
@@ -87,9 +129,20 @@ def cmd_setup_form(args):
         if args.allow_kind_replace:
             leftover = gforms_api.preview_kind_mismatch(items, existing_form)
             if leftover:
+                responses = gforms_api.list_responses(service, conf['form_id'])
+                if has_unfetched_responses(responses, _csv_max_timestamp()):
+                    print('中止: data/emotion.csv に未取り込みの回答が'
+                          'フォーム側にある。削除すると questionId の対応'
+                          '付けが失われ、その回答の値が読めなくなる。'
+                          '先に `uv run scripts/emotion.py fetch` を実行して'
+                          'から、改めて --update --allow-kind-replace を'
+                          '実行すること', file=sys.stderr)
+                    sys.exit(1)
                 print('質問の種類が変わるため、次の既存の質問を削除する'
-                      '（過去の回答はフォーム側から引けなくなる。'
-                      'data/emotion.csv に materialize 済みの値は保持される）:')
+                      '（questionId の対応付けが失われる。値そのものは'
+                      'API レスポンスに残るが、旧 questionId が無いとどの'
+                      '質問かを引けない。data/emotion.csv に materialize '
+                      '済みの値は保持される）:')
                 for i in leftover:
                     print(f"  - {i.get('title')} "
                          f"({gforms_api._question_kind(i)})")

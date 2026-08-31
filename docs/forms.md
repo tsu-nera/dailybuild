@@ -15,6 +15,11 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
 - **フォームを画面で編集しない。** 語彙の正は `config/emotion_def.yaml` で、
   `setup-form --update` が画面の内容を上書きする
 - 削除された回答は CSV に残り続ける（マージは追加・更新のみ）
+- グリッドの行ごとの必須/任意は `config/emotion_def.yaml` の `grid_required`
+  で指定する（`gforms_api.grid_item()` の `required` は bool か行数分の
+  list を受け取る）。`いまの気分` だけ必須で `身体の軽さ` / `頭の冴え` は
+  任意。全行必須だと気分だけ記録したいときも毎回すべて答える必要が生じ、
+  記録が続くコストに直接効く
 - グリッドの列（1〜5）は **valence（高=良好）であって感情・身体感覚の強さでは
   ない**。`mind_score` / `body_score` と同じ向き。列見出しは全行共通のため、
   向きも全行で強制的に揃う（「疲労感」のように高=悪化の項目名は採れない）。
@@ -83,22 +88,32 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
 を投げて止まる（`setup-form --update` 単体では移行できない）。意図的な型移行
 なので `setup-form --update --allow-kind-replace` で明示的に許可する必要が
 あり、これを付けると **旧 `いまの気分` の質問は `deleteItem` で削除され、
-その questionId は失われる**（= フォーム側からは過去14件の回答をもう
-引けなくなる）。ただし `data/emotion.csv` に既に materialize 済みの `score`
-列の値は、**#105（merge 済み）で入れた `merge_csv_by_columns` の
+その questionId は失われる**（= フォーム側から「どの回答が `いまの気分`
+だったか」の対応付けが失われる）。**回答の値自体は失われない**（実測: 削除後も
+`forms().responses().list()` のレスポンスには旧 questionId をキーに値が
+残っている）。控えておいた旧 questionId で生レスポンスを直接見れば読める、
+というのが復旧手段。ただし `data/emotion.csv` に既に materialize 済みの
+`score` 列の値は、**#105（merge 済み）で入れた `merge_csv_by_columns` の
 `preserve_existing_on_nan=True`** により、再 fetch で NaN 上書きされず保持
-される。フォーム側の過去回答を失っても CSV 側のデータは失われない、という
-のが**この移行を「記録が14件しかない今」やる理由**（後になるほど失う回答が
-増える）。
+される。逆に **CSV に未取り込みの回答があると、削除と同時にその回答の
+questionId 対応付けが失われ、値を読む手段が無くなる**（旧 questionId を
+控えていない限り）。そのため削除の前に必ず fetch を済ませ、フォーム側の
+最新回答をすべて CSV に materialize しておくこと（コードのガードは
+`scripts/emotion.py` の `has_unfetched_responses()`。CSV の最新 timestamp
+より新しい回答があれば `setup-form --update --allow-kind-replace` は削除を
+実行せず中止する）。
 
 1. `data/emotion.csv` をバックアップする（例: `cp data/emotion.csv /tmp/emotion.csv.bak`）
-2. `uv run scripts/emotion.py setup-form --update --allow-kind-replace` を
+2. `uv run scripts/emotion.py fetch` を実行し、未取得の回答を先に
+   materialize する。**ここを飛ばすと `has_unfetched_responses()` の
+   ガードに掛かって次のステップが中止される**
+3. `uv run scripts/emotion.py setup-form --update --allow-kind-replace` を
    実行し、画面の質問構成を `config/emotion_def.yaml`（グリッド3行）に合わせる。
    実行前に削除される質問のタイトル・種類が標準出力に列挙される
    （`gforms_api.preview_kind_mismatch()`）ので、`いまの気分（scaleQuestion）`
    だけが対象になっていることを確認してから進める
-3. `uv run scripts/emotion.py fetch` を実行し、最新の回答を取得する
-4. 既存14件の `score` が保持されていることを差分確認する
+4. `uv run scripts/emotion.py fetch` を実行し、最新の回答を取得する
+5. 既存14件の `score` が保持されていることを差分確認する
    （例: `diff <(cut -d, -f1,3 /tmp/emotion.csv.bak) <(cut -d, -f1,3 data/emotion.csv)` で
    `timestamp,score` の対応がそのまま残っているか見る。列位置が変わっている
    場合は列名で見る）。`body` / `head` は移行前の回答では空欄のままでよい
