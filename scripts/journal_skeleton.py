@@ -33,6 +33,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import sleep as sleep_lib  # noqa: E402
+from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
 
@@ -63,6 +64,10 @@ DAILY_SOURCES = [
 SPARSE_SOURCES = [
     ('temperature_core', 'data/fitbit/temperature_core.csv', 'date_time', '深部体温'),
     ('body_composition', 'data/healthplanet_innerscan.csv', 'date', '体組成'),
+    # 排便は DAILY_SOURCES に入れない。記録の無い日が「未記録」なのか
+    # 「出なかった」なのか原理的に判別できないため、当日の不在を欠測として
+    # 毎日出すと故障と未記録が同じ見た目になる（SPARSE_SOURCES の趣旨）
+    ('bowel', 'data/bowel.csv', 'date', '排便'),
 ]
 
 
@@ -226,6 +231,39 @@ def collect_last_seen(target: dt.date) -> list[str]:
     return out
 
 
+def collect_bowel(target: dt.date) -> dict | None:
+    """当日の排便記録と直近7日の内訳。記録が一度も無ければ None
+
+    **平均は出さない。** ブリストルは 1〜7 の順序尺度で 4 が最良の U 字
+    なので、型の平均は 1 と 7 の日を「理想的（4）」と書いてしまう。
+    回数の日平均も出さない。記録の無い日を 0 とみなすと未記録と便秘が
+    同じ値になり、欠測を捏造する（分母を記録のあった日に取り替えると
+    今度はほぼ常に 1 以上になって情報が消える）。件数と日数をそのまま
+    並べ、解釈は読み手に渡す。
+    """
+    df = _read('data/bowel.csv', 'date')
+    if df.empty or 'bristol' not in df.columns:
+        return None
+    ts = pd.Timestamp(target)
+    types = pd.to_numeric(df['bristol'], errors='coerce')
+
+    today = types[df['_date'] == ts].dropna()
+    window = types[(df['_date'] >= ts - pd.Timedelta(days=6))
+                   & (df['_date'] <= ts)].dropna()
+    days = df.loc[window.index, '_date'].nunique() if len(window) else 0
+
+    return {
+        'today': [int(v) for v in today],
+        'today_rows': int((df['_date'] == ts).sum()),
+        'week_count': int(len(window)),
+        'week_days': days,
+        'week_categories': {
+            name: int(((window >= lo) & (window <= hi)).sum())
+            for name, (lo, hi) in CATEGORY_BOUNDS.items()
+        },
+    }
+
+
 def collect_comment(target: dt.date) -> str | None:
     man = _read('data/manual.csv', 'date')
     if man.empty or 'comment' not in man.columns:
@@ -249,10 +287,25 @@ def _fmt_delta(recent, prior, unit, digits):
     return f'{recent - prior:+,.{digits}f}{unit}'
 
 
+def _fmt_bowel(bowel: dict) -> str:
+    """当日の型を並べ、直近7日は件数・日数・3分類の内訳を出す"""
+    if bowel['today']:
+        today = f"{bowel['today_rows']}回（型 {'、'.join(str(v) for v in bowel['today'])}）"
+    elif bowel['today_rows']:
+        # 送信はあったが型が読めない（未回答・パース不能）。0回と書かない
+        today = f"{bowel['today_rows']}回（型 不明）"
+    else:
+        today = '記録なし'
+    cats = '・'.join(f'{name}{n}' for name, n in bowel['week_categories'].items())
+    return (f"当日 {today} / 直近7日 {bowel['week_count']}件・"
+            f"{bowel['week_days']}日（{cats}）")
+
+
 def render_skeleton(target: dt.date) -> str:
     metrics = collect_metrics(target)
     missing = collect_missing(target)
     comment = collect_comment(target)
+    bowel = collect_bowel(target)
 
     lines = [START_MARKER, '', '| 指標 | 当日 | 直近7日 | 前7日 | 変化 |',
              '|---|---|---|---|---|']
@@ -264,6 +317,9 @@ def render_skeleton(target: dt.date) -> str:
             f"| {_fmt_delta(m['recent'], m['prior'], m['unit'], m['digits'])} |"
         )
     lines.append('')
+    if bowel:
+        lines.append(f'**排便**: {_fmt_bowel(bowel)}')
+        lines.append('')
     if comment:
         lines.append(f'**コメント（手動記録）**: {comment}')
         lines.append('')
