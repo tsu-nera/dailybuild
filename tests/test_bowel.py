@@ -154,6 +154,26 @@ def test_load_entries_keeps_missing_bristol_as_na(tmp_path, monkeypatch):
     assert df['bristol'].dropna().tolist() == [4]
 
 
+def test_load_entries_on_header_only_csv(tmp_path, monkeypatch):
+    """回答0件（ヘッダのみ）の CSV でも落ちない
+
+    setup-form 直後〜初回回答前がこの状態になる。parse_dates で読むと
+    空の timestamp 列が object のまま残り、.dt が AttributeError で
+    落ちて show が使えなくなる（実機で踏んだ）。
+    """
+    csv = tmp_path / 'bowel.csv'
+    csv.write_text('timestamp,date,bristol\n')
+    monkeypatch.setattr(store, 'CSV_FILE', csv)
+
+    df = store.load_entries()
+
+    assert df.empty
+    assert str(df['timestamp'].dtype).startswith('datetime64')
+    assert str(df['bristol'].dtype) == 'Int64'
+    # show の被覆表示が nunique を呼ぶので date 列も引けている必要がある
+    assert df['date'].nunique() == 0
+
+
 # --- data/bowel.csv が private symlink 配下であることの検証 ---
 
 def test_csv_file_resolves_to_private_repo():

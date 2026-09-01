@@ -23,7 +23,12 @@ def load_entries() -> pd.DataFrame:
     （0 は「コロコロ」の隣に来る値ではなく、単に測っていないことを示す
     ためのマーカーとして混ぜてはいけない）。
     """
-    df = pd.read_csv(CSV_FILE, parse_dates=['timestamp'])
+    # parse_dates を使わず読んでから明示変換する。回答が0件の CSV
+    # （ヘッダのみ。setup-form 直後〜初回回答前がこの状態）では
+    # parse_dates が空列を object のまま残し、以降の .dt が
+    # AttributeError で落ちる
+    df = pd.read_csv(CSV_FILE)
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
     df['bristol'] = pd.to_numeric(df['bristol'], errors='coerce').astype('Int64')
     # CSV の date 列は文字列。フィルタに使うので timestamp から引き直す
     # （日境界の補正はしない。深夜の記録もその日付のまま）
