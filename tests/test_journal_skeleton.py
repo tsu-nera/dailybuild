@@ -201,3 +201,59 @@ def test_sparse_source_never_recorded(data_root, monkeypatch):
                         [('sparse', 'd/sparse.csv', 'date', '疎な指標')])
 
     assert js.collect_last_seen(dt.date(2026, 8, 29)) == ['疎な指標 記録なし']
+
+
+# --- 排便（Bristol） ---
+
+def _write_bowel(root, rows):
+    """rows: (timestamp, bristol) のリスト。bristol は None で未回答"""
+    (root / 'data').mkdir(exist_ok=True)
+    body = ''.join(f"{ts},{ts[:10]},{'' if b is None else b}\n" for ts, b in rows)
+    (root / 'data' / 'bowel.csv').write_text('timestamp,date,bristol\n' + body,
+                                             encoding='utf-8')
+
+
+def test_bowel_absent_csv_is_none(data_root):
+    """CSV が無ければ None。骨組みに「排便」の行自体を出さない"""
+    assert js.collect_bowel(dt.date(2026, 9, 1)) is None
+
+
+def test_bowel_counts_and_categories(data_root):
+    _write_bowel(data_root, [
+        ('2026-09-01 07:12:00', 2),
+        ('2026-09-01 19:40:00', 4),
+        ('2026-08-30 08:05:00', 7),
+        # 窓の外（7日前より古い）。直近7日に混ぜない
+        ('2026-08-20 08:00:00', 4),
+    ])
+    got = js.collect_bowel(dt.date(2026, 9, 1))
+
+    assert got['today'] == [2, 4]
+    assert got['week_count'] == 3
+    assert got['week_days'] == 2
+    assert got['week_categories'] == {'硬い': 1, '正常': 1, 'ゆるい': 1}
+
+
+def test_bowel_no_record_today_is_not_zero(data_root):
+    """当日に記録が無い日を「0回」と書かない
+
+    記録の無い日が未記録なのか出なかったのか判別できない。0 と書くと
+    便秘として集計に混ざる（欠測の捏造）。
+    """
+    _write_bowel(data_root, [('2026-08-30 08:05:00', 4)])
+    got = js.collect_bowel(dt.date(2026, 9, 1))
+
+    assert got['today'] == []
+    assert got['today_rows'] == 0
+    assert '記録なし' in js._fmt_bowel(got)
+    assert '0回' not in js._fmt_bowel(got)
+
+
+def test_bowel_unparseable_type_is_not_dropped_silently(data_root):
+    """送信はあったが型が読めない日を「記録なし」にしない"""
+    _write_bowel(data_root, [('2026-09-01 07:12:00', None)])
+    got = js.collect_bowel(dt.date(2026, 9, 1))
+
+    assert got['today'] == []
+    assert got['today_rows'] == 1
+    assert '型 不明' in js._fmt_bowel(got)
