@@ -1,0 +1,35 @@
+# 排便記録（Google Form）の定義
+#
+# フォームは scripts/bowel.py setup-form がこの定義から生成する。
+# 選択肢の文言を直すときは choices を編集して setup-form --update を回す。
+# 画面を手で直すと yaml とズレるので触らない。
+#
+# 気分記録（config/emotion_def.yaml）と違い、語彙バージョン履歴
+# （emotion_vocab_history.csv 相当）は持たない。ブリストル便形状スケールは
+# 1〜7の7段が標準側で固定されており、label の文言（日本語の言い換え）を
+# 直しても code の意味は変わらない。版を残しても後から読み違える対象が無い。
+
+# setup-form が書き戻す。空なら未作成
+form_id:
+form_title: 排便記録
+
+# 質問タイトル。回答は questionId で引くので、ここを変えたら
+# setup-form --update でフォーム側も合わせること
+questions:
+  bristol: 便の形（ブリストル）
+
+# フォームの選択肢文字列は "{code} {label}" で組み立てる（例: "3 ひび割れの
+# あるソーセージ状"）。回答のパースは表示文字列全体ではなく**先頭の数値**で
+# 行う（scripts/bowel.py の parse_bristol_value）。label だけを直しても
+# 過去回答のパース結果は変わらない。
+#
+# ラジオ1問・必須。項目を増やさないのは1タップで送信完了する記録コストを
+# 保つため（色・量は Issue #109 で意図的に見送った）。
+choices:
+  - {code: 1, label: コロコロ（硬い塊）}
+  - {code: 2, label: ゴツゴツ（塊が集まった硬便）}
+  - {code: 3, label: ひび割れのあるソーセージ状}
+  - {code: 4, label: なめらかなソーセージ状}
+  - {code: 5, label: やわらかい小さな塊}
+  - {code: 6, label: 泥状}
+  - {code: 7, label: 水様}

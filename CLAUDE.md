@@ -93,6 +93,9 @@ uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open 
 uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得
 uv run scripts/emotion.py show       # 気分記録のサマリ（既定は直近7日）
 uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
+uv run scripts/bowel.py fetch        # 排便記録（Bristol、Google Form回答）取得
+uv run scripts/bowel.py show         # 排便記録のサマリ（既定は直近7日）
+uv run scripts/bowel.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
@@ -145,7 +148,7 @@ stdout）。
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
 | `fetch_indoor.py` / Tuya を扱うとき | [docs/indoor.md](docs/indoor.md) — レート制限と7日の遡り限界 |
-| `emotion.py` / `phq9.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
+| `emotion.py` / `phq9.py` / `bowel.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
@@ -178,7 +181,7 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
-- `gforms_token.json` - 気分記録フォームのトークン（`emotion.py` が生成。OAuth クライアントは `googlehealth_creds.json` と共用）
+- `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
 
