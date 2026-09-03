@@ -7,8 +7,8 @@ journal スキルは対話の記録が主目的で、人がレビューを回さ
 実際 2026-08-07 から3週間、うつエピソードで HRV が大きく動いた期間が丸ごと
 空いた。記録が最も必要な状態が、記録が最も途切れやすい状態と一致している。
 
-そこで数値の骨組みだけを機械が毎日書く。考察・Action Plan は従来どおり
-`/journal` が対話のあとに追記する。骨組みは
+そこで数値の骨組みだけを機械が毎日書く。考察・Action Plan は journal スキルが
+`<!-- review:start -->` 区間へ書き、機械はその不在を警告するだけ。骨組みは
 `<!-- skeleton:start -->` 〜 `<!-- skeleton:end -->` に囲まれており、
 再実行するとこの区間だけを差し替える。区間外に書かれた考察は保持する。
 
@@ -45,6 +45,10 @@ WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
 
 START_MARKER = '<!-- skeleton:start -->'
 END_MARKER = '<!-- skeleton:end -->'
+
+# 散文側のマーカー。書くのは agent（journal スキル）で、機械は不在を検出するだけ。
+REVIEW_MARKER = '<!-- review:start -->'
+WEEKLY_MARKER = '<!-- weekly:start -->'
 
 # 毎日あるはずのソース。当日の行が無ければ欠測として出す。(ラベル, パス, 日付列)
 DAILY_SOURCES = [
@@ -395,6 +399,34 @@ def upsert_entry(target: dt.date) -> str:
     return 'updated'
 
 
+def warn_unwritten(target: dt.date, weeks: int = 3) -> list[str]:
+    """散文が書かれていない箇所を警告文のリストで返す（書き込みはしない）
+
+    骨組みは毎日入るので、散文の不在は目視では気づけない。実際 W33-W36 は
+    4週ぶん要約が空のまま埋もれた。日ごとの未記入はレビューを毎日回さない
+    以上ふつうなので出さず、「レビューが止まっている」ことだけを出す。
+    """
+    warnings = []
+
+    recent = [target - dt.timedelta(days=n) for n in range(7)]
+    files = {week_file(d) for d in recent}
+    if not any(REVIEW_MARKER in f.read_text(encoding='utf-8')
+               for f in files if f.exists()):
+        warnings.append('直近7日に review ブロックが無い（レビューが止まっている）')
+
+    # 完了した週のみ。進行中の当週は未記入が正常
+    monday = target - dt.timedelta(days=target.isocalendar().weekday - 1)
+    for n in range(1, weeks + 1):
+        day = monday - dt.timedelta(weeks=n)
+        path = week_file(day)
+        if not path.exists():
+            continue
+        if WEEKLY_MARKER not in path.read_text(encoding='utf-8'):
+            warnings.append(f'{path.stem}: Weekly Summary が無い')
+
+    return warnings
+
+
 def ensure_index_row(target: dt.date) -> str:
     """索引に該当週の行が無ければ追加する。既存の要約は上書きしない"""
     path = require_private_write(INDEX_FILE)
@@ -450,6 +482,9 @@ def main():
         index = ensure_index_row(day)
         print(f'{day} {week_file(day).name}: {action} (index: {index})')
         day += dt.timedelta(days=1)
+
+    for w in warn_unwritten(end):
+        print(f'\u26a0\ufe0f {w}', file=sys.stderr)
     return 0
 
 
