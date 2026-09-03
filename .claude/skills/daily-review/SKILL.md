@@ -220,4 +220,8 @@ uv run python scripts/show_targets.py --interval weekly
 具体的なアクション（2-3個）
 ```
 
-レビュー後、ディスカッションを経て記録を残す場合は `/journal` を使用する。
+## Step 4: ジャーナルへ記録（確認不要）
+
+`journal` スキルの daily モードで、当日エントリの `review:` 区間・当週の Weekly Summary・索引を更新する。**「記録しますか?」と聞かず、レビューを出したらそのまま書く。**
+
+その後の会話で深掘りした内容は Discussion に追記する（区間外なので上書きされない）。
