@@ -313,8 +313,8 @@ def fetch_active_zone_minutes(creds, start_date: dt.date, end_date: dt.date) -> 
         peakActiveZoneMinutes
 
     合計の activeZoneMinutes は Google に対応するフィールドが無いため算出する。
-    fitbit_api.parse_active_zone_minutes の docstring は「cardio/peak 1分=2AZM」の
-    重み付けと書いているが、実データ（2026-08-11〜23の13日）はそれに従わない:
+    Fitbit の旧実装は cardio/peak を「1分=2AZM」の重み付けで扱うと docstring に
+    記述していたが、実データ（2026-08-11〜23の13日）はそれに従わない:
     単純和 fatBurn+cardio+peak が Fitbit の activeZoneMinutes と13/13で一致し、
     重み付き fatBurn+2*cardio+2*peak は1/13しか一致しない。単純和を採用する。
     """

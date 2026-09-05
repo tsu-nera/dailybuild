@@ -1,11 +1,10 @@
 [project]
 name = "dailybuild"
 version = "0.1.0"
-description = "ライフログデータ収集プロジェクト（Fitbit睡眠・HealthPlanet体組成）"
+description = "ライフログデータ収集プロジェクト（Google Health・HealthPlanet ほか）"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "astral",
-    "fitbit",
     "gspread",
     "pandas",
     "pyyaml",

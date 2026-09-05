@@ -7,11 +7,14 @@
 > **Zone2**(いわゆる有酸素ベース/LT1直下): LT1={{ zone2_meta.lt1|number_format(0) }}bpm（{{ zone2_meta.lt1_source }}{% if zone2_meta.lt1_source == 'maf' %}=180-{{ zone2_meta.age }}・暫定/低体力者は過大傾向{% endif %}）, Zone2帯=[{{ zone2_meta.band_lower|number_format(0) }}, {{ zone2_meta.band_upper|number_format(0) }}) bpm
 {% endif %}
 
-| 日付 | 歩数 | Zone合計 | Z1 | Z2 | Z3 | Z4 | Z5 | Zone2 | VO2 Max |
-|------|------|----------|----|----|----|----|-----|-------|---------|
+| 日付 | 歩数 | Zone合計 | Z1 | Z2 | Z3 | Z4 | Z5 | Zone2 |
+|------|------|----------|----|----|----|----|-----|-------|
 {% for row in aerobic_data %}
-| {{ row.date | date_format }} | {{ row.steps | number_format(0) }} | {{ row.total_zone_min | number_format(0) }} | {{ row.z1_min | number_format(0) }} | {{ row.z2_min | number_format(0) }} | {{ row.z3_min | number_format(0) }} | {{ row.z4_min | number_format(0) }} | {{ row.z5_min | number_format(0) }} | {{ row.zone2_min | number_format(0) }} | {{ row.vo2max | number_format(0) }} |
+| {{ row.date | date_format }} | {{ row.steps | number_format(0) }} | {{ row.total_zone_min | number_format(0) }} | {{ row.z1_min | number_format(0) }} | {{ row.z2_min | number_format(0) }} | {{ row.z3_min | number_format(0) }} | {{ row.z4_min | number_format(0) }} | {{ row.z5_min | number_format(0) }} | {{ row.zone2_min | number_format(0) }} |
 {% endfor %}
+{% if vo2max_final %}
+> VO2 Max: 計測終了（最終計測 {{ vo2max_final.date | date_format }} / {{ vo2max_final.vo2_max | number_format(0) }}）
+{% endif %}
 {% endif %}
 
 ### 💪 筋トレ
