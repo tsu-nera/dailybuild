@@ -58,6 +58,8 @@ step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "手動記録"       uv run python scripts/fetch_manual.py
 step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
+step "PHQ-9"         uv run python scripts/phq9.py fetch --non-interactive
+step "排便記録"       uv run python scripts/bowel.py fetch --non-interactive
 # 室内環境（Tuya）は日次から外している。5分刻みで1点1リクエスト、レート制限で
 # 1リクエスト1.5秒以上かかるため、1日ぶん288点で8〜10分。他の全ステップ合計が
 # 1分強なのに対して所要時間の9割を1ステップが占めていた。取得は手動で回す:
@@ -67,6 +69,14 @@ step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
 step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
+# Habitica の日付をまたぐ処理（cron）を確定させる。Daily の未完了はこれでしか
+# history に残らないので、走らせない日は「未達」でなく「欠測」になる
+step "Habitica"     uv run python scripts/habitica.py cron
+
+# 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
+# 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、
+# ここが書くのは skeleton マーカーの内側だけ
+step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
 
 echo ""
 echo "Finished at $(date)"

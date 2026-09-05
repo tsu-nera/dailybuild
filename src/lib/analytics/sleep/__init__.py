@@ -79,6 +79,9 @@ from .sleep_debt_clean import (
     SleepDebtResult,
     # 分析
     SleepDebtCalculator,
+    build_debt_calculator,
+    DEBT_WEIGHT_METHOD,
+    SLEEP_NEED_FOR_DEBT_DEFAULT,
     # 可視化
     plot_sleep_debt_trend,
     # レポート
@@ -124,6 +127,9 @@ __all__ = [
     # sleep_debt_clean
     'SleepDebtResult',
     'SleepDebtCalculator',
+    'build_debt_calculator',
+    'DEBT_WEIGHT_METHOD',
+    'SLEEP_NEED_FOR_DEBT_DEFAULT',
     'plot_sleep_debt_trend',
     'print_debt_report',
     'format_debt_history_table',

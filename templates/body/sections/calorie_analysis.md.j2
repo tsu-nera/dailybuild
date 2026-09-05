@@ -1,18 +1,5 @@
 {% if calorie_analysis_data %}
 ## 🔥 カロリー分析
 
-> **TDEE（総消費エネルギー量）の内訳**: Out ≈ BMR + TEF + EAT + その他
->
-> - **Balance**: カロリー収支（In - Out）
-> - **In**: 摂取カロリー
-> - **Out**: 消費カロリー（TDEE）
-> - **BMR**: 基礎代謝
-> - **活動分**: 中〜高強度を含む活動時間（LIGHT + MODERATE + VIGOROUS の合計、分）
-> - **TEF**: 食事誘発性熱産生（消化による消費、摂取カロリーの約10%）
-> - **EAT**: 運動活動熱産生（意図的な運動による消費）
->
-> Google Health 移行（#75）により、NEAT（非運動性活動熱産生、kcal）は算出できなくなった。
-> 代わりに活動時間（分）を目安として載せている。TDEE の内訳はこの分だけ閉じていない。
-
 {{ calorie_analysis_data.table }}
 {% endif %}

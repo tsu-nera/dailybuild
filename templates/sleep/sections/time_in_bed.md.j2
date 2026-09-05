@@ -1,7 +1,5 @@
 ## 🛏️ Time in Bed分析
 
-> ベッド時間の使い方を分析。効率 = 睡眠 / ベッド × 100。85%以上が良好。
-
 | 指標 | 値 |
 |------|-----|
 | 平均効率 | **{{ efficiency.mean }}%** |
@@ -15,6 +13,8 @@
 > {{ efficiency.integrity.threshold_minutes }}分以上乖離）。ステージ統計には含めています。
 {% endif %}
 
+{% if show_charts %}
 ![Time in Bed]({{ efficiency.image }})
+{% endif %}
 
 {{ efficiency.table }}

@@ -1039,3 +1039,34 @@ def test_weight_allow_empty_does_not_error(weight_dir, monkeypatch):
     assert result['records'] == 0
     assert 'error' not in result
     assert not weight_dir.exists()
+
+
+# =============================================================================
+# temperature_core: 体温計で測って Google Health に手で記録する疎な指標
+# =============================================================================
+
+def test_temperature_core_allow_empty_does_not_error(data_dir, monkeypatch):
+    """測り忘れた日は0件が正常。period_replace 経路でも allow_empty を尊重すること
+
+    allow_empty を入れる前は、測らなかった日すべてで daily-routine.sh が
+    非ゼロ終了し「Google Health の取得に失敗」と毎日出ていた。実際は
+    測っていないだけで、故障ではない。
+    """
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'temperature_core',
+                        lambda creds, s, e: [])
+
+    result = ghf.fetch_endpoint(None, 'temperature_core', days=3)
+
+    assert result['records'] == 0
+    assert 'error' not in result
+    assert not (data_dir / 'temperature_core.csv').exists(), '0件なのにCSVを書いている'
+
+
+def test_period_replace_without_allow_empty_still_errors(data_dir, monkeypatch):
+    """period_replace でも allow_empty が無ければ0件はエラーのままであること"""
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'sleep', lambda creds, s, e: ([], []))
+
+    result = ghf.fetch_endpoint(None, 'sleep', days=3)
+
+    assert result['records'] == 0
+    assert result['error']

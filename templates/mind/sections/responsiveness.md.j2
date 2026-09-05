@@ -1,6 +1,9 @@
+{% macro val(v, z, digits=1) -%}
+{%- if v is none -%}-
+{%- else -%}{{ v|number_format(digits) }}{% if z and z|abs >= 1.5 %} (z{{ '%+.1f'|format(z) }}){% endif %}
+{%- endif -%}
+{%- endmacro %}
 ## 🧘 反応性
-
-自律神経系の反応性と回復力を評価
 
 {% if illness_alerts %}
 {% for a in illness_alerts %}
@@ -25,10 +28,10 @@
 
 | 指標 | 期間平均 | ベースライン | 変化 |
 |------|----------|-------------|------|
-{% if hrv_values %}| HRV | {{ (hrv_values|sum / hrv_values|length)|number_format(1) }} ms | {% if hrv_baseline_values %}{{ (hrv_baseline_values|sum / hrv_baseline_values|length)|number_format(1) }} ± {{ (hrv_std_values|sum / hrv_std_values|length)|number_format(1) if hrv_std_values else '-' }} ms{% else %}-{% endif %} | {% if hrv_baseline_values %}{% set avg = hrv_values|sum / hrv_values|length %}{% set bl = hrv_baseline_values|sum / hrv_baseline_values|length %}{% set change_pct = ((avg - bl) / bl * 100) %}{% if change_pct > 10 %}**{{ change_pct|number_format(1) }}%**{% elif change_pct < -10 %}⚠️{{ change_pct|number_format(1) }}%{% else %}{{ change_pct|number_format(1) }}%{% endif %}{% else %}-{% endif %} |
-{% endif %}{% if rhr_values %}| RHR | {{ (rhr_values|sum / rhr_values|length)|number_format(1) }} bpm | {% if rhr_baseline_values %}{{ (rhr_baseline_values|sum / rhr_baseline_values|length)|number_format(1) }} ± {{ (rhr_std_values|sum / rhr_std_values|length)|number_format(1) if rhr_std_values else '-' }} bpm{% else %}-{% endif %} | {% if rhr_baseline_values %}{% set avg = rhr_values|sum / rhr_values|length %}{% set bl = rhr_baseline_values|sum / rhr_baseline_values|length %}{% set change_pct = ((avg - bl) / bl * 100) %}{% if change_pct > 5 %}⚠️{{ change_pct|number_format(1) }}%{% elif change_pct < -5 %}**{{ change_pct|number_format(1) }}%**{% else %}{{ change_pct|number_format(1) }}%{% endif %}{% else %}-{% endif %} |
-{% endif %}{% if br_values %}| BR | {{ (br_values|sum / br_values|length)|number_format(1) }} /min | {% if br_baseline_values %}{{ (br_baseline_values|sum / br_baseline_values|length)|number_format(1) }} ± {{ (br_std_values|sum / br_std_values|length)|number_format(1) if br_std_values else '-' }} /min{% else %}-{% endif %} | {% if br_baseline_values %}{% set avg = br_values|sum / br_values|length %}{% set bl = br_baseline_values|sum / br_baseline_values|length %}{% set change_pct = ((avg - bl) / bl * 100) %}{% if change_pct > 5 %}⚠️{{ change_pct|number_format(1) }}%{% elif change_pct < -5 %}**{{ change_pct|number_format(1) }}%**{% else %}{{ change_pct|number_format(1) }}%{% endif %}{% else %}-{% endif %} |
-{% endif %}{% if spo2_values %}| SpO2 | {{ (spo2_values|sum / spo2_values|length)|number_format(1) }}% | {% if spo2_baseline_values %}{{ (spo2_baseline_values|sum / spo2_baseline_values|length)|number_format(1) }} ± {{ (spo2_std_values|sum / spo2_std_values|length)|number_format(1) if spo2_std_values else '-' }}%{% else %}-{% endif %} | {% if spo2_baseline_values %}{% set avg = spo2_values|sum / spo2_values|length %}{% set bl = spo2_baseline_values|sum / spo2_baseline_values|length %}{% set change_pct = ((avg - bl) / bl * 100) %}{% if change_pct > 1 %}**{{ change_pct|number_format(1) }}%**{% elif change_pct < -1 %}⚠️{{ change_pct|number_format(1) }}%{% else %}{{ change_pct|number_format(1) }}%{% endif %}{% else %}-{% endif %} |
+{% if hrv_values %}| HRV | {{ (hrv_values|sum / hrv_values|length)|number_format(1) }} ms | {% if hrv_baseline_values %}{{ (hrv_baseline_values|sum / hrv_baseline_values|length)|number_format(1) }} ± {{ (hrv_std_values|sum / hrv_std_values|length)|number_format(1) if hrv_std_values else '-' }} ms{% else %}-{% endif %} | {% if hrv_baseline_values %}{% set avg = hrv_values|sum / hrv_values|length %}{% set bl = hrv_baseline_values|sum / hrv_baseline_values|length %}{{ '%+.1f'|format((avg - bl) / bl * 100) }}%{% else %}-{% endif %} |
+{% endif %}{% if rhr_values %}| RHR | {{ (rhr_values|sum / rhr_values|length)|number_format(1) }} bpm | {% if rhr_baseline_values %}{{ (rhr_baseline_values|sum / rhr_baseline_values|length)|number_format(1) }} ± {{ (rhr_std_values|sum / rhr_std_values|length)|number_format(1) if rhr_std_values else '-' }} bpm{% else %}-{% endif %} | {% if rhr_baseline_values %}{% set avg = rhr_values|sum / rhr_values|length %}{% set bl = rhr_baseline_values|sum / rhr_baseline_values|length %}{{ '%+.1f'|format((avg - bl) / bl * 100) }}%{% else %}-{% endif %} |
+{% endif %}{% if br_values %}| BR | {{ (br_values|sum / br_values|length)|number_format(1) }} /min | {% if br_baseline_values %}{{ (br_baseline_values|sum / br_baseline_values|length)|number_format(1) }} ± {{ (br_std_values|sum / br_std_values|length)|number_format(1) if br_std_values else '-' }} /min{% else %}-{% endif %} | {% if br_baseline_values %}{% set avg = br_values|sum / br_values|length %}{% set bl = br_baseline_values|sum / br_baseline_values|length %}{{ '%+.1f'|format((avg - bl) / bl * 100) }}%{% else %}-{% endif %} |
+{% endif %}{% if spo2_values %}| SpO2 | {{ (spo2_values|sum / spo2_values|length)|number_format(1) }}% | {% if spo2_baseline_values %}{{ (spo2_baseline_values|sum / spo2_baseline_values|length)|number_format(1) }} ± {{ (spo2_std_values|sum / spo2_std_values|length)|number_format(1) if spo2_std_values else '-' }}%{% else %}-{% endif %} | {% if spo2_baseline_values %}{% set avg = spo2_values|sum / spo2_values|length %}{% set bl = spo2_baseline_values|sum / spo2_baseline_values|length %}{{ '%+.1f'|format((avg - bl) / bl * 100) }}%{% else %}-{% endif %} |
 {% endif %}
 
 ### 📅 日別データ
@@ -36,20 +39,7 @@
 | 日付 | HRV | RHR | BR | SpO2 | 深部体温 | 体温Δ | 血圧 | 脈拍 |
 |------|-----|-----|----|----|------|------|------|------|
 {% for day in responsiveness_data %}
-{% set hrv_anomaly = day.hrv_daily_z_score and day.hrv_daily_z_score|abs >= 1.5 %}
-{% set rhr_anomaly = day.rhr_z_score and day.rhr_z_score|abs >= 1.5 %}
-{% set br_anomaly = day.breathing_rate_z_score and day.breathing_rate_z_score|abs >= 1.5 %}
-{% set spo2_anomaly = day.spo2_avg_z_score and day.spo2_avg_z_score|abs >= 1.5 %}
-{% set temp_anomaly = day.temp_variation_z_score and day.temp_variation_z_score|abs >= 1.5 %}
-| {{ day.date.strftime('%m-%d') }} | {% if hrv_anomaly %}**{{ day.hrv_daily|number_format(1) if day.hrv_daily else '-' }}**{% else %}{{ day.hrv_daily|number_format(1) if day.hrv_daily else '-' }}{% endif %} | {% if rhr_anomaly %}**{{ day.rhr|number_format(0) if day.rhr else '-' }}**{% else %}{{ day.rhr|number_format(0) if day.rhr else '-' }}{% endif %} | {% if br_anomaly %}**{{ day.breathing_rate|number_format(1) if day.breathing_rate else '-' }}**{% else %}{{ day.breathing_rate|number_format(1) if day.breathing_rate else '-' }}{% endif %} | {% if day.spo2_min and day.spo2_avg %}{{ day.spo2_min|number_format(1) }}/{% if spo2_anomaly %}**{{ day.spo2_avg|number_format(1) }}**{% else %}{{ day.spo2_avg|number_format(1) }}{% endif %}{% else %}-{% endif %} | {% if day.core_temperature %}{{ day.core_temperature|number_format(1) }}{% if day.core_temperature_time %} ({{ day.core_temperature_time }}){% endif %}{% else %}-{% endif %} | {% if temp_anomaly %}**{{ day.temp_variation|number_format(2) if day.temp_variation else '-' }}**{% else %}{{ day.temp_variation|number_format(2) if day.temp_variation else '-' }}{% endif %} | {% if day.bp_systolic and day.bp_diastolic %}{{ day.bp_systolic|number_format(0) }}/{{ day.bp_diastolic|number_format(0) }}{% else %}-{% endif %} | {{ day.bp_pulse|number_format(0) if day.bp_pulse else '-' }} |
+| {{ day.date.strftime('%m-%d') }} | {{ val(day.hrv_daily, day.hrv_daily_z_score) }} | {{ val(day.rhr, day.rhr_z_score, 0) }} | {{ val(day.breathing_rate, day.breathing_rate_z_score) }} | {% if day.spo2_min is not none and day.spo2_avg is not none %}{{ day.spo2_min|number_format(1) }}/{{ val(day.spo2_avg, day.spo2_avg_z_score) }}{% else %}-{% endif %} | {% if day.core_temperature is not none %}{{ day.core_temperature|number_format(1) }}{% if day.core_temperature_time %} ({{ day.core_temperature_time }}){% endif %}{% else %}-{% endif %} | {{ val(day.temp_variation, day.temp_variation_z_score, 2) }} | {% if day.bp_systolic is not none and day.bp_diastolic is not none %}{{ day.bp_systolic|number_format(0) }}/{{ day.bp_diastolic|number_format(0) }}{% else %}-{% endif %} | {{ day.bp_pulse|number_format(0) if day.bp_pulse is not none else '-' }} |
 {% endfor %}
-
-**凡例**:
-- **HRV**: 心拍変動（RMSSD, ms） / **RHR**: 安静時心拍数（bpm） / **BR**: 呼吸数（回/分）
-- **SpO2**: 血中酸素飽和度（最小/平均%、95%以上が正常）
-- **深部体温**: 実測体温（℃、Fitbitへの手動記録。括弧内は測定時刻）。37.0超は発熱、35台は低体温の疑い
-- **体温Δ**: 皮膚温変動（℃、センサー由来の相対値。深部体温とは別物）
-- **血圧**: 収縮期/拡張期（mmHg、HealthPlanet血圧計） / **脈拍**: 血圧計の脈拍（拍/分）
-- **太字**: ベースラインから ±1.5SD 以上の逸脱
 
 ---

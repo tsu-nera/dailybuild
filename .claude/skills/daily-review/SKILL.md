@@ -36,6 +36,15 @@ date '+%Y-%m-%d %H:%M %A'
 この値を `CURRENT_DATE` / `CURRENT_TIME` / `CURRENT_WEEKDAY` として保持し、Step 3 のレビューで必ず参照する。
 特に **当日（CURRENT_DATE）のデータは未完了**である点に注意する（後述「当日データの扱い」）。
 
+続けて `reports/journal/JOURNAL.md` の索引を読む（3KB弱、1週1行で十数週ぶん）。
+レポートは常に「今の状態」しか持たないので、これを読まないと**毎回ゼロから
+同じトレンドを導出し直し、前回なんと言ったかを知らないままレビューすることになる**。
+同じ助言を繰り返す失敗と、何日も続く異常を「今日始まったこと」として書く失敗が、
+どちらもここで防げる。
+
+索引の最新週が今週でない場合、その空白期間はレビューが回っていない期間なので、
+Step 3 でその旨に触れる。
+
 ## Step 1: データ取得
 
 **`--no-fetch` が指定されている場合はこのステップをスキップする。**
@@ -61,14 +70,17 @@ Fitbit / HealthPlanet / 手動記録の失敗だけで、その場合はどの�
 
 ```bash
 # 体組成レポート（直近7日）-- --only body または指定なしの場合
-uv run python scripts/generate_body_report_daily.py --days 7
+uv run python scripts/generate_body_report_daily.py --days 7 --no-charts
 
 # 睡眠レポート（直近30日）-- --only sleep または指定なしの場合
-uv run python scripts/generate_sleep_report_daily.py --days 30
+uv run python scripts/generate_sleep_report_daily.py --days 30 --no-charts
 
 # メンタルレポート（直近14日）-- --only mind または指定なしの場合
-uv run python scripts/generate_mind_report_daily.py --days 14
+uv run python scripts/generate_mind_report_daily.py --days 14 --no-charts
 ```
+
+`--no-charts` は Step 3 のレビューが画像を読まないため。人が `mdcat` で見るときは
+外して叩くとグラフ付きで出る。
 
 エラーがあれば報告する。
 
@@ -84,7 +96,23 @@ uv run python scripts/generate_mind_report_daily.py --days 14
 
 ```bash
 uv run python scripts/show_manual.py --days 7
+uv run scripts/emotion.py show --days 7
 ```
+
+さらに、当週のジャーナルを読み込む。骨組み（数値・7日平均の変化・欠測）は
+`daily-routine.sh` が毎日書いているので、`--no-fetch` で来た場合だけ自前で更新する:
+
+```bash
+uv run scripts/journal_skeleton.py     # 冪等。既存の考察は保持される
+cat reports/journal/$(date '+%G-W%V').md
+```
+
+当週ファイルには**今日の骨組みと、今週これまでの日次エントリ**が入っている。
+骨組みの「直近7日 / 前7日 / 変化」列は機械が同じ式で毎日出すので、レポートの
+日次テーブルを目視で追うより判断がぶれない。**トレンドの一次情報はこちらを使い、
+レポートの日次テーブルは裏取りに使う。**
+
+過去の週を辿る必要があるときだけ、索引から該当する `reports/journal/YYYY-Wxx.md` を開く。
 
 さらに、週次目標の宣言値を読み込む（`config/targets.yaml` の `review: weekly`）:
 
@@ -108,8 +136,16 @@ uv run python scripts/show_targets.py --interval weekly
 
 ### レビュー観点
 
+#### 継続性（Journal）
+- 骨組みの「変化」列で、直近7日が前7日から動いた指標を拾う。ここが一次情報
+- 前回までのエントリと突き合わせ、**同じ指摘が何日続いているか**を見る。
+  初出なら「今日始まった」、continuing なら「N日連続」と書き分ける
+- 前回の Action Plan があれば達成状況に触れる。触れずに新しい助言だけ足さない
+- 索引に空白期間がある場合、その間はレビューが回っていない。データはあるので
+  「記録が無い」と「起きていない」を混同しない
+
 #### フィットネス（Body）
-- 体組成: 体重・筋肉量・体脂肪率のトレンド、FFMI目標（21.0）への進捗
+- 体組成: 体重・筋肉量・体脂肪率のトレンド、FFMI の進捗（目標値は `show_targets.py` の出力を見る。スキル本文に数値を書かない）
 - カロリー収支とタンパク質摂取量（体重×2g推奨）
 - 筋トレ: 実施頻度・時間・強度（HR）の傾向
 - サイクリング: 距離・時間・強度の傾向、Z2/Z3-4/Z5 ゾーン分布
@@ -144,6 +180,13 @@ uv run python scripts/show_targets.py --interval weekly
 - コメント欄の自覚症状・特記事項を数値と突き合わせる
 - 「記録運用が停止している可能性」警告が出た指標は、その旨を指摘する（古い定義による誤検知の可能性も含めて言及）
 
+#### 気分記録（Emotion）
+`emotion.py show` の出力。`mind_score`（1日1点・就寝前）と違い日内に複数点ある。
+- **主指標は陽性感情の頻度と最終出現**。陰性の量ではない（`config/emotion_def.yaml` が語彙を陽性7・陰性4に寄せているのはこのため）。「陽性がN日途切れている」は書く価値がある
+- **日内の変化は事実だけ返す**。抑うつ状態では1日の中の改善が記憶に残らないので、差を出すこと自体が目的。「改善しています」等の解釈・助言を付けない
+- **記録の無い日を不調と読まない**。断続的な記録で運用は成立している。被覆率を上げる助言をしない
+- 語の出現回数は n 不足のため当面は参考値。1〜2件の差から傾向を語らない
+
 ### 出力形式
 
 以下の形式で日本語で報告する。
@@ -153,6 +196,10 @@ uv run python scripts/show_targets.py --interval weekly
 
 ### 総合コンディション
 全体的な状態を一言で（例: 良好 / 注意 / 要改善）
+
+### 前回からの変化
+骨組みの「変化」列で動いた指標と、前回エントリからの継続/新規を1-3行。
+前回が数日前なら、その間隔も書く
 
 ### Body（体組成）
 - 現状サマリー
@@ -173,4 +220,8 @@ uv run python scripts/show_targets.py --interval weekly
 具体的なアクション（2-3個）
 ```
 
-レビュー後、ディスカッションを経て記録を残す場合は `/journal` を使用する。
+## Step 4: ジャーナルへ記録（確認不要）
+
+`journal` スキルの daily モードで、当日エントリの `review:` 区間・当週の Weekly Summary・索引を更新する。**「記録しますか?」と聞かず、レビューを出したらそのまま書く。**
+
+その後の会話で深掘りした内容は Discussion に追記する（区間外なので上書きされない）。

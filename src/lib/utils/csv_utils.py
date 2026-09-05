@@ -56,9 +56,24 @@ def merge_csv(df_new: pd.DataFrame, csv_path: Path, index_col: str) -> pd.DataFr
 def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
                          key_columns: list[str],
                          parse_dates: list[str] | None = None,
-                         sort_by: list[str] | None = None) -> pd.DataFrame:
+                         sort_by: list[str] | None = None,
+                         preserve_existing_on_nan: bool = False) -> pd.DataFrame:
     """
     既存CSVとマージ（複数列で重複判定）
+
+    既定（preserve_existing_on_nan=False）は行単位の置換: キーが重なった行は
+    df_new の行でまるごと上書きする（従来通りの挙動、全呼び出し元の後方互換）。
+
+    preserve_existing_on_nan=True にすると `merge_csv`（index版）と同じセル単位
+    のマージに切り替わる。df_new を優先しつつ、df_new でNaN、または列ごと
+    存在しないセルは df_old の値で埋める。combine_first ではなく object dtype
+    経由の reindex + where でマージする（`merge_csv` と同じ理由: combine_first は
+    union index への reindex 過程で int64 列を float64 に昇格させ、19桁の logId
+    のような大きな整数が丸められて壊れる）。
+
+    代償: 有効にした経路では既存値を NaN へ戻せなくなる（新データの NaN が
+    既存値で埋まるため）。Google Forms の回答のように実質追記のみのデータ
+    源では問題にならないが、値を意図的に空へ更新したい経路では使わないこと。
 
     Args:
         df_new: 新しいデータ
@@ -66,6 +81,8 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         key_columns: 重複判定に使う列名リスト
         parse_dates: 日付としてパースする列名リスト
         sort_by: ソートに使う列名リスト
+        preserve_existing_on_nan: True でセル単位マージ（opt-in）。既定 False は
+            従来通りの行単位置換
 
     Returns:
         マージ済みDataFrame（重複は新しいデータを優先）
@@ -84,13 +101,44 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
             if col in df_new_copy.columns:
                 df_new_copy[col] = pd.to_datetime(df_new_copy[col])
 
-    df_merged = pd.concat([df_old, df_new_copy])
-    df_merged = df_merged.drop_duplicates(subset=key_columns, keep='last')
+    if preserve_existing_on_nan:
+        df_merged = _merge_by_columns_preserve_existing(df_old, df_new_copy, key_columns)
+    else:
+        df_merged = pd.concat([df_old, df_new_copy])
+        df_merged = df_merged.drop_duplicates(subset=key_columns, keep='last')
 
     if sort_by:
         df_merged.sort_values(sort_by, inplace=True)
 
     return df_merged
+
+
+def _merge_by_columns_preserve_existing(df_old: pd.DataFrame, df_new: pd.DataFrame,
+                                        key_columns: list[str]) -> pd.DataFrame:
+    """merge_csv_by_columns の preserve_existing_on_nan=True 用セル単位マージ
+
+    key_columns を index にした上で merge_csv と同じ astype(object) ->
+    reindex -> where の手順を適用し、最後に reset_index で列順を戻す。
+    """
+    old_indexed = df_old.set_index(key_columns)
+    new_indexed = df_new.set_index(key_columns)
+
+    # reindex は重複indexがあると例外になるため先に排除する
+    old_indexed = old_indexed[~old_indexed.index.duplicated(keep='last')]
+    new_indexed = new_indexed[~new_indexed.index.duplicated(keep='last')]
+
+    all_index = new_indexed.index.union(old_indexed.index)
+    columns = (list(old_indexed.columns)
+               + [c for c in new_indexed.columns if c not in old_indexed.columns])
+
+    # astype(object) を reindex より先に行う。順序を逆にすると欠損補完の過程で
+    # int64 が float64 に昇格し、19桁の logId 等が丸められる
+    old_aligned = old_indexed.astype(object).reindex(index=all_index, columns=columns)
+    new_aligned = new_indexed.astype(object).reindex(index=all_index, columns=columns)
+
+    df_merged = new_aligned.where(new_aligned.notna(), old_aligned)
+
+    return df_merged.reset_index()
 
 
 def replace_csv_period(df_new: pd.DataFrame, csv_path: Path, date_column: str,

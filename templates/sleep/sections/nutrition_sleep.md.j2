@@ -1,13 +1,9 @@
 {% if nutrition %}
 ## 🍽️ 食事分析
 
-栄養データの翌日の睡眠心拍数データを表示しています。
-
 | 日付 | Carbs(g) | Fiber(g) | GL | 深い(分) | 効率(%) | 最低HR | 最低HR時刻 | Dip(%) |
 |------|----------|----------|-----|----------|---------|--------|------------|--------|
 {% for row in nutrition.table -%}
 | {{ row.date }} | {{ row.carbs }} | {{ row.fiber }} | {{ row.predicted_gl }}({{ row.gl_category }}) | {{ row.deep_minutes }} | {{ row.efficiency }} | {{ row.min_hr }} | {{ row.min_hr_time }} | {{ row.dip_rate }} |
 {% endfor %}
-
-**GL（グリセミック負荷）**: 低 (< 10)、中 (10-20)、高 (> 20)
 {% endif %}

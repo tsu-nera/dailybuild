@@ -71,88 +71,6 @@ def load_core_temperature(csv_path, target_start, target_end):
     })
 
 
-def plot_hrv_chart(responsiveness_data, save_path):
-    """
-    HRV推移グラフを生成
-
-    Args:
-        responsiveness_data: 反応性の日別データリスト
-        save_path: 保存パス
-    """
-    if not responsiveness_data:
-        return
-
-    dates = [d['date'] for d in responsiveness_data]
-    date_labels = [pd.to_datetime(d).strftime('%m-%d') for d in dates]
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-
-    # HRV
-    hrv_values = [d.get('hrv_daily') if d.get('hrv_daily') is not None else np.nan for d in responsiveness_data]
-    if any(not np.isnan(v) for v in hrv_values):
-        ax.plot(range(len(dates)), hrv_values, 'o-', color='#3498DB',
-                label='HRV (RMSSD)', linewidth=2, markersize=6)
-
-    ax.set_ylabel('RMSSD (ms)')
-    ax.set_xticks(range(len(dates)))
-    ax.set_xticklabels(date_labels, rotation=45)
-    ax.set_title('HRV Trend')
-    ax.grid(axis='y', alpha=0.3)
-    ax.legend(loc='upper left')
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
-
-
-def plot_hrv_rhr_chart(responsiveness_data, save_path):
-    """
-    HRV vs 心拍数の二軸グラフを生成
-
-    Args:
-        responsiveness_data: 反応性の日別データリスト
-        save_path: 保存パス
-    """
-    if not responsiveness_data:
-        return
-
-    dates = [d['date'] for d in responsiveness_data]
-    date_labels = [pd.to_datetime(d).strftime('%m-%d') for d in dates]
-
-    fig, ax1 = plt.subplots(figsize=(10, 5))
-
-    # HRV (左軸)
-    hrv_values = [d.get('hrv_daily') if d.get('hrv_daily') is not None else np.nan for d in responsiveness_data]
-    if any(not np.isnan(v) for v in hrv_values):
-        ax1.plot(range(len(dates)), hrv_values, 'o-', color='#3498DB',
-                 label='HRV (RMSSD)', linewidth=2, markersize=6)
-    ax1.set_ylabel('RMSSD (ms)', color='#3498DB')
-    ax1.tick_params(axis='y', labelcolor='#3498DB')
-
-    # RHR (右軸)
-    ax2 = ax1.twinx()
-    rhr_values = [d.get('rhr') if d.get('rhr') is not None else np.nan for d in responsiveness_data]
-    if any(not np.isnan(v) for v in rhr_values):
-        ax2.plot(range(len(dates)), rhr_values, 's-', color='#E74C3C',
-                 label='RHR', linewidth=2, markersize=6)
-    ax2.set_ylabel('RHR (bpm)', color='#E74C3C')
-    ax2.tick_params(axis='y', labelcolor='#E74C3C')
-
-    ax1.set_xticks(range(len(dates)))
-    ax1.set_xticklabels(date_labels, rotation=45)
-    ax1.set_title('HRV vs Resting Heart Rate')
-    ax1.grid(axis='y', alpha=0.3)
-
-    # 凡例を統合
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=150, bbox_inches='tight')
-    plt.close()
-
-
 TEMP_DEV_THRESHOLD = 0.5
 RHR_DEV_THRESHOLD = 3.0
 SUSTAINED_DAYS = 2
@@ -313,8 +231,6 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
 
         # チャート
         'charts': {
-            'hrv_rhr': 'img/hrv_rhr.png',
-            'hrv': 'img/hrv.png',
             'comprehensive_trend': 'img/comprehensive_trend.png',
         }
     }
@@ -322,7 +238,7 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
     return context
 
 
-def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None):
+def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None, show_charts=True):
     """
     マークダウンレポートを生成（Jinja2テンプレート版）
 
@@ -339,6 +255,7 @@ def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sl
 
     # コンテキストデータ準備
     context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=hr_zone_meta)
+    context['show_charts'] = show_charts
 
     # テンプレートレンダリング
     renderer = MindReportRenderer()
@@ -486,8 +403,10 @@ def main():
         print(f'皮膚温データ: {len(data["temperature_skin"])}日分')
 
     # 出力ディレクトリ（既に設定済み）
+    ensure_dir(output_dir)
     img_dir = output_dir / 'img'
-    ensure_dir(img_dir)
+    if not args.no_charts:
+        ensure_dir(img_dir)
 
     # 3. ベースライン計算
     print()
@@ -602,23 +521,23 @@ def main():
     period_str = f'{target_start.strftime("%Y-%m-%d")} 〜 {target_end.strftime("%Y-%m-%d")}'
 
     # グラフ生成
-    print()
-    print('グラフ生成中...')
-    plot_hrv_chart(responsiveness_daily, img_dir / 'hrv.png')
-    plot_hrv_rhr_chart(responsiveness_daily, img_dir / 'hrv_rhr.png')
-    plot_comprehensive_trend(responsiveness_daily, sleep_patterns_daily, img_dir / 'comprehensive_trend.png')
+    if not args.no_charts:
+        print()
+        print('グラフ生成中...')
+        plot_comprehensive_trend(responsiveness_daily, sleep_patterns_daily, img_dir / 'comprehensive_trend.png')
 
     # レポート生成
     print()
     print('レポート生成中...')
-    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta)
+    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta, show_charts=not args.no_charts)
 
     print()
     print('='*60)
     print('レポート生成完了!')
     print('='*60)
     print(f'レポート: {output_dir / "REPORT.md"}')
-    print(f'画像: {img_dir}/')
+    if not args.no_charts:
+        print(f'画像: {img_dir}/')
 
     return 0
 

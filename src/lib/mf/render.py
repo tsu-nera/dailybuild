@@ -52,6 +52,21 @@ def format_yen(amount) -> str:
     return f"¥{int(round(amount)):,}"
 
 
+def format_delta(diff) -> str:
+    """増減額を +¥1,234 / -¥1,234 形式に。基準が無いときは '-'"""
+    if pd.isna(diff):
+        return '-'
+    sign = '+' if diff >= 0 else '-'
+    return f"{sign}¥{abs(int(round(diff))):,}"
+
+
+def format_delta_pct(current, previous) -> str:
+    """増減率。前期が 0 のときは率が定義できないので '-'"""
+    if pd.isna(previous) or previous == 0:
+        return '-'
+    return f"{(current - previous) / previous * 100:+.1f}%"
+
+
 def add_bucket(df: pd.DataFrame, unit: str) -> pd.DataFrame:
     """集計単位の列 bucket を付与する"""
     df = df.copy()
@@ -74,61 +89,172 @@ def expenses(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def render_balance(df: pd.DataFrame, unit: str) -> str:
-    """集計単位ごとの収入・支出・収支（月次では貯蓄率も）"""
+def render_balance(df: pd.DataFrame, unit: str,
+                   excluded: list[str] = None, focus_label: str = '支出') -> str:
+    """集計単位ごとの収入・支出・収支と、支出の前期比。
+
+    excluded を渡すと支出を「対象」と「除外」に割る。除外ぶんを黙って落とすと
+    収入は満額のまま支出だけ減り、収支が嘘になるため、必ず両方を列に残す。
+    前期比は着目している側（除外後）に付ける。
+    """
+    df = df.copy()
+    df['excluded'] = df[COL_CATEGORY].isin(excluded or [])
+
     grouped = df.groupby('bucket').agg(
         income=(COL_AMOUNT, lambda s: s[s > 0].sum()),
         expense=(COL_AMOUNT, lambda s: -s[s < 0].sum()),
     )
+    off = (df[df['excluded'] & (df[COL_AMOUNT] < 0)]
+           .groupby('bucket')[COL_AMOUNT].sum().mul(-1)
+           .reindex(grouped.index).fillna(0))
+    focus = grouped['expense'] - off
+
     balance = grouped['income'] - grouped['expense']
+    prev = focus.shift(1)
+    single = len(grouped) == 1
 
-    out = pd.DataFrame({
-        '収入': grouped['income'].map(format_yen),
-        '支出': grouped['expense'].map(format_yen),
-        '収支': balance.map(format_yen),
-    }, index=grouped.index)
+    columns = {'収入': grouped['income'].map(format_yen)}
+    if excluded:
+        columns[focus_label] = focus.map(format_yen)
+        columns['除外'] = off.map(format_yen)
+        columns['支出計'] = grouped['expense'].map(format_yen)
+    else:
+        columns['支出'] = grouped['expense'].map(format_yen)
+    columns['収支'] = balance.map(format_yen)
+    columns[f'{focus_label}Δ'] = (focus - prev).map(format_delta)
+    columns['Δ%'] = [format_delta_pct(c, p) for c, p in zip(focus, prev)]
 
-    # 収入は月1回まとめて入るのに支出は毎日出るため、週次・日次の貯蓄率は
-    # -60000% のような無意味な値になる。収入の周期以上の単位でだけ出す
-    if unit in ('year', 'month'):
-        rate = (balance / grouped['income'] * 100).where(grouped['income'] > 0)
-        out['貯蓄率'] = rate.map(lambda v: '-' if pd.isna(v) else f"{v:.1f}%")
+    out = pd.DataFrame(columns)
+
+    # 合計と平均。増減列は行をまたいだ意味を持たないので空にする。
+    # bucket が1つのときは本体行の写しにしかならないので出さない
+    def summary(agg) -> list[str]:
+        row = [format_yen(agg(grouped['income']))]
+        if excluded:
+            row += [format_yen(agg(focus)), format_yen(agg(off)),
+                    format_yen(agg(grouped['expense']))]
+        else:
+            row.append(format_yen(agg(grouped['expense'])))
+        return row + [format_yen(agg(balance)), '', '']
+
+    if not single:
+        out.loc['合計'] = summary(lambda s: s.sum())
+        out.loc[f'平均/{bucket_label(unit)}'] = summary(lambda s: s.mean())
+    else:
+        out = out.drop(columns=[f'{focus_label}Δ', 'Δ%'])
 
     out.index.name = bucket_label(unit)
     return out.to_markdown()
 
 
+def previous_bucket(df: pd.DataFrame, cur_bucket: str) -> str | None:
+    """cur_bucket の1つ前の bucket。表示期間の外にあっても拾う。
+
+    既定の表示が当月だけなので、期間内だけを見ると比較対象が常に存在しない。
+    """
+    prior = sorted(b for b in df['bucket'].unique() if b < cur_bucket)
+    return prior[-1] if prior else None
+
+
+def render_period_change(df: pd.DataFrame, prev_b: str, cur_b: str,
+                         top: int = 5) -> str:
+    """2つの bucket を中項目で突き合わせ、増えた/減った順に並べる。
+    差が全く無ければ空文字を返す（呼び出し側が節ごと落とす）"""
+    key = [COL_CATEGORY, COL_SUBCATEGORY]
+    df = fill_keys(df, key)
+    cur = df[df['bucket'] == cur_b].groupby(key)[COL_AMOUNT].sum()
+    prev = df[df['bucket'] == prev_b].groupby(key)[COL_AMOUNT].sum()
+
+    merged = pd.concat([prev.rename('prev'), cur.rename('cur')], axis=1).fillna(0)
+    merged['diff'] = merged['cur'] - merged['prev']
+    merged = merged.sort_values('diff', ascending=False)
+
+    # 増加の上位と減少の上位。中間（変化の小さい項目）は落とす
+    picked = pd.concat([merged.head(top), merged.tail(top)])
+    picked = picked[~picked.index.duplicated()]
+    picked = picked[picked['diff'] != 0]
+    if picked.empty:
+        return ''
+
+    out = pd.DataFrame({
+        f'{prev_b}': picked['prev'].map(format_yen),
+        f'{cur_b}': picked['cur'].map(format_yen),
+        'Δ': picked['diff'].map(format_delta),
+        'Δ%': [format_delta_pct(c, p) for c, p in zip(picked['cur'], picked['prev'])],
+    })
+    out.index = [truncate(' > '.join(map(str, k))) for k in picked.index]
+    out.index.name = '中項目'
+    return out.to_markdown()
+
+
 def render_category_matrix(df: pd.DataFrame, unit: str) -> str:
-    """bucket × 大項目 のクロス集計（支出）"""
+    """大項目 × bucket のクロス集計（支出）。
+
+    カテゴリを行に置く。列に置くとカテゴリ名（全角4-6文字）が列幅を決めてしまい、
+    18カテゴリある年次では端末で折り返して読めなくなる。
+    """
     pivot = df.pivot_table(
-        index='bucket', columns=COL_CATEGORY,
+        index=COL_CATEGORY, columns='bucket',
         values=COL_AMOUNT, aggfunc='sum',
     )
-    # 合計の多いカテゴリを左に
-    order = pivot.sum().sort_values(ascending=False).index
-    pivot = pivot[order]
-    pivot.index.name = bucket_label(unit)
+    # 合計の多いカテゴリを上に
+    pivot = pivot.loc[pivot.sum(axis=1).sort_values(ascending=False).index]
+
+    if len(pivot.columns) > 1:
+        pivot['合計'] = pivot.sum(axis=1)
+    pivot.loc['合計'] = pivot.sum()
+
+    pivot.index.name = f'カテゴリ \\ {bucket_label(unit)}'
     return pivot.map(format_yen).fillna('-').to_markdown()
 
 
+# 内容（店舗名）は現金支出などで空になる。groupby は NaN のキーを黙って落とし、
+# 集計から金額ごと消える（直近3ヶ月で12件 ¥398,360、全期間 1786件）ので埋める
+MISSING_KEY = '（記載なし）'
+
+
+def fill_keys(df: pd.DataFrame, by) -> pd.DataFrame:
+    """groupby のキー列の NaN を埋める。欠測を行ごと落とさないため"""
+    cols = by if isinstance(by, list) else [by]
+    out = df.copy()
+    for col in cols:
+        out[col] = out[col].fillna(MISSING_KEY)
+    return out
+
+
 def render_totals(df: pd.DataFrame, by, index_name: str, top: int = None) -> str:
-    """期間全体の合計と構成比（支出）。by は列名または列名のリスト"""
+    """期間全体の合計と構成比（支出）。by は列名または列名のリスト。
+    top で切ったぶんは「他N件」に畳んで残す（構成比が 100% に閉じるように）"""
+    df = fill_keys(df, by)
     grouped = df.groupby(by)[COL_AMOUNT].sum().sort_values(ascending=False)
-    total = grouped.sum()
     counts = df.groupby(by).size()
+    total = grouped.sum()
 
-    if top is not None:
-        grouped = grouped.head(top)
-
-    out = pd.DataFrame({
-        '合計': grouped.map(format_yen),
-        '構成比': (grouped / total * 100).map('{:.1f}%'.format) if total > 0 else '-',
-        '件数': counts.reindex(grouped.index),
-    }, index=grouped.index)
+    shown = grouped.head(top) if top is not None else grouped
+    rest = grouped.iloc[len(shown):]
 
     if isinstance(by, list):
-        out.index = [' > '.join(map(str, k)) for k in out.index]
-    out.index = [truncate(v) for v in out.index]
+        labels = [' > '.join(map(str, k)) for k in shown.index]
+    else:
+        labels = [str(k) for k in shown.index]
+    labels = [truncate(v) for v in labels]
+    amounts = list(shown.values)
+    sizes = [int(v) for v in counts.reindex(shown.index).values]
+
+    if len(rest) > 0:
+        labels.append(f'（他 {len(rest)}件）')
+        amounts.append(rest.sum())
+        sizes.append(int(counts.reindex(rest.index).sum()))
+
+    labels.append('合計')
+    amounts.append(total)
+    sizes.append(int(counts.sum()))
+
+    out = pd.DataFrame({
+        '金額': [format_yen(a) for a in amounts],
+        '構成比': [f'{a / total * 100:.1f}%' if total > 0 else '-' for a in amounts],
+        '件数': sizes,
+    }, index=labels)
     out.index.name = index_name
     return out.to_markdown()
 
