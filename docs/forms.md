@@ -1,4 +1,4 @@
-# 気分記録・排便記録・PHQ-9（Google Forms）
+# 気分記録・排便記録・PHQ-9・日次記録（Google Forms）
 
 ## 気分記録
 
@@ -214,3 +214,38 @@ questionId は一度削除すると復元できないため、`--allow-kind-repl
   同じ扱い）
 - レポート・可視化への反映、`mind_score` との統合はスコープ外（Issue #100）。
   データが数点しか無いうちは意味がない
+
+## 日次記録
+
+`data/manual.csv`（Google Sheets 手動入力）の一次入力5列（`mind_score` /
+`body_score` / `sleep_score` / `comment`、`head_score` は新規）を Google Form
+「日次記録」へ移した（Issue #33 / #135 / #136 / #137）。転記型4列
+（`hrv_morning` / `fitbit_*` / `rise_sleep_dept` / `muse_paf`）は移行せず、
+`manual.csv` にアーカイブとして凍結してある。主キーは `date`（回答日）で、
+気分記録の `timestamp` とは構成概念が違うため統合していない（背景は #33）。
+
+- **グリッド行の中間挿入で questionId の FIFO 付け替えが実際に起きた**
+  （2026-09-05）。気分記録・PHQ-9 と同じ「同型が並ぶ item は出現順対応」の
+  制約が `mind/body/head/sleep` の4行グリッドにもそのまま効く。このときは
+  回答が0件だったため実害は無かったが、以後 `grid_rows` の並びは変えず、
+  行を足すなら必ず**末尾に追加**する
+- **グリッド行構成（版）の記録位置が気分記録と違う。** 気分記録・PHQ-9 の
+  版記録は `setup-form` 側（`update_vocab_history` 呼び出し）にあるが、
+  日次記録は `cmd_fetch`（`scripts/daily_summary.py`）の中で
+  `_grid_row_titles(form)` を取って記録している。フォーム定義を触るときは
+  この違いを踏まえて版履歴（`data/daily_summary_grid_history.csv`）の
+  更新箇所を探すこと
+- **訂正は同じ日に再送信する。** 同一 `date` の複数回答は `updated_at`
+  （API の `lastSubmittedTime`）の大小で最後を採る。**API の返却順は
+  時刻順とは限らない**（実測で逆順が返ったことがある）ため、
+  `list_responses()` の返却順をそのまま採用せず必ず `updated_at` でソートする
+  （`build_dataframe()` が `sort_values('updated_at')` してから
+  `drop_duplicates(keep='last')` している）
+- **`fetch` のマージは行ごと置換。** セル単位マージ
+  （`preserve_existing_on_nan=True`）にすると、`comment` を空で送った回答が
+  来たときに旧行の `comment` が残り、`source=form` の行なのに `comment` だけ
+  `sheet` 由来という壊れた行ができる。気分記録・排便記録・PHQ-9 とは逆に、
+  ここは既定の行ごと置換（`preserve_existing_on_nan=False`）のまま使う
+- `source` 列で `sheet`（移行分）/ `form`（Form 回答分）を明示的に持つ。
+  移行分は `updated_at` が空、`head_score` が全欠測（`manual.csv` に頭の記録
+  が無かったため）になる

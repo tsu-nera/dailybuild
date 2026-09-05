@@ -100,10 +100,11 @@ uv run python scripts/generate_mind_report_daily.py --days 14 --no-charts
 - `tmp/sleep_report/REPORT.md`（sleep または指定なし）
 - `tmp/mind_report/REPORT.md`（mind または指定なし）
 
-加えて、手動記録データの直近7日分を読み込む（`--no-fetch` の場合も含む）:
+加えて、日次記録（気分・身体・頭・睡眠の主観スコアとコメント）の直近7日分を
+読み込む（`--no-fetch` の場合も含む）:
 
 ```bash
-uv run python scripts/show_manual.py --days 7
+uv run scripts/daily_summary.py show --days 7
 uv run scripts/emotion.py show --days 7
 ```
 
@@ -132,13 +133,6 @@ uv run python scripts/show_targets.py --interval weekly
 
 このスクリプトは目標値・方向（up/down/zero）の一覧を返すだけで、現在値や残差は算出しない。
 **現在値はレポートから読み取って自分で評価すること**（Zone2の残り分、睡眠負債の現在値など）。
-
-このスクリプトは `config/manual_metrics_def.yaml` を参照し、
-- active=true な指標のみ表示（unit付きヘッダ）
-- 全NaN列は自動非表示
-- 主観・参考スコア表とコメント時系列を分離
-- 「## 指標の説明」に active 指標の unit と解釈方針（yaml の description）を列挙
-- active なのに記録なしの指標は警告表示
 
 ### 当日データの扱い
 
@@ -189,13 +183,12 @@ uv run python scripts/show_targets.py --interval weekly
 - 例: Zone2が週150min目標に対してbody/workoutレポートのfatBurn週合計と比較してあと何分か、睡眠負債がsleepレポートの現在値で目標0hからどれだけ離れているか
 - 未達の目標があれば「今日のアドバイス」に残り日数で達成可能なアクションを盛り込む
 
-#### 手動記録（Manual）
-対象指標と各指標の解釈方針は `show_manual.py` 出力の「## 指標の説明」を**単一の真実として参照**する（スキル側に指標名を列挙しない。指標の追加・改名・廃止は `config/manual_metrics_def.yaml` の編集だけで自動追従する）。その上で:
-- 表示された各指標のトレンドを確認し、説明に書かれた解釈方針（高=良好か、客観指標との乖離の見方など）に従って評価する
+#### 日次記録（Daily Summary）
+対象は `daily_summary.py show` が出す気分・身体・頭・睡眠の4指標（1-5、高=良好）とコメント。すべて高=良好の向きに揃えてあるので、指標ごとの解釈方針を別途参照する必要はない。
+- 各指標のトレンドを確認する。`head_score`（頭の軽さ）は移行分が全欠測なので、直近の実測値が出てくるまでは他の3指標より短い期間しか評価できない
 - 主観スコアと客観指標（HRV・睡眠等）の一致・乖離を指摘する（例: HRV低下なのに主観スコアが高い）
 - **原則**: HRV/RHRは自律神経回復のみを測る計器。末梢・構造疲労、エネルギー利用能、睡眠*時間*不足は原理的に映らない。乖離時はまず各指標が測る構成概念を切り分け、身体疲労は主観を主計器とする
 - コメント欄の自覚症状・特記事項を数値と突き合わせる
-- 「記録運用が停止している可能性」警告が出た指標は、その旨を指摘する（古い定義による誤検知の可能性も含めて言及）
 
 #### 気分記録（Emotion）
 `emotion.py show` の出力。`mind_score`（1日1点・就寝前）と違い日内に複数点ある。
