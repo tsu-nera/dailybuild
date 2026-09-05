@@ -1,5 +1,48 @@
 # Google Health（カフェイン・栄養・安静時心拍数・SpO2・体重・体脂肪率・運動・intraday）
 
+## 活動量（activity）
+
+`data/fitbit/activity.csv` は Issue #50 の型別方針で **(b) 全再取得**（Google に統一）を選んだ
+（#50 の型別リストに `activity` が抜けていたのを埋めた形）。2025-11-27〜2026-09-05 の全 283 日を
+Google で取り直した（#120）。正典コマンド:
+
+```
+uv run python scripts/fetch_googlehealth.py --endpoint activity \
+    --start-date 2025-11-27 --end-date 2026-09-05 --allow-history-rewrite
+```
+
+- **再取得には `--allow-history-rewrite` が要る**（`HISTORY_BOUNDARY = 2026-06-01`）
+- `fetch_activity` は steps / distance / active-minutes / total-calories の4型を1エンドポイントで
+  まとめて叩く実装で、そもそも列単位では分離できない。`steps` / `distance` / `*ActiveMinutes` も
+  `caloriesOut` と同時に取り直した
+- **段差は `caloriesOut` だけだった。** 再取得前に想定していた steps / distance /
+  `*ActiveMinutes` の折れ目は無かった（2026-08-25 より前の旧 Fitbit 期間、部分日行36行を
+  除いた201日で比較）:
+
+  | 列 | Δ（Google − Fitbit）中央値 | 備考 |
+  |---|---|---|
+  | caloriesOut | -93.5 kcal | 201日中196日でGoogleが低い。系統差 |
+  | steps | -24 | 平均+63.7。中央値は小さく系統差ではない |
+  | distance | 0.000 | 非0の日122/201だが中央値0 |
+  | lightlyActiveMinutes | 0 | 非0の日155/201、中央値0 |
+  | fairlyActiveMinutes | 0 | 非0の日**1**/201 |
+  | veryActiveMinutes | 0 | 非0の日**1**/201 |
+
+- **由来は端数の有無で判別できる。** Google は `total-calories` の `kcalSum`（float）を
+  そのまま入れ、Fitbit は整数を返す。再取得後は `caloriesOut` の全283行が端数あり
+  （= 全て Google 由来）
+- 段差が生まれた仕組み: `daily-routine.sh` は Fitbit → Google の順に同じ CSV を書くので、
+  取得窓（`--days`）に入った直近日は必ず Google が後勝ちし、窓から外れた過去は Fitbit 値の
+  まま凍結される。この境界が毎日1日ずつ前進していた（折れ目 2026-08-25）
+- `activityCalories` / `sedentaryMinutes` は Google に対応型が無い（#82）が、**再取得しても
+  過去の Fitbit 値は消えない**（`merge_csv` のセル単位マージ。実測でも変更0行）。非空の
+  最終日は 2026-09-03。列は履歴保持のため残し、レポートは `active_minutes`（light/fairly/very
+  の合成）を使う
+- 副次的に部分日行（#70、`caloriesOut` が極端に低い行）が36行→1行（当日のみ）に解消された。
+  ただし**当日の行が部分日になる構造そのものは変わっていない**ので #70 は閉じない
+- `sedentary-period` は叩かない（Google の定義が Fitbit の `sedentaryMinutes` と違う。詳細は
+  `fetch_activity` の docstring）
+
 ## 運動（exercise）
 
 `fetch_googlehealth.py` の `exercise` エンドポイントで
