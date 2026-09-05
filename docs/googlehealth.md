@@ -1,4 +1,4 @@
-# Google Health（カフェイン・栄養・安静時心拍数・SpO2・体重・体脂肪率・運動・intraday）
+# Google Health（活動量・カフェイン・栄養・安静時心拍数・SpO2・体重・体脂肪率・運動・intraday）
 
 ## 活動量（activity）
 
