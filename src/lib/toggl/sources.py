@@ -12,11 +12,11 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from lib import exercise_source
 from lib.toggl.push import Interval
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 SLEEP_CSV_FILE = BASE_DIR / 'data' / 'fitbit' / 'sleep.csv'
-EXERCISE_CSV_FILE = BASE_DIR / 'data' / 'googlehealth' / 'exercise.csv'
 
 
 def fitbit_sleep_intervals(
@@ -70,77 +70,44 @@ def _resolve_categories(config: dict) -> dict[str, dict]:
     return mapping
 
 
-def _dedup_by_platform(rows: list[dict], priority: list[str],
-                       threshold_sec: int) -> list[dict]:
-    """時間が重なるセッションを platform の優先順で1本に畳む
-
-    同じ運動が Fitbit（Charge 6）と Health Connect（Google Fit / Hevy）の
-    両方から別セッションとして届く。素通しすると Toggl に同じ運動が
-    2本入るため、重なったら優先度の高い platform 側だけを残す。
-    優先度は「重なりの解決」にのみ使う。重なっていないものは platform に
-    関係なく残す（Fitbit を外したときに Health Connect 側で穴が埋まる）。
-    """
-    def rank(row):
-        platform = row.get('platform')
-        return priority.index(platform) if platform in priority else len(priority)
-
-    # 優先度が高い順に採用し、既に採ったものと重なるセッションを落とす
-    kept: list[dict] = []
-    for row in sorted(rows, key=lambda r: (rank(r), r['start'])):
-        overlaps = any(
-            (min(row['stop'], k['stop']) - max(row['start'], k['start'])).total_seconds()
-            > threshold_sec
-            for k in kept
-        )
-        if not overlaps:
-            kept.append(row)
-    return sorted(kept, key=lambda r: r['start'])
-
-
 def googlehealth_exercise_intervals(
     since: dt.date, until: dt.date, config: dict, tz: ZoneInfo,
 ) -> list[Interval]:
     """data/googlehealth/exercise.csv から [since, until] のInterval列を作る
 
     yaml の categories に載っている exerciseType だけを投入する
-    （WALKING / RUNNING 等は対象外）。start/end は取得時に
-    +09:00 付きで書いてあるので tz の付与は不要。
+    （WALKING / RUNNING 等は対象外）。platform の重複解決は
+    exercise_source.load_sessions が行う（カテゴリ絞り込みより先。
+    push とレポートが同じ集合を見るようにするため）。
+    load_sessions はtz-naiveなJST壁時計時刻を返すので、Toggl投入用に
+    tz を明示付与する。
     """
     source_config = config.get('sources', {}).get('googlehealth_exercise', {})
     if not source_config.get('enabled', False):
         return []
 
-    if not EXERCISE_CSV_FILE.exists():
+    if not exercise_source.EXERCISE_CSV_FILE.exists():
         raise FileNotFoundError(
-            f"{EXERCISE_CSV_FILE} が存在しない。"
+            f"{exercise_source.EXERCISE_CSV_FILE} が存在しない。"
             "uv run scripts/fetch_googlehealth.py --endpoint exercise を先に実行すること"
         )
 
-    df = pd.read_csv(EXERCISE_CSV_FILE, dtype={'id': str})
-    if df.empty:
+    df = exercise_source.load_sessions(since, until)
+    if df is None:
         return []
 
     categories = _resolve_categories(source_config)
     df = df[df['exercise_type'].isin(categories)]
 
-    rows = []
-    for _, row in df.iterrows():
-        start = dt.datetime.fromisoformat(row['start'])
-        if not (since <= start.date() <= until):
-            continue
-        rows.append({
+    rows = [
+        {
             'id': str(row['id']),
-            'start': start,
-            'stop': dt.datetime.fromisoformat(row['end']),
-            'platform': row.get('platform'),
+            'start': row['start'].to_pydatetime().replace(tzinfo=tz),
+            'stop': row['end'].to_pydatetime().replace(tzinfo=tz),
             'category': categories[row['exercise_type']],
-        })
-
-    rows = _dedup_by_platform(
-        rows,
-        list(source_config.get('platform_priority') or []),
-        int(source_config.get('overlap_threshold_sec', 60)),
-    )
+        }
+        for _, row in df.iterrows()
+    ]
 
     return [
         Interval(

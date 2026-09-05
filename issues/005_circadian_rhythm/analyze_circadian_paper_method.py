@@ -333,7 +333,7 @@ def main():
     print(f"   睡眠: {len(sleep_df)}レコード")
 
     # activity_logsから運動時間を抽出
-    activity_periods = load_activity_periods('data/fitbit/activity_logs.csv')
+    activity_periods = load_activity_periods()
     print(f"\n📋 Activity Logs: {len(activity_periods)}件の運動記録")
 
     # 論文の条件を適用

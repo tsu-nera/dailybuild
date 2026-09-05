@@ -1,4 +1,37 @@
-# Google Health（カフェイン・栄養・安静時心拍数・SpO2・体重・体脂肪率）
+# Google Health（カフェイン・栄養・安静時心拍数・SpO2・体重・体脂肪率・運動）
+
+## 運動（exercise）
+
+`fetch_googlehealth.py` の `exercise` エンドポイントで
+`data/googlehealth/exercise.csv` に取り込む（#83）。Toggl push
+（`lib/toggl/sources.py`）とレポート3経路（body / mind / circadian）は
+`lib/exercise_source.py` を共通の入口として使う。
+
+- **同じ運動が platform 違いで二重に届く。** FITBIT（Charge 6）と
+  HEALTH_CONNECT（Google Fit 経由の Hevy 等）が、ほぼ同じ時間帯を別
+  セッションとして返す（2026年実測で74組）。時間が重なったら
+  `PLATFORM_PRIORITY = ('FITBIT', 'HEALTH_CONNECT')` の優先度が高い方だけを
+  残し、`OVERLAP_THRESHOLD_SEC = 60` 秒を超える重なりだけを同一セッション
+  とみなす。重なっていないセッションは platform に関係なく両方残す
+  （Fitbit を外したときに Health Connect 側で穴が埋まらないように）
+- **優先度・閾値は `exercise_source.py` のモジュール定数に固定してあり、
+  `config/toggl_push.yaml` からは読まない。** consumer（push / レポート）
+  ごとに yaml キーを持たせると、片方だけ設定がずれても誰も気づけないため
+- `data/fitbit/activity_logs.csv`（Fitbit Web API 由来、2025-12-03〜）とは
+  **統合しない。** id 空間が別物（Fitbit の logId と Google の dataPoint
+  id）、`activeZoneMinutes` の構造が別（dict の JSON 文字列 vs 数値）、
+  距離の単位系が別（Mile 混在 vs m）。Fitbit Web API 廃止（2026年9月）後
+  `activity_logs.csv` は更新が止まるが、削除はせず Fitbit 時代のアーカイブ
+  として凍結する。体組成・体重で Fitbit と Google を統合していない前例に
+  揃えた形（#48/#66 の駆け込み取得は不要。関連: `docs/googlehealth.md` の
+  「体重・体脂肪率」節）
+- `exercise.csv` は 2026-01-03〜。日次（最大 `--days N`）・週次インターバル
+  （最大8週）のレポート窓はこの開始日で覆える
+- マージキーは `caffeine` / `weight` / `body_fat` と同じく `id`（19桁の
+  整数。`dtype=str` 必須）
+- **`distance_m` はほぼ空。** 実測で埋まっているのは WALKING（175/175）だけで、
+  OUTDOOR_BIKE は 1/530、BIKING は 44/140、WEIGHTS・STRENGTH_TRAINING は
+  0/43・0/44。レポートはサイクリングの距離を出さない（docs/reports.md 参照）
 
 ## カフェイン摂取
 

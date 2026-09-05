@@ -3,19 +3,22 @@
 """
 アクティビティデータの分析ライブラリ
 
-個別のアクティビティログからEAT（運動活動熱産生）を計算する。
+exercise_source.load_sessions() が返す正規化済みセッションから
+EAT（運動活動熱産生）・サイクリング・筋トレの日別集計を計算する。
 """
 
 import pandas as pd
 
+from lib import exercise_source
 
-def calc_eat_stats_for_period(df_activity_logs):
+
+def calc_eat_stats_for_period(df_sessions):
     """
-    アクティビティログからEAT統計を計算
+    運動セッションからEAT統計を計算
 
     Args:
-        df_activity_logs: アクティビティログのDataFrame
-            必須カラム: startTime, calories, activityName
+        df_sessions: exercise_source.load_sessions() の戻り値
+            必須カラム: start, calories, display_name, duration_min
 
     Returns:
         dict: 日別EATデータとサマリー統計
@@ -27,12 +30,11 @@ def calc_eat_stats_for_period(df_activity_logs):
         }
         データがない場合はNone
     """
-    if df_activity_logs is None or df_activity_logs.empty:
+    if df_sessions is None or df_sessions.empty:
         return None
 
-    # startTimeから日付を抽出
-    df = df_activity_logs.copy()
-    df['date'] = pd.to_datetime(df['startTime']).dt.date
+    df = df_sessions.copy()
+    df['date'] = df['start'].dt.date
 
     # 日別にグループ化してEATを計算
     daily_data = []
@@ -41,9 +43,9 @@ def calc_eat_stats_for_period(df_activity_logs):
         activities = []
         for _, row in group.iterrows():
             activities.append({
-                'name': row['activityName'],
+                'name': row['display_name'],
                 'calories': row['calories'],
-                'duration_min': row['durationMinutes'],
+                'duration_min': row['duration_min'],
             })
 
         daily_data.append({
@@ -67,66 +69,63 @@ def calc_eat_stats_for_period(df_activity_logs):
     }
 
 
-def calc_cycling_stats_for_period(df_activity_logs):
-    """サイクリング日別集計（Bike/Outdoor Bike）
+def calc_cycling_stats_for_period(df_sessions):
+    """サイクリング日別集計（exercise_source.CYCLING_TYPES）
 
     Args:
-        df_activity_logs: アクティビティログのDataFrame
-            必須カラム: startTime, activityName, durationMinutes,
-                       distance, distanceUnit, calories, averageHeartRate
+        df_sessions: exercise_source.load_sessions() の戻り値
+            必須カラム: start, exercise_type, duration_min,
+                       calories, average_heart_rate
 
     Returns:
-        dict or None: {'daily': [{date, count, duration, distance_km,
-                                   avg_hr, calories}, ...],
-                       'total_distance_km': float, 'total_duration': int,
-                       'days': int}
+        dict or None: {'daily': [{date, count, duration, avg_hr, calories}, ...],
+                       'total_duration': int, 'days': int}
+
+    Notes
+    -----
+    距離は集計しない。Google Health の exercise セッションは距離を
+    ほとんど運ばない（実測で OUTDOOR_BIKE 1/530, BIKING 44/140）。
+    31%しか埋まっていない列を日別合計として出すと、欠測を0kmとして
+    計上するのと同じ沈黙故障になるため（docs/reports.md 参照）。
     """
     return _calc_sport_stats(
-        df_activity_logs,
-        names=['Bike', 'Outdoor Bike'],
-        with_distance=True,
+        df_sessions,
+        types=exercise_source.CYCLING_TYPES,
     )
 
 
-def calc_strength_stats_for_period(df_activity_logs):
-    """筋トレ日別集計（Weights/Strength training）
+def calc_strength_stats_for_period(df_sessions):
+    """筋トレ日別集計（exercise_source.STRENGTH_TYPES）
 
     Args:
-        df_activity_logs: アクティビティログのDataFrame
+        df_sessions: exercise_source.load_sessions() の戻り値
 
     Returns:
         dict or None: {'daily': [{date, count, duration, avg_hr, calories}, ...],
                        'total_duration': int, 'days': int}
     """
     return _calc_sport_stats(
-        df_activity_logs,
-        names=['Weights', 'Strength training'],
-        with_distance=False,
+        df_sessions,
+        types=exercise_source.STRENGTH_TYPES,
     )
 
 
-def _calc_sport_stats(df_activity_logs, names, with_distance):
-    """指定 activityName の日別集計を生成"""
-    if df_activity_logs is None or df_activity_logs.empty:
+def _calc_sport_stats(df_sessions, types):
+    """指定 exercise_type の日別集計を生成"""
+    if df_sessions is None or df_sessions.empty:
         return None
 
-    df = df_activity_logs[df_activity_logs['activityName'].isin(names)].copy()
+    df = df_sessions[df_sessions['exercise_type'].isin(types)].copy()
     if df.empty:
         return None
 
-    df['date'] = pd.to_datetime(df['startTime']).dt.date
-    if with_distance:
-        df['distance_km'] = df.apply(
-            lambda r: r['distance'] * 1.609344
-            if r.get('distanceUnit') == 'Mile' else r['distance'],
-            axis=1,
-        )
-    df['hr_x_dur'] = df['averageHeartRate'].fillna(0) * df['durationMinutes']
-    df['has_hr_dur'] = df['averageHeartRate'].notna() * df['durationMinutes']
+    df['date'] = df['start'].dt.date
+    df['hr_x_dur'] = df['average_heart_rate'].fillna(0) * df['duration_min']
+    df['has_hr_dur'] = df['average_heart_rate'].notna() * df['duration_min']
 
     daily = []
     for date, g in df.groupby('date'):
-        dur = int(g['durationMinutes'].sum())
+        dur = int(g['duration_min'].sum())
         cal = float(g['calories'].sum())
         hr_dur = g['has_hr_dur'].sum()
         avg_hr = float(g['hr_x_dur'].sum() / hr_dur) if hr_dur > 0 else None
@@ -137,20 +136,15 @@ def _calc_sport_stats(df_activity_logs, names, with_distance):
             'avg_hr': avg_hr,
             'calories': cal,
         }
-        if with_distance:
-            row['distance_km'] = float(g['distance_km'].sum())
         daily.append(row)
 
     daily.sort(key=lambda r: r['date'])
 
-    result = {
+    return {
         'daily': daily,
         'total_duration': sum(r['duration'] for r in daily),
         'days': len(daily),
     }
-    if with_distance:
-        result['total_distance_km'] = sum(r['distance_km'] for r in daily)
-    return result
 
 
 def merge_eat_to_daily(df_daily, eat_stats):

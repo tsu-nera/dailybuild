@@ -40,7 +40,6 @@ TEMPERATURE_SKIN_CSV = BASE_DIR / 'data/fitbit/temperature_skin.csv'
 ACTIVITY_CSV = BASE_DIR / 'data/fitbit/activity.csv'
 BLOOD_PRESSURE_CSV = BASE_DIR / 'data/healthplanet_bp.csv'
 CORE_TEMPERATURE_CSV = BASE_DIR / 'data/fitbit/temperature_core.csv'
-ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 
 
 
@@ -375,15 +374,6 @@ def main():
             SLEEP_LEVELS_CSV, target_start, target_end,
             baseline_window=0,
             date_column='dateOfSleep',
-            index_col=None
-        )
-
-    # アクティビティログ（startTime列、indexなし、ベースライン不要）
-    if ACTIVITY_LOGS_CSV.exists():
-        data['activity_logs'] = load_csv_with_baseline_window(
-            ACTIVITY_LOGS_CSV, target_start, target_end,
-            baseline_window=0,
-            date_column='startTime',
             index_col=None
         )
 
