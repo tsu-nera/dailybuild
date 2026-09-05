@@ -36,27 +36,27 @@
   description: 日次コメント・自覚症状・特記事項。数値に出ない文脈の最重要ソース
   active: true
 
+# 以下は廃止
 - metric: fitbit_sleep_score
   unit: "0-100"
-  description: Fitbit睡眠スコア
-  active: true
+  description: Fitbit睡眠スコア。APIに無くアプリからの転記だったため止まった（2026-05-26で最後）
+  active: false
 
 - metric: fitbit_energy_score
   unit: "0-100"
-  description: Fitbitエネルギースコア
-  active: true
+  description: Fitbitエネルギースコア。fitbit_sleep_score と同じ理由で止まった（2026-05-26で最後）
+  active: false
 
 - metric: rise_sleep_dept
   unit: ""
-  description: Rise アプリの睡眠負債(h)。睡眠負債評価はsleepレポートのアルゴリズム値よりこちらを優先
-  active: true
+  description: Rise アプリの睡眠負債(h)。転記が止まった（2026-06-09で最後）。睡眠負債は sleep レポートのアルゴリズム値を使う
+  active: false
 
 - metric: muse_paf
   unit: ""
-  description: Muse PAF（Peak Alpha Frequency）
-  active: true
+  description: Muse PAF。転記が止まった（2026-06-10で最後）。自動化するなら手動列ではなく data/muse/ の別ソースとして作る
+  active: false
 
-# 以下は廃止
 - metric: caffeine_mg
   unit: mg
   description: 手動記録は廃止。Health Connect 経由で data/googlehealth/caffeine.csv に時刻付きで入る（mg換算済み）

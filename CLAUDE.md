@@ -8,13 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### リポジトリ構成
 
-生活管理は3リポジトリに分かれている。分割の軸は「コードかデータか」と「書き手」。
+生活管理は4リポジトリに分かれている。分割の軸は「コードかデータか」と「書き手」。
 
 | リポジトリ | 可視性 | 中身 | 書き手 |
 |---|---|---|---|
 | `dailybuild` | **public** | 取得・分析コード（データは持たない） | 人 + agent |
 | `dailybuild-private` | private | 全データと全レポート（健康・お金・時間・気分） | スクリプト |
 | `gtd` | private | 予定・タスク・方針（org-mode） | 人 |
+| `keido` | private | 日記・ナレッジベース（org-roam） | 人 |
 
 以前は健康データを `dailybuild` 側に置き、非公開のものだけを private へ逃していたが、
 `reports/` の散文が主観メンタルや金銭ストレスを引用しており、パス単位の線引きが
@@ -27,6 +28,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `gtd`（`~/repo/gtd`）は数年運用してきた org-mode 資産で、このリポジトリには
 取り込まない。参照が必要なときは絶対パスで読む。日次で自動生成される CSV の
 コミットが人の手による履歴を埋めないよう、データは `gtd` に置かない。
+
+`keido`（`~/repo/keido`）も同じく取り込まない。週次日記が
+`~/repo/keido/notes/zk/YYYY-wNN.org` にあり（小文字 `w`、ISO week）、
+`reports/journal/YYYY-Wxx.md` と**同じ週キー**で対応する。パスは週から直に
+組み立てられるので検索は要らない。ただし見出し名は年をまたいで揺れている
+（`まなんだこと`/`学んだこと`、`Tweets`/`🐦Tweets`/`つぶやき`）ため、見出しに
+依存したパーサを書かない。日付の粒度が要るときは本文中の org timestamp
+（`<2026-07-20 Mon 07:38>`）を使う。
+
+`keido` の散文は金銭・希死念慮をそのまま含む。**public 側へ引用・symlink・
+生成物のいずれの形でも持ち込まない**（`reports/` を private へ移したのと同じ理由）。
 
 ## Development Environment
 
