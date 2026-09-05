@@ -594,7 +594,7 @@ def main():
     print(f"   睡眠データ: {len(sleep_df)}日分")
 
     # activity_logsから運動時間を抽出
-    activity_periods = load_activity_periods('data/fitbit/activity_logs.csv')
+    activity_periods = load_activity_periods()
     print(f"   運動記録: {len(activity_periods)}件")
 
     # 分析期間を決定（最新30日間）

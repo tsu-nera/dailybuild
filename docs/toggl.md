@@ -63,13 +63,21 @@ CSV が古い/無い場合、`fetch_state.json` が無い場合、fetch 窓が p
 Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を別セッションとして
 返す（2026年の実測で74組。`WEIGHTS`/FITBIT と `STRENGTH_TRAINING`/HEALTH_CONNECT、
 `OUTDOOR_BIKE`/FITBIT と `BIKING`/HEALTH_CONNECT）。素通しすると Toggl に同じ
-運動が2本入るため、時間が重なったら `platform_priority` の先頭に近い方だけを残す。
+運動が2本入るため、時間が重なったら優先度の高い方だけを残す。
 
+優先度・重なり閾値は **`config/toggl_push.yaml` ではなく
+`src/lib/exercise_source.py` の `PLATFORM_PRIORITY` / `OVERLAP_THRESHOLD_SEC`**
+（`lib/toggl/sources.py` の `googlehealth_exercise_intervals` はここを
+import して使う）。push とレポート（body / mind / circadian）が同じ集合を
+見る必要があるため、consumer 別に yaml で持たせず一箇所に固定してある。
 優先度は**重なりの解決にのみ**使う。重なっていないセッションは platform に関係なく
 残すので、Fitbit Web API 廃止後に Fitbit 側が途切れても Health Connect 側で
 穴が埋まる。
 
 `exercise` は `dailyRollUp` 非対応で `list` のページングだけ（全履歴242ページ）。
 既存の `data/fitbit/activity_logs.csv` とはスキーマを揃えていない別ファイルで、
-統合は Issue #77 の担当。マージのキーは日付でなく `id`（19桁の整数なので
-読み戻しは `dtype=str` 必須。int で読むと新旧のキーが一致せず二重に残る）。
+**統合しない**（Issue #96 で決定。id 空間・`activeZoneMinutes` の構造・距離の
+単位系がいずれも別物）。`activity_logs.csv` は Fitbit Web API 廃止後のアーカイブ
+として凍結し、レポート3経路（body / mind / circadian）は `exercise.csv` だけを
+読む。マージのキーは日付でなく `id`（19桁の整数なので読み戻しは `dtype=str`
+必須。int で読むと新旧のキーが一致せず二重に残る）。

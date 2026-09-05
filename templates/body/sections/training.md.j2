@@ -28,10 +28,10 @@
 ### 🚴 サイクリング
 
 {% if cycling_data %}
-| 日付 | 回数 | 時間(分) | 距離(km) | 平均HR | kcal |
-|------|------|----------|----------|--------|------|
+| 日付 | 回数 | 時間(分) | 平均HR | kcal |
+|------|------|----------|--------|------|
 {% for row in cycling_data %}
-| {{ row.date | date_format }} | {{ row.count }} | {{ row.duration | number_format(0) }} | {{ row.distance_km | number_format(1) }} | {{ row.avg_hr | number_format(0) }} | {{ row.calories | number_format(0) }} |
+| {{ row.date | date_format }} | {{ row.count }} | {{ row.duration | number_format(0) }} | {{ row.avg_hr | number_format(0) }} | {{ row.calories | number_format(0) }} |
 {% endfor %}
 {% else %}
 > 記録なし

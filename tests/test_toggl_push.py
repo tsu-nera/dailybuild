@@ -15,6 +15,7 @@ from lib.toggl.push import (
     Interval, build_payload, is_entries_csv_stale, push_intervals, select_pending,
 )
 from lib.toggl import sources as toggl_sources
+from lib import exercise_source
 
 JST = ZoneInfo('Asia/Tokyo')
 
@@ -227,8 +228,6 @@ def test_fitbit_sleep_intervals_disabled_returns_empty(tmp_path, monkeypatch):
 
 EXERCISE_CONFIG = {'sources': {'googlehealth_exercise': {
     'enabled': True,
-    'platform_priority': ['FITBIT', 'HEALTH_CONNECT'],
-    'overlap_threshold_sec': 60,
     'categories': {
         'cycling': {'project': 'サイクリング', 'description': 'サイクリング',
                     'tags': ['auto'],
@@ -240,13 +239,16 @@ EXERCISE_CONFIG = {'sources': {'googlehealth_exercise': {
     },
 }}}
 
-EXERCISE_HEADER = 'id,start,end,duration_sec,exercise_type,display_name,platform\n'
+EXERCISE_HEADER = (
+    'id,start,end,duration_sec,exercise_type,display_name,platform,'
+    'calories,distance_m,average_heart_rate\n'
+)
 
 
 def write_exercise_csv(tmp_path, monkeypatch, body):
     csv_path = tmp_path / 'exercise.csv'
     csv_path.write_text(EXERCISE_HEADER + body)
-    monkeypatch.setattr(toggl_sources, 'EXERCISE_CSV_FILE', csv_path)
+    monkeypatch.setattr(exercise_source, 'EXERCISE_CSV_FILE', csv_path)
     return csv_path
 
 

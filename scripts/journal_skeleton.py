@@ -493,17 +493,30 @@ STREAK_MAX_GAP = 2
 
 # (表示名, 系列キー, 条件, 当日を数えるか)
 #
-# 当日を数えないものは、当日の値がまだ確定しない指標。歩数は進行中で、
-# 陽性感情は「まだ記録していないだけ」なので、当日を条件に入れると毎朝
-# ストリークが1日伸びる。欠測を不調として数えるのと同じ捏造になる。
+# **ここで新しい判断を宣言しない。** 「6時間未満は問題」「3000歩未満は問題」は
+# データの中の事実ではなく判断で、ここに書くと分析の方向をこの1箇所が固定する。
+# 出してよいのは、**他所で既に宣言された判断**の持続だけ:
+#
+#   睡眠時間      daily-review スキルの観点「7-8時間が理想」
+#   睡眠効率      同「85%以上が目標」
+#   睡眠負債      config/targets.yaml（target 0 / direction zero）
+#   主観スコア    config/manual_metrics_def.yaml の unit "1-5"（下限=1。床に
+#                 張り付いている状態を出す。「2以下」のような中間の線は引かない）
+#   陽性感情      daily-review スキルの観点「陽性がN日途切れているは書く価値がある」
+#
+# 新しい条件を出したくなったら、先に宣言元（targets.yaml / スキルの観点）へ
+# 書く。宣言は人が見る場所にあるので、方向の固定化が目に見える形でしか
+# 起きない。境界値を変えるときも宣言元を直し、ここを合わせる。
+#
+# 当日を数えないものは、当日の値がまだ確定しない指標。陽性感情は「まだ記録して
+# いないだけ」なので、当日を条件に入れると毎朝ストリークが1日伸びる。
 STREAK_SPECS = [
-    ('睡眠時間 < 6h', 'sleep_hours', lambda v: v < 6.0, True),
+    ('睡眠時間 < 7h', 'sleep_hours', lambda v: v < 7.0, True),
     ('睡眠効率 < 85%', 'sleep_efficiency', lambda v: v < 85, True),
     ('睡眠負債 > 0h', 'sleep_debt', lambda v: v > 0, True),
-    ('主観 mind <= 1', 'mind', lambda v: v <= 1, True),
-    ('主観 body <= 2', 'body', lambda v: v <= 2, True),
-    ('主観 sleep <= 1', 'sleep_score', lambda v: v <= 1, True),
-    ('歩数 < 3000', 'steps', lambda v: v < 3000, False),
+    ('主観 mind が下限(1)', 'mind', lambda v: v <= 1, True),
+    ('主観 body が下限(1)', 'body', lambda v: v <= 1, True),
+    ('主観 sleep が下限(1)', 'sleep_score', lambda v: v <= 1, True),
     ('陽性感情なし', 'positive', lambda v: v < 1, False),
 ]
 
@@ -612,7 +625,6 @@ def _state_series(target: dt.date) -> dict:
     add('body', man, 'body_score')
     add('sleep_score', man, 'sleep_score')
 
-    add('steps', _read('data/fitbit/activity.csv', 'date'), 'steps')
     add('sleep_debt', _sleep_debt_series(lo, ts), 'debt')
 
     positive = _positive_series(lo, ts)
@@ -785,7 +797,8 @@ def render_state(target: dt.date) -> str:
     if streaks:
         lines += ['| 条件 | 継続 |', '|---|---|']
         lines += [f"| {r['label']} | {_fmt_streak(r)} |" for r in streaks]
-        lines += ['', '> 2日以上のものだけ。歩数・陽性感情は当日が未確定なので前日まで。']
+        lines += ['', '> 2日以上のものだけ。陽性感情は当日が未確定なので前日まで。',
+                  '> **日数はレビュー本文に書かない。**データの訂正で後から変わるので、不変の記録に残すと嘘になる。']
     else:
         lines.append('継続中のものは無い（2日以上）。')
 
