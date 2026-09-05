@@ -265,7 +265,3 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   引き直すと2021-06にもデータが存在する
 - 日次実行への影響: `--days 2` で intraday 4種（heart_rate_intraday を除く）の
   追加取得は実測で79ページ・約57秒
-- parity テスト（`pytest -m net`）の比較窓は**現在時刻ではなく既存CSVの最終行
-  から取る**。CSV は最後に取得を回した時点までしか無いので、現在時刻から窓を
-  切ると重なりが0件になり `compared == 0` で落ちる。heart-rate は日付単位でしか
-  引けず1日約8分かかるので、intraday の net テストは全体で5分以上かかる

@@ -1260,7 +1260,7 @@ def fake_nutrition_pages(monkeypatch):
     fake_get_pages は path を見ずに単純に順送りするため、ページ取得の
     合間に挟まる unit 単体照会（別の path）と共存できない。
     """
-    # モジュールレベルのキャッシュを汚すと他ファイル（test_googlehealth_parity.py）の
+    # モジュールレベルのキャッシュを汚すと他ファイルの
     # 実 API 呼び出しがこのフェイクの値を読んでしまうため、退避して確実に戻す
     saved_cache = dict(googlehealth_sessions._UNIT_NAME_CACHE)
     googlehealth_sessions._UNIT_NAME_CACHE.clear()
