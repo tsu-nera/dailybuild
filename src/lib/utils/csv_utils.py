@@ -90,7 +90,8 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
     if not csv_path.exists():
         # 初回もソートする。ここを素通りすると取得順のまま書かれ、
         # 次回マージまで並びが直らない
-        return df_new.sort_values(sort_by) if sort_by else df_new
+        # kind='stable' は必須（下の sort_values と同じ理由）
+        return df_new.sort_values(sort_by, kind='stable') if sort_by else df_new
 
     df_old = pd.read_csv(csv_path, parse_dates=parse_dates or [])
 
@@ -108,7 +109,10 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         df_merged = df_merged.drop_duplicates(subset=key_columns, keep='last')
 
     if sort_by:
-        df_merged.sort_values(sort_by, inplace=True)
+        # kind='stable' は必須。既定の quicksort は同着キーの行順を毎回組み替えるため、
+        # 1日80行が同じ日付を持つ sleep_levels.csv では内容が同一でも全期間が並び替わり、
+        # git が毎日10MBのファイルを丸ごと積む
+        df_merged.sort_values(sort_by, inplace=True, kind='stable')
 
     return df_merged
 
@@ -213,7 +217,9 @@ def replace_csv_period(df_new: pd.DataFrame, csv_path: Path, date_column: str,
 
     # df_new が空（例: 昼寝なしでshortAwakeningsが1件も無い日のsleep_levels）だと
     # 列が無く sort_values が KeyError になるため、その場合はソートを飛ばす
+    # kind='stable' は必須。既定の quicksort は同着キーの行順を毎回組み替え、
+    # 内容が同一でも全期間が並び替わって git が毎日ファイルを丸ごと積む
     if sort_by and all(c in df_merged.columns for c in sort_by):
-        df_merged.sort_values(sort_by, inplace=True)
+        df_merged.sort_values(sort_by, inplace=True, kind='stable')
 
     return df_merged
