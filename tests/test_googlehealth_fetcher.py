@@ -30,15 +30,83 @@ def fake_rows(monkeypatch):
 
 
 def test_resolve_range_uses_days_when_no_start_date():
-    start, end = ghf._resolve_range(days=7, start_date=None, end_date=None)
+    start, end = ghf._resolve_range(days=7, start_date=None, end_date=None,
+                                    default_days=14)
     assert end == dt.date.today()
     assert (end - start).days == 6  # 当日を含めて7日
 
 
 def test_resolve_range_prefers_start_date_over_days():
     start, end = ghf._resolve_range(days=7, start_date=dt.date(2026, 1, 1),
-                                    end_date=dt.date(2026, 1, 10))
+                                    end_date=dt.date(2026, 1, 10),
+                                    default_days=14)
     assert (start, end) == (dt.date(2026, 1, 1), dt.date(2026, 1, 10))
+
+
+def test_resolve_range_uses_default_days_when_days_is_none():
+    """days=None のときはハードコードの14ではなく引数の default_days を使う"""
+    start, end = ghf._resolve_range(days=None, start_date=None, end_date=None,
+                                    default_days=14)
+    assert end == dt.date.today()
+    assert (end - start).days == 13  # 当日を含めて14日
+
+    start2, end2 = ghf._resolve_range(days=None, start_date=None, end_date=None,
+                                      default_days=7)
+    assert (end2 - start2).days == 6  # 当日を含めて7日
+
+    start3, end3 = ghf._resolve_range(days=None, start_date=None, end_date=None,
+                                      default_days=2)
+    assert (end3 - start3).days == 1  # 当日を含めて2日
+
+
+def test_fetch_endpoint_uses_per_endpoint_default_days(data_dir, fake_rows):
+    """days=None で fetch_endpoint を呼ぶと、ENDPOINTS の default_days が
+    エンドポイントごとに使われる（activity=14, hrv=7, steps_intraday=2）"""
+    captured = {}
+
+    def make_fetcher(key):
+        def fetcher(creds, start, end):
+            captured[key] = (start, end)
+            return []
+        return fetcher
+
+    from lib.clients import googlehealth_client as ghc
+
+    # 直接 FETCHERS を差し替えて呼び出し範囲を観測する
+    orig = {}
+    for key in ('activity', 'hrv', 'steps_intraday'):
+        orig[key] = ghc.FETCHERS[key]
+        ghc.FETCHERS[key] = make_fetcher(key)
+    try:
+        ghf.fetch_endpoint(None, 'activity', days=None)
+        ghf.fetch_endpoint(None, 'hrv', days=None)
+        ghf.fetch_endpoint(None, 'steps_intraday', days=None)
+    finally:
+        for key, fn in orig.items():
+            ghc.FETCHERS[key] = fn
+
+    today = dt.date.today()
+    assert (today - captured['activity'][0]).days == 13
+    assert (today - captured['hrv'][0]).days == 6
+    assert (today - captured['steps_intraday'][0]).days == 1
+
+
+def test_fetch_endpoint_explicit_days_overrides_default(data_dir, fake_rows):
+    """明示的な days= は default_days より優先される（後方互換）"""
+    fake_rows([])
+    ghf.fetch_endpoint(None, 'hrv', days=3)
+    # エラーになっても _resolve_range の結果自体は days=3 に基づく
+    start, end = ghf._resolve_range(days=3, start_date=None, end_date=None,
+                                    default_days=7)
+    assert (end - start).days == 2
+
+
+def test_activity_default_days_within_rollup_zero_cost_window():
+    """activity の default_days は total-calories の maxDurationDays を
+    超えない（超えると chunk 分割が増えコストが上がる）。定数の drift を検知する"""
+    from lib.clients.googlehealth_client import ROLLUP_MAX_DURATION_DAYS
+    assert ghf.ENDPOINTS['activity']['default_days'] <= \
+        ROLLUP_MAX_DURATION_DAYS['total-calories']
 
 
 def test_empty_result_is_reported_as_error(data_dir, fake_rows):

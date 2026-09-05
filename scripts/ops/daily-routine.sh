@@ -13,9 +13,10 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 DAYS=2
+DAYS_EXPLICIT=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --days) DAYS="$2"; shift 2 ;;
+    --days) DAYS="$2"; DAYS_EXPLICIT=1; shift 2 ;;
     *) echo "不明な引数: $1" >&2; exit 2 ;;
   esac
 done
@@ -50,7 +51,17 @@ step() {
 echo "=== Daily Routine (--days $DAYS) ==="
 echo "Started at $(date)"
 
-step "Google Health" uv run python scripts/fetch_googlehealth.py --days "$DAYS" --non-interactive
+# 一律 --days 2 が根本原因だった（Issue #70/#125）: 実行が失敗した日は
+# 窓の外に落ち、二度と再取得されない。--days をこの起動時に明示された
+# ときだけ転送し、そうでなければ渡さずエンドポイントごとの既定窓
+# （lib.googlehealth_fetcher.ENDPOINTS の default_days）に委ねる。
+# Toggl は 30 req/h のクォータと push の一致件数コストがあるため対象外
+# （常に "$DAYS" を明示で渡す・既定2のまま）。
+if [ "$DAYS_EXPLICIT" -eq 1 ]; then
+  step "Google Health" uv run python scripts/fetch_googlehealth.py --days "$DAYS" --non-interactive
+else
+  step "Google Health" uv run python scripts/fetch_googlehealth.py --non-interactive
+fi
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14

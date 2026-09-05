@@ -34,40 +34,64 @@ HISTORY_BOUNDARY = dt.date(2026, 6, 1)
 #     src/lib/utils/csv_utils.py:replace_csv_period の docstring 参照）
 #   - 'extra_csv': sleep.csv に加えて sleep_levels.csv も同じ戦略で書く
 #   - date_column が index にならない（logId 系と同じく複数行/日があるため）
+#
+# default_days（--days 未指定時の取得窓）はエンドポイントの種類でコストが
+# 3段に分かれるため、種類ごとに揃える（Issue #70/#125）:
+#   - dailyRollUp 型（activity, active_zone_minutes）: 14日まではコストゼロ。
+#     googlehealth_client.ROLLUP_MAX_DURATION_DAYS['total-calories'] == 14 が
+#     全 rollup 型の中で最も狭く、この上限までは1チャンクで収まるため
+#     2日窓でも14日窓でもリクエスト数は変わらない。15日以上にして初めて
+#     total-calories がチャンク分割され、コストが増える。だから既定は14。
+#   - daily list 型（hrv 等7種）: 1日あたり1〜数点でページングも増えず、
+#     窓を広げてもコストはほぼゼロ。
+#   - intraday 型（*_intraday）: 分刻みサンプルのためページ数が日数にほぼ
+#     線形に増える（2日で約79ページ・約57秒を実測）。現状維持で2日のまま。
+# daily-routine.sh が毎日 --days 2 の一律窓で叩いていたことが根本原因
+# （実行が失敗した日は窓の外に落ち、二度と再取得されない）。rollup と
+# daily list は窓を広げてもコストが変わらないので、その分は既定を広げて
+# 部分日の取り直しを保証する。
 ENDPOINTS = {
     'hrv': {
         'description': 'HRV（心拍変動）',
         'date_column': 'date',
+        'default_days': 7,
     },
     'breathing_rate': {
         'description': '呼吸数',
         'date_column': 'date',
+        'default_days': 7,
     },
     'temperature_skin': {
         'description': '皮膚温（睡眠中）',
         'date_column': 'date',
+        'default_days': 7,
     },
     'heart_rate': {
         'description': '安静時心拍数',
         'date_column': 'date',
+        'default_days': 7,
     },
     'spo2': {
         'description': 'SpO2（血中酸素飽和度）',
         'date_column': 'date',
+        'default_days': 7,
     },
     'sleep': {
         'description': '睡眠',
         'date_column': 'dateOfSleep',
         'kind': 'period_replace',
         'extra_csv': 'sleep_levels',
+        'default_days': 7,
     },
     'activity': {
         'description': '活動量（歩数・距離・活動時間・消費カロリー）',
         'date_column': 'date',
+        'default_days': 14,
     },
     'active_zone_minutes': {
         'description': 'アクティブゾーン分',
         'date_column': 'date',
+        'default_days': 14,
     },
     # 実測時刻の行と日次固定00:00:00の行が混在するため、キーマージではなく
     # sleep と同じ期間置換にする（src/lib/clients/googlehealth_client.py の
@@ -81,6 +105,7 @@ ENDPOINTS = {
         'date_column': 'date_time',
         'kind': 'period_replace',
         'allow_empty': True,
+        'default_days': 7,
     },
     # 1日に複数行が立つセッション型。既存の Fitbit CSV を書き換えないよう
     # data/googlehealth/ に別ファイルとして持つ（activity_logs.csv との
@@ -92,6 +117,7 @@ ENDPOINTS = {
         'merge_key': 'id',
         'output': GOOGLEHEALTH_DIR / 'exercise.csv',
         'columns': googlehealth_client.EXERCISE_COLUMNS,
+        'default_days': 7,
     },
     # カフェインを飲まなかった/記録していない期間は0件が正常状態（allow_empty）。
     # 他のエンドポイントと違い、0件をエラーにしない（Issue #90）
@@ -102,6 +128,7 @@ ENDPOINTS = {
         'output': GOOGLEHEALTH_DIR / 'caffeine.csv',
         'columns': googlehealth_client.CAFFEINE_COLUMNS,
         'allow_empty': True,
+        'default_days': 7,
     },
     # Fitbit 由来ではない（2025 以降は HealthPlanet アプリが Health Connect に
     # 書いたもの）。既存の data/fitbit/body_weight.csv とはスキーマを揃えられない
@@ -114,6 +141,7 @@ ENDPOINTS = {
         'output': GOOGLEHEALTH_DIR / 'weight.csv',
         'columns': googlehealth_client.WEIGHT_COLUMNS,
         'allow_empty': True,
+        'default_days': 7,
     },
     'body_fat': {
         'description': '体脂肪率',
@@ -122,6 +150,7 @@ ENDPOINTS = {
         'output': GOOGLEHEALTH_DIR / 'body_fat.csv',
         'columns': googlehealth_client.BODY_FAT_COLUMNS,
         'allow_empty': True,
+        'default_days': 7,
     },
     # nutrition-log は個別食事ログしか持たない（日次サマリのデータ型は存在しない）。
     # nutrition.csv はログの合算で作る。water は取得元のデータ型が無いので常に空欄。
@@ -131,6 +160,7 @@ ENDPOINTS = {
         'description': '栄養（日次サマリ）',
         'date_column': 'date',
         'allow_empty': True,
+        'default_days': 7,
     },
     'nutrition_logs': {
         'description': '栄養（個別食事ログ）',
@@ -138,6 +168,7 @@ ENDPOINTS = {
         'merge_key': 'logId',
         'columns': googlehealth_client.NUTRITION_LOG_COLUMNS,
         'allow_empty': True,
+        'default_days': 7,
     },
     # intraday 5種（Issue #76）。merge_key は付けない（= 日付インデックスの
     # merge_csv 経路）。HISTORY_BOUNDARY のガードは merge_key 無しの経路に
@@ -151,22 +182,27 @@ ENDPOINTS = {
         'description': '心拍数（分刻み）',
         'date_column': 'datetime',
         'exclude_from_all': True,
+        'default_days': 2,
     },
     'steps_intraday': {
         'description': '歩数（分刻み）',
         'date_column': 'datetime',
+        'default_days': 2,
     },
     'spo2_intraday': {
         'description': 'SpO2（分刻み）',
         'date_column': 'datetime',
+        'default_days': 2,
     },
     'hrv_intraday': {
         'description': 'HRV（分刻み）',
         'date_column': 'datetime',
+        'default_days': 2,
     },
     'br_intraday': {
         'description': '呼吸数（睡眠、日次）',
         'date_column': 'date',
+        'default_days': 2,
     },
 }
 
@@ -205,7 +241,12 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
         )
 
     config = ENDPOINTS[endpoint]
-    start_date, end_date = _resolve_range(days, start_date, end_date)
+    # 呼び出し側が明示した days は従来通り最優先。未指定（None）なら
+    # エンドポイント種別ごとの default_days を使う（ハードコードした一律14を廃止）。
+    # ENDPOINTS の全エントリが default_days を持つ前提で bracket access する
+    # （.get() で握り潰すと、窓の設定漏れが黙って0件を招く）
+    default_days = config['default_days']
+    start_date, end_date = _resolve_range(days, start_date, end_date, default_days)
 
     if start_date < HISTORY_BOUNDARY and not config.get('merge_key') \
             and not allow_history_rewrite:
@@ -348,9 +389,9 @@ def fetch_all(creds, days: int = None, overwrite: bool = False,
     return results
 
 
-def _resolve_range(days, start_date, end_date) -> tuple[dt.date, dt.date]:
+def _resolve_range(days, start_date, end_date, default_days) -> tuple[dt.date, dt.date]:
     if start_date is not None:
         return start_date, end_date or dt.date.today()
-    days = days or 14
+    days = days or default_days
     end = dt.date.today()
     return end - dt.timedelta(days=days - 1), end

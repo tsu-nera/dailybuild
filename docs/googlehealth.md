@@ -42,6 +42,27 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   ただし**当日の行が部分日になる構造そのものは変わっていない**ので #70 は閉じない
 - `sedentary-period` は叩かない（Google の定義が Fitbit の `sedentaryMinutes` と違う。詳細は
   `fetch_activity` の docstring）
+- `fetch_activity` は当日以外で `caloriesOut < 1200kcal`（`MIN_PLAUSIBLE_CALORIES_OUT`）を
+  警告する（Issue #125）。丸1日分の基礎代謝を下回る値は部分日が取り直されていない
+  兆候。CSV への書き込みは止めない（警告のみ）
+
+## 取得窓（`--days`）はエンドポイントごと
+
+`fetch_googlehealth.py --days` を省略すると、`lib.googlehealth_fetcher.ENDPOINTS` の
+`default_days` がエンドポイントごとに使われる（Issue #70/#125）。旧実装は一律 `--days 2`
+で叩いており、`daily-routine.sh` が失敗した日は取得窓の外に落ちて二度と再取得されなかった。
+コスト構造が型で違うため、窓の広さも型で分ける:
+
+- **dailyRollUp 型**（`activity` / `active_zone_minutes`）: 既定14日。
+  `ROLLUP_MAX_DURATION_DAYS['total-calories'] == 14` が全 rollup 型で最も狭く、この
+  上限までは1チャンクで収まるためコストは2日窓と変わらない。15日以上で初めて
+  chunk 分割が増える
+- **daily list 型**（`hrv` 等）: 既定7日。1日あたり数点でページングが増えず、窓を
+  広げてもコストはほぼゼロ
+- **intraday 型**（`*_intraday`）: 既定2日（現状維持）。分刻みサンプルのためページ数が
+  日数にほぼ線形に増える（2日で約79ページ・約57秒を実測）
+
+`--days` を明示すれば従来どおりその値がすべてのエンドポイントに使われる（後方互換）。
 
 ## 運動（exercise）
 
