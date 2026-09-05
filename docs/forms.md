@@ -16,7 +16,7 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
   `setup-form --update` が画面の内容を上書きする
 - 削除された回答は CSV に残り続ける（マージは追加・更新のみ）
 - グリッドの行ごとの必須/任意は `config/emotion_def.yaml` の `grid_required`
-  で指定する（`gforms_api.grid_item()` の `required` は bool か行数分の
+  で指定する（`gforms_client.grid_item()` の `required` は bool か行数分の
   list を受け取る）。`いまの気分` だけ必須で `身体の軽さ` / `頭の冴え` は
   任意。全行必須だと気分だけ記録したいときも毎回すべて答える必要が生じ、
   記録が続くコストに直接効く
@@ -43,7 +43,7 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
 - **フォームの質問はタイトルでなく種類（scale/choice/text/グリッド）で突き
   合わせて更新している。** index で突き合わせると既存 item の型を作り変える
   ことになり、questionId が保持されたまま中身が変わって過去の回答が別の質問に
-  化ける（`gforms_api.sync_questions()`）。グリッド（`questionGroupItem`）も
+  化ける（`gforms_client.sync_questions()`）。グリッド（`questionGroupItem`）も
   1つの種類として扱うが、**フォーム全体でグリッドは1個の運用が前提**（現状の
   3問構成では他に同型が無いのでタイトルで揉めることは起きない）
 - **既存 item のうち items のどの kind にも対応しないもの（leftover）が
@@ -54,7 +54,7 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
   `setup-form --update --allow-kind-replace`）を明示したときだけ leftover を
   `deleteItem` で削除する opt-in にしてある（#103/#105 の
   `preserve_existing_on_nan` と同じ「既定は安全、意図的な変更のみ opt-in」の
-  考え方）。削除される質問は実行前に `gforms_api.preview_kind_mismatch()` で
+  考え方）。削除される質問は実行前に `gforms_client.preview_kind_mismatch()` で
   列挙し、CLI が標準出力に出してから実行する（黙って消さない）。
   `deleteItem` は `createItem`/`updateItem` より先に適用する
   （`location.index` は delete 後に残る item だけで数えた最終順序を前提に
@@ -110,7 +110,7 @@ questionId 対応付けが失われ、値を読む手段が無くなる**（旧 
 3. `uv run scripts/emotion.py setup-form --update --allow-kind-replace` を
    実行し、画面の質問構成を `config/emotion_def.yaml`（グリッド3行）に合わせる。
    実行前に削除される質問のタイトル・種類が標準出力に列挙される
-   （`gforms_api.preview_kind_mismatch()`）ので、`いまの気分（scaleQuestion）`
+   （`gforms_client.preview_kind_mismatch()`）ので、`いまの気分（scaleQuestion）`
    だけが対象になっていることを確認してから進める
 4. `uv run scripts/emotion.py fetch` を実行し、最新の回答を取得する
 5. 既存14件の `score` が保持されていることを差分確認する
@@ -122,7 +122,7 @@ questionId 対応付けが失われ、値を読む手段が無くなる**（旧 
 失敗時（`score` が別の値に化けている等、行順の付け替えを疑う場合、あるいは
 `preview_kind_mismatch` の出力に `いまの気分` 以外の質問が含まれていた場合は
 即座に中断する）は、バックアップした `data/emotion.csv` を戻す。フォーム側は
-`gforms_api.sync_questions()` 自体を変更せず、`grid_rows` の並びを元に戻して
+`gforms_client.sync_questions()` 自体を変更せず、`grid_rows` の並びを元に戻して
 `setup-form --update`（グリッド化前の構成に戻す場合は `--allow-kind-replace`
 も付けて再度型を戻す）を再実行するのが基本の復旧手順。フォーム側の
 questionId は一度削除すると復元できないため、`--allow-kind-replace` を
@@ -194,7 +194,7 @@ questionId は一度削除すると復元できないため、`--allow-kind-repl
 自作スコアに戻る。
 
 - **設問文・選択肢・並び順は凍結する。yaml の q1〜q9 の並び順を変えないこと。**
-  PHQ-9 は9問すべて同型（ラジオボタン）で、`gforms_api.sync_questions()` は
+  PHQ-9 は9問すべて同型（ラジオボタン）で、`gforms_client.sync_questions()` は
   item 単位ではタイトルを見ず「種類ごとの出現順（FIFO）」で既存質問と対応付ける。
   同型が9問並ぶ PHQ-9 で質問順を変えて `setup-form --update` を回すと
   questionId が別の設問に引き継がれ、過去の回答が別の質問の回答として

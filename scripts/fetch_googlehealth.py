@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from lib import googlehealth_fetcher  # noqa: E402
-from lib.clients import googlehealth_api  # noqa: E402
+from lib.clients import googlehealth_client  # noqa: E402
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
     print('Google Health データ取得')
     print('=' * 70)
 
-    creds = googlehealth_api.authorize(interactive=not args.non_interactive)
+    creds = googlehealth_client.authorize(interactive=not args.non_interactive)
 
     if args.endpoint:
         results = {args.endpoint: googlehealth_fetcher.fetch_endpoint(

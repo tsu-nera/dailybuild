@@ -3,17 +3,17 @@
 """
 Google Health 睡眠 -> data/fitbit/sleep.csv, data/fitbit/sleep_levels.csv
 
-googlehealth_api.py から分割（Issue #78。ファイルサイズ hook の 500行上限対応）。
-`_get` 等の共通プリミティブはテストが `googlehealth_api.<name>` を直接
-monkeypatch する前提なので、ここでは `from . import googlehealth_api as api` の
+googlehealth_client.py から分割（Issue #78。ファイルサイズ hook の 500行上限対応）。
+`_get` 等の共通プリミティブはテストが `googlehealth_client.<name>` を直接
+monkeypatch する前提なので、ここでは `from . import googlehealth_client as api` の
 形で呼び出し、モジュール属性を経由させる（静的 import で束縛すると
 monkeypatch が効かなくなる）。
 """
 
 import datetime as dt
 
-from . import googlehealth_api as api
-from .googlehealth_api import _num
+from . import googlehealth_client as api
+from .googlehealth_client import _num
 
 # Google の stages 型ステージ名 -> 既存 CSV の level 値
 # 既存 sleep_levels.csv には Fitbit の classic 睡眠由来の asleep/restless/awake も

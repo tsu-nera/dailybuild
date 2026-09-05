@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.clients import googlehealth_api as gh
+from lib.clients import googlehealth_client as gh
 
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / 'data' / 'fitbit'

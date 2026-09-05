@@ -19,10 +19,10 @@ fetch_* 関数は以下に分割している（Issue #78。ファイルサイズ
   - googlehealth_intraday.py  intraday 型（heart_rate_intraday / steps_intraday /
                                spo2_intraday / hrv_intraday / br_intraday。Issue #76）
 
-テストは `googlehealth_api._get` / `_post` / `_list_sleep_points` を直接
-monkeypatch する。分割先モジュールはこれらを `from . import googlehealth_api
+テストは `googlehealth_client._get` / `_post` / `_list_sleep_points` を直接
+monkeypatch する。分割先モジュールはこれらを `from . import googlehealth_client
 as api` の形で呼ぶことで、モジュール属性の動的解決を保ち monkeypatch が
-効くようにしている（`from .googlehealth_api import _get` のような静的
+効くようにしている（`from .googlehealth_client import _get` のような静的
 import は束縛が固定されるため使わない）。
 
 認証情報:
@@ -364,7 +364,7 @@ def _rollup_by_date(creds: Credentials, data_type: str, payload_key: str,
 # =============================================================================
 # 型ごとの fetch_* は分割先モジュールに実装し、ここでまとめて取り込む
 # （下の import はここまでで core のプリミティブが定義済みであることに
-# 依存するため、ファイル末尾に置く。分割先は `from . import googlehealth_api
+# 依存するため、ファイル末尾に置く。分割先は `from . import googlehealth_client
 # as api` で本モジュールを参照するだけなので、この時点で本モジュールが
 # sys.modules に（未完成でも）登録されていれば循環importにはならない）
 # =============================================================================

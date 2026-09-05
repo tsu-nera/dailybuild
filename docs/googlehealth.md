@@ -160,7 +160,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 `spo2_intraday` / `hrv_intraday` / `br_intraday` エンドポイント。既存の
 `data/fitbit/*_intraday.csv` と同一スキーマで出力する。daily-* 型と違い
 `list` の `filter` クエリパラメータで期間を絞る
-（`googlehealth_api.list_filtered_points`）。
+（`googlehealth_client.list_filtered_points`）。
 
 - **`filter` のフィールド名は snake_case で完全修飾する。** camelCase は
   `INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION` で 400 になる。

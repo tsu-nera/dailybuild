@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
 import yaml
-from lib.clients import gforms_api
+from lib.clients import gforms_client
 from lib.emotion import render, store
 from lib.utils import csv_utils
 from lib.utils.private_data import ensure_dir, require_private_path
@@ -69,10 +69,10 @@ def build_items(conf):
     # 未指定の行は required 扱い（既定は安全側）
     required = [grid_required.get(key, True) for key in grid_rows]
     return [
-        gforms_api.grid_item(conf['grid_title'], rows, s['low'], s['high'],
+        gforms_client.grid_item(conf['grid_title'], rows, s['low'], s['high'],
                              s['low_label'], s['high_label'], required=required),
-        gforms_api.checkbox_item(q['emotions'], choices, required=True),
-        gforms_api.text_item(q['note'], required=False),
+        gforms_client.checkbox_item(q['emotions'], choices, required=True),
+        gforms_client.text_item(q['note'], required=False),
     ]
 
 
@@ -118,18 +118,18 @@ def cmd_setup_form(args):
     conf = load_def()
     items = build_items(conf)
 
-    service = gforms_api.create_service()
+    service = gforms_client.create_service()
 
     if conf.get('form_id'):
         if not args.update:
             print(f"フォームは作成済み: {conf['form_id']}")
             print('選択肢や質問文を yaml に合わせ直すなら --update')
             return
-        existing_form = gforms_api.get_form(service, conf['form_id'])
+        existing_form = gforms_client.get_form(service, conf['form_id'])
         if args.allow_kind_replace:
-            leftover = gforms_api.preview_kind_mismatch(items, existing_form)
+            leftover = gforms_client.preview_kind_mismatch(items, existing_form)
             if leftover:
-                responses = gforms_api.list_responses(service, conf['form_id'])
+                responses = gforms_client.list_responses(service, conf['form_id'])
                 if has_unfetched_responses(responses, _csv_max_timestamp()):
                     print('中止: data/emotion.csv に未取り込みの回答が'
                           'フォーム側にある。削除すると questionId の対応'
@@ -145,21 +145,21 @@ def cmd_setup_form(args):
                       '済みの値は保持される）:')
                 for i in leftover:
                     print(f"  - {i.get('title')} "
-                         f"({gforms_api._question_kind(i)})")
-        gforms_api.sync_questions(service, conf['form_id'], items,
+                         f"({gforms_client._question_kind(i)})")
+        gforms_client.sync_questions(service, conf['form_id'], items,
                                   existing_form=existing_form,
                                   allow_kind_replace=args.allow_kind_replace)
         print('フォームを yaml に合わせて更新した')
-        form = gforms_api.get_form(service, conf['form_id'])
+        form = gforms_client.get_form(service, conf['form_id'])
     else:
-        form = gforms_api.create_form(service, conf['form_title'],
+        form = gforms_client.create_form(service, conf['form_title'],
                                       document_title=conf['form_title'])
         print(f"フォーム作成: {form['formId']}")
-        gforms_api.sync_questions(service, form['formId'], items)
+        gforms_client.sync_questions(service, form['formId'], items)
         save_form_id(form['formId'])
-        form = gforms_api.get_form(service, form['formId'])
+        form = gforms_client.get_form(service, form['formId'])
 
-    print(f"質問: {list(gforms_api.question_id_by_title(form))}")
+    print(f"質問: {list(gforms_client.question_id_by_title(form))}")
     print(f"回答用URL: {responder_uri(form)}")
     print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
 
@@ -171,7 +171,7 @@ def build_dataframe(form, responses, conf):
     そのまま出力する。行を足すだけで列が増える構成にしてあるので、将来
     快・達成感の行を足しても build_dataframe 自体は変更不要。
     """
-    by_title = gforms_api.question_id_by_title(form)
+    by_title = gforms_client.question_id_by_title(form)
     q = conf['questions']
     grid_rows = conf['grid_rows']
     required_titles = [q[key] for key in grid_rows] + [q['emotions'], q['note']]
@@ -187,10 +187,10 @@ def build_dataframe(form, responses, conf):
     for res in responses:
         grid_values = {}
         for key in grid_rows:
-            v = gforms_api.answer_values(res, by_title[q[key]])
+            v = gforms_client.answer_values(res, by_title[q[key]])
             grid_values[key] = v[0] if v else pd.NA
-        emotions = gforms_api.answer_values(res, by_title[q['emotions']])
-        note = gforms_api.answer_values(res, by_title[q['note']])
+        emotions = gforms_client.answer_values(res, by_title[q['emotions']])
+        note = gforms_client.answer_values(res, by_title[q['note']])
         unknown_all |= {e for e in emotions if e not in known}
         row = {
             'timestamp': res.get('lastSubmittedTime') or res.get('createTime'),
@@ -296,11 +296,11 @@ def cmd_fetch(args, out=None):
         raise ValueError(
             f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
 
-    service = gforms_api.create_service(interactive=not args.non_interactive)
-    form = gforms_api.get_form(service, conf['form_id'])
+    service = gforms_client.create_service(interactive=not args.non_interactive)
+    form = gforms_client.get_form(service, conf['form_id'])
 
     print(f"回答取得中: {conf['form_id']}", file=sys.stderr)
-    responses = gforms_api.list_responses(service, conf['form_id'])
+    responses = gforms_client.list_responses(service, conf['form_id'])
     print(f"取得: {len(responses)}件", file=sys.stderr)
 
     df = build_dataframe(form, responses, conf)
