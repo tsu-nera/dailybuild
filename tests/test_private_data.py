@@ -20,7 +20,7 @@ def _unmounted_repo(tmp_path, monkeypatch):
 def test_未マウントの_data_配下への書き込みは落ちる(tmp_path, monkeypatch):
     repo = _unmounted_repo(tmp_path, monkeypatch)
     with pytest.raises(FileNotFoundError):
-        require_private_write(repo / 'data' / 'fitbit' / 'sleep.csv')
+        require_private_write(repo / 'data' / 'wearable' / 'sleep.csv')
 
 
 def test_未マウントなら_ensure_dir_はディレクトリを作らない(tmp_path, monkeypatch):

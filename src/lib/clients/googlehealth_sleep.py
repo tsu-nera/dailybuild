@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Google Health 睡眠 -> data/fitbit/sleep.csv, data/fitbit/sleep_levels.csv
+Google Health 睡眠 -> data/wearable/sleep.csv, data/wearable/sleep_levels.csv
 
 googlehealth_api.py から分割（Issue #78。ファイルサイズ hook の 500行上限対応）。
 `_get` 等の共通プリミティブはテストが `googlehealth_api.<name>` を直接
@@ -17,7 +17,7 @@ from .googlehealth_api import _num
 
 # Google の stages 型ステージ名 -> 既存 CSV の level 値
 # 既存 sleep_levels.csv には Fitbit の classic 睡眠由来の asleep/restless/awake も
-# 混在するが（cut -d, -f4 data/fitbit/sleep_levels.csv で確認）、stages 型の既存行は
+# 混在するが（cut -d, -f4 data/wearable/sleep_levels.csv で確認）、stages 型の既存行は
 # wake/light/deep/rem のみを使っている（asleep/restless は classic 型専用）。
 # Google は stages 型しか返さないため、この対応で既存の値域に収まる。
 _STAGE_LEVEL = {

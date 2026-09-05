@@ -20,7 +20,7 @@ Usage:
     python scripts/toggl.py show --month 8
 
     python scripts/toggl.py push --days 2 --dry-run   # 投入予定を確認（APIを叩かない）
-    python scripts/toggl.py push --days 2             # Fitbit睡眠をTogglへ投入
+    python scripts/toggl.py push --days 2             # Google Health睡眠をTogglへ投入
     python scripts/toggl.py push --since 2026-08-01   # 過去分の一括投入
 
     python scripts/toggl.py start 読書                # プロジェクトを指定して計測開始
@@ -487,7 +487,7 @@ def build_parser() -> argparse.ArgumentParser:
                               help='表示前に fetch --update で最新データを取得する')
     show_parser.set_defaults(func=cmd_show)
 
-    push_parser = subparsers.add_parser('push', help='Fitbit睡眠等をTogglタイムエントリとして投入')
+    push_parser = subparsers.add_parser('push', help='Google Health睡眠等をTogglタイムエントリとして投入')
     push_parser.add_argument('--days', type=int, default=None,
                               help=f'対象日数（今日から遡る。既定 {PUSH_DEFAULT_DAYS}）')
     push_parser.add_argument('--since', type=str, default=None,

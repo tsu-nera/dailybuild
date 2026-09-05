@@ -24,7 +24,7 @@ def _interval(source_id: str, start_str: str, stop_str: str) -> Interval:
     start = dt.datetime.fromisoformat(start_str).replace(tzinfo=JST)
     stop = dt.datetime.fromisoformat(stop_str).replace(tzinfo=JST)
     return Interval(
-        source='fitbit_sleep', source_id=source_id, start=start, stop=stop,
+        source='googlehealth_sleep', source_id=source_id, start=start, stop=stop,
         description='睡眠', project='Sleep', tags=('auto',),
     )
 
@@ -49,7 +49,7 @@ def test_not_in_ledger_is_pending():
 def test_in_ledger_and_in_csv_is_skipped():
     intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
     }])
     entries = _entries_df([{'id': '999', 'start': '2026-08-20 22:00:00'}])
@@ -62,7 +62,7 @@ def test_deleted_in_toggl_within_fetch_window_is_repushed():
     """台帳にあるが time_entries.csv に居らず、start が直近 fetch 窓の中 → 再投入対象"""
     intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
     }])
     # 08-19〜08-22 を fetch したのに id=999 が返ってこない = 手動削除された
@@ -82,7 +82,7 @@ def test_deleted_but_outside_fetch_window_is_not_repushed():
     """fetch 窓の外は「未取得」と区別できないので再投入しない（安全弁）"""
     intervals = [_interval('100', '2026-07-01T22:00:00', '2026-07-02T06:00:00')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-07-01T22:00:00+09:00', 'pushed_at': '2026-07-02T07:00:00+09:00',
     }])
     entries = _entries_df([
@@ -102,7 +102,7 @@ def test_entry_pushed_before_fetch_window_is_not_repushed():
     重複投入されていた。CSV の start の min/max を窓に使うと再発する"""
     intervals = [_interval('100', '2026-08-23T22:46:00', '2026-08-24T07:24:00')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-23T22:46:00+09:00', 'pushed_at': '2026-08-25T11:01:00+09:00',
     }])
     # CSV は 08-12 から積み上がっている（min/max を使うと 08-23 はカバー内に見える）
@@ -122,7 +122,7 @@ def test_no_fetch_window_disables_deletion_check():
     """fetch 期間の記録が無ければ削除検出はしない（fetch_state.json 未生成の環境）"""
     intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
     }])
     entries = _entries_df([{'id': '111', 'start': '2026-08-20 08:00:00'}])
@@ -136,7 +136,7 @@ def test_fetch_window_end_day_is_inclusive():
     """窓の end は日付。その日の 23:59 に始まるエントリも判定対象に含む"""
     intervals = [_interval('100', '2026-08-22T23:59:00', '2026-08-23T06:00:00')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-22T23:59:00+09:00', 'pushed_at': '2026-08-23T07:00:00+09:00',
     }])
     entries = _entries_df([{'id': '111', 'start': '2026-08-22 08:00:00'}])
@@ -178,7 +178,7 @@ def test_is_entries_csv_fresh():
     assert is_entries_csv_stale(entries, dt.date(2026, 8, 24)) is False
 
 
-def test_fitbit_sleep_intervals_includes_nap_and_preserves_log_id(tmp_path, monkeypatch):
+def test_googlehealth_sleep_intervals_includes_nap_and_preserves_log_id(tmp_path, monkeypatch):
     csv_path = tmp_path / 'sleep.csv'
     csv_path.write_text(
         'dateOfSleep,startTime,endTime,logId,isMainSleep\n'
@@ -189,10 +189,10 @@ def test_fitbit_sleep_intervals_includes_nap_and_preserves_log_id(tmp_path, monk
     )
     monkeypatch.setattr(toggl_sources, 'SLEEP_CSV_FILE', csv_path)
 
-    config = {'sources': {'fitbit_sleep': {
+    config = {'sources': {'googlehealth_sleep': {
         'enabled': True, 'project': 'Sleep', 'description': '睡眠', 'tags': ['auto'],
     }}}
-    intervals = toggl_sources.fitbit_sleep_intervals(
+    intervals = toggl_sources.googlehealth_sleep_intervals(
         dt.date(2026, 8, 20), dt.date(2026, 8, 20), config, JST,
     )
 
@@ -208,15 +208,15 @@ def test_fitbit_sleep_intervals_includes_nap_and_preserves_log_id(tmp_path, monk
     assert main_sleep.stop == dt.datetime(2026, 8, 20, 5, 33, 0, tzinfo=JST)
 
 
-def test_fitbit_sleep_intervals_disabled_returns_empty(tmp_path, monkeypatch):
+def test_googlehealth_sleep_intervals_disabled_returns_empty(tmp_path, monkeypatch):
     csv_path = tmp_path / 'sleep.csv'
     csv_path.write_text(
         'dateOfSleep,startTime,endTime,logId,isMainSleep\n'
         '2026-08-20,2026-08-19T22:17:30.000,2026-08-20T05:33:00.000,111,True\n'
     )
     monkeypatch.setattr(toggl_sources, 'SLEEP_CSV_FILE', csv_path)
-    config = {'sources': {'fitbit_sleep': {'enabled': False}}}
-    intervals = toggl_sources.fitbit_sleep_intervals(
+    config = {'sources': {'googlehealth_sleep': {'enabled': False}}}
+    intervals = toggl_sources.googlehealth_sleep_intervals(
         dt.date(2026, 8, 20), dt.date(2026, 8, 20), config, JST,
     )
     assert intervals == []
@@ -365,7 +365,7 @@ def test_entry_pushed_after_last_fetch_is_not_repushed():
     """
     intervals = [_interval('100', '2026-08-25T10:11:16', '2026-08-25T10:43:42')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-25T10:11:16+09:00', 'pushed_at': '2026-08-25T22:17:44+09:00',
     }])
     # CSV は 22:10 の fetch 時点のもの。その後 22:17 に投入した id=999 は
@@ -383,7 +383,7 @@ def test_unknown_pushed_at_is_not_repushed():
     """pushed_at が読めないときは再投入しない側へ倒す"""
     intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
     ledger = _ledger_df([{
-        'source': 'fitbit_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
         'start': '2026-08-20T22:00:00+09:00', 'pushed_at': None,
     }])
     entries = _entries_df([{'id': '111', 'start': '2026-08-20 08:00:00'}])

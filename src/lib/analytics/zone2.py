@@ -176,7 +176,7 @@ if __name__ == '__main__':
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[3]
-    hr_intraday_path = repo_root / 'data' / 'fitbit' / 'heart_rate_intraday.csv'
+    hr_intraday_path = repo_root / 'data' / 'wearable' / 'heart_rate_intraday.csv'
 
     df_hr_intraday = pd.read_csv(hr_intraday_path, index_col='datetime', parse_dates=True)
     personal_cfg = load_personal_config()
