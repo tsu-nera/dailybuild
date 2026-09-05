@@ -182,7 +182,7 @@ stdout）。
 | 読むタイミング | ドキュメント |
 |---|---|
 | `scripts/toggl.py` の push / start / stop を変更するとき | [docs/toggl.md](docs/toggl.md) — 冪等性判定の条件を外すと Toggl に二重投入する |
-| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / exercise / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。exercise は platform 重複あり。intraday の steps は4系統同居で素の合算は3.6倍。`pytest -m net` も回す |
+| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / exercise / activity / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。exercise は platform 重複あり。intraday の steps は4系統同居で素の合算は3.6倍。activity の Fitbit→Google 段差は caloriesOut だけ（steps/distance/*ActiveMinutesは折れ目なし）。`pytest -m net` も回す |
 | `src/lib/exercise_source.py` / 運動系レポート（body / mind）を変更するとき | `data/googlehealth/exercise.csv` が正本。`data/fitbit/activity_logs.csv`（Fitbit Web API 廃止で更新停止）はアーカイブとして凍結し統合しない（id空間・distance単位・activeZoneMinutes構造が別物）。platform 重複解決（優先度・閾値）は `exercise_source.py` のモジュール定数を push とレポートで共有する |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
