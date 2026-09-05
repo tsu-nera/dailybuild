@@ -6,7 +6,7 @@
 # mind/body/sleep/comment = mind_score/body_score/sleep_score/comment。
 
 # setup-form が書き戻す。空なら未作成
-form_id:
+form_id: 1fqyTh4Yr7dsXdStt0L4228SfGrzuVa18jkZ1LAR4WeQ
 form_title: 日次記録
 
 # グリッド item 自体のタイトル（行ごとの questionId には無関係。画面の
