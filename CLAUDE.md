@@ -60,15 +60,13 @@ uv sync
 型チェッカーは入れていない。品質チェックはテストのみで、これが正典コマンド:
 
 ```bash
-uv run pytest tests -q          # 既定
-uv run pytest tests -q -m net   # 外部 API を叩くぶん
+uv run pytest tests -q
 ```
 
-`net` は Google Health の値が既存 Fitbit CSV と一致するかを実 API で見る
-（`test_googlehealth_parity.py`）。既定から外してあるのは、遅いからだけでなく
-**比較の両辺がこちらのコードと無関係に動く**ため。Google は値を再計算し、
-Fitbit は過去を遡って書き換えるので、コードを1行も変えずに赤くなる。回帰ゲートでは
-なく移行期の監視として、`fetch_googlehealth.py` を触るときに回す。
+実 API を叩く parity テストは持たない。Google Health への移行期には
+既存 Fitbit CSV との突き合わせを `-m net` で回していたが、CSV を書くのが
+Google になった時点で**比較の両辺が同じソースに収束し**、確認しているのは
+動かない過去だけになったので 2026-09-05 に削除した。
 
 こちらのコードを見る部分（期間フィルタ）はフェイクに移してある
 （`test_googlehealth_date_range.py`、既定・0.2秒）。実 API では Google が返す
@@ -181,7 +179,7 @@ stdout）。
 | 読むタイミング | ドキュメント |
 |---|---|
 | `scripts/toggl.py` の push / start / stop を変更するとき | [docs/toggl.md](docs/toggl.md) — 冪等性判定の条件を外すと Toggl に二重投入する |
-| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / exercise / activity / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。exercise は platform 重複あり。intraday の steps は4系統同居で素の合算は3.6倍。activity の Fitbit→Google 段差は caloriesOut だけ（steps/distance/*ActiveMinutesは折れ目なし）。`pytest -m net` も回す |
+| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / exercise / activity / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。exercise は platform 重複あり。intraday の steps は4系統同居で素の合算は3.6倍。activity の Fitbit→Google 段差は caloriesOut だけ（steps/distance/*ActiveMinutesは折れ目なし） |
 | `src/lib/exercise_source.py` / 運動系レポート（body / mind）を変更するとき | `data/googlehealth/exercise.csv` が正本。`data/wearable/activity_logs.csv`（Fitbit Web API 廃止で更新停止）はアーカイブとして凍結し統合しない（id空間・distance単位・activeZoneMinutes構造が別物）。platform 重複解決（優先度・閾値）は `exercise_source.py` のモジュール定数を push とレポートで共有する |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |

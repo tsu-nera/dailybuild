@@ -37,9 +37,4 @@ dev = [
 pythonpath = ["src"]
 # tmp/ は gitignore 対象の作業領域。ベンダーコードのテストを拾わないよう収集対象を限定する
 testpaths = ["tests"]
-# net を既定で外す。実測で全体42秒のうち40秒がネットワーク8件（googlehealth の
-# parity）で、残り234件は約2秒。毎回叩くと遅いうえ、API 側の応答で間欠的に落ちる。
-# 外したぶんは fetch_googlehealth.py を触るときに `-m net` で回す（CLAUDE.md 参照表）。
-markers = ["net: 外部 API を実際に叩く。既定では実行しない"]
-addopts = "-m 'not net'"
 
