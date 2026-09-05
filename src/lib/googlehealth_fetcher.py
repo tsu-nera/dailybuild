@@ -143,6 +143,35 @@ ENDPOINTS = {
         'columns': googlehealth_api.NUTRITION_LOG_COLUMNS,
         'allow_empty': True,
     },
+    # intraday 5種（Issue #76）。merge_key は付けない（= 日付インデックスの
+    # merge_csv 経路）。HISTORY_BOUNDARY のガードは merge_key 無しの経路に
+    # そのまま効くため、バックフィルは allow_history_rewrite 明示時のみ。
+    #
+    # heart_rate_intraday だけ exclude_from_all: 生サンプルは1日約33,000点=
+    # 約660ページ=約8分かかり、fetch_all に含めると日次運用が壊れる。
+    # `--endpoint heart_rate_intraday` で明示指定したときだけ取る
+    # （docs/googlehealth.md「intraday」節参照）。
+    'heart_rate_intraday': {
+        'description': '心拍数（分刻み）',
+        'date_column': 'datetime',
+        'exclude_from_all': True,
+    },
+    'steps_intraday': {
+        'description': '歩数（分刻み）',
+        'date_column': 'datetime',
+    },
+    'spo2_intraday': {
+        'description': 'SpO2（分刻み）',
+        'date_column': 'datetime',
+    },
+    'hrv_intraday': {
+        'description': 'HRV（分刻み）',
+        'date_column': 'datetime',
+    },
+    'br_intraday': {
+        'description': '呼吸数（睡眠、日次）',
+        'date_column': 'date',
+    },
 }
 
 
@@ -306,9 +335,15 @@ def _save_period_replace(endpoint: str, config: dict, result, start_date: dt.dat
 def fetch_all(creds, days: int = None, overwrite: bool = False,
               start_date: dt.date = None, end_date: dt.date = None,
               allow_history_rewrite: bool = False) -> dict:
-    """対応済みエンドポイントをまとめて取得する"""
+    """対応済みエンドポイントをまとめて取得する
+
+    'exclude_from_all' が立っているエンドポイント（heart_rate_intraday）は
+    スキップする。fetch_endpoint での明示指定では取れる。
+    """
     results = {}
-    for endpoint in ENDPOINTS:
+    for endpoint, config in ENDPOINTS.items():
+        if config.get('exclude_from_all'):
+            continue
         results[endpoint] = fetch_endpoint(
             creds, endpoint, days=days, overwrite=overwrite,
             start_date=start_date, end_date=end_date,

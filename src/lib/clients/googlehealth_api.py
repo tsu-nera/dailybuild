@@ -16,6 +16,8 @@ fetch_* 関数は以下に分割している（Issue #78。ファイルサイズ
   - googlehealth_daily.py     daily-* 型（hrv / breathing_rate / temperature_skin /
                                heart_rate / spo2 / activity / active_zone_minutes /
                                temperature_core）
+  - googlehealth_intraday.py  intraday 型（heart_rate_intraday / steps_intraday /
+                               spo2_intraday / hrv_intraday / br_intraday。Issue #76）
 
 テストは `googlehealth_api._get` / `_post` / `_list_sleep_points` を直接
 monkeypatch する。分割先モジュールはこれらを `from . import googlehealth_api
@@ -152,6 +154,53 @@ def list_data_points(creds: Credentials, data_type: str, max_points: int = 10000
         if not token:
             break
         if stop_before and payload_key and _page_is_older_than(page, payload_key, stop_before):
+            break
+    return out
+
+
+FILTER_WINDOW_MARGIN = dt.timedelta(hours=15)
+
+
+def list_filtered_points(creds: Credentials, data_type: str, filter_field: str,
+                         start_date: dt.date, end_date: dt.date) -> list[dict]:
+    """
+    `filter` クエリパラメータ付きで dataPoints を取得する（intraday 型向け、Issue #76）
+
+    list_data_points と違い、新しい順に打ち切るのではなく filter で API 側に
+    範囲を絞らせる。intraday は1日あたり数万点あり、打ち切りだけでは
+    絞り切れない（heart-rate で約33,000点/日）。
+
+    filter 構文は snake_case で完全修飾したフィールド名が必須（例:
+    `heart_rate.sample_time.physical_time`）。camelCase は
+    INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION で 400 になる。
+    **上限（`<`）を付けないと新しい順に返るだけで過去に届かない。**
+
+    `physicalTime` は UTC・`civilTime` がローカル（JST, utcOffset=32400s）
+    のため、UTC の暦日で filter を切るとローカル日付と1日ずれる。
+    ここでは filter の窓を ±15時間広く取るだけにし（UTC オフセット -12〜+14
+    のどれでもローカル暦日を必ず覆う）、最終的な期間の絞り込みは各 fetcher が
+    civilTime の日付で行う。
+
+    pageSize は指定しない（list_data_points と同じ理由: 小さい値だと0件が
+    返ることがある）。件数上限を設けず nextPageToken を最後まで辿る
+    （打ち切りは欠測の捏造になる）。
+    """
+    lo = dt.datetime.combine(start_date, dt.time()) - FILTER_WINDOW_MARGIN
+    hi = dt.datetime.combine(end_date + dt.timedelta(days=1), dt.time()) + FILTER_WINDOW_MARGIN
+    lo_str = lo.strftime('%Y-%m-%dT%H:%M:%SZ')
+    hi_str = hi.strftime('%Y-%m-%dT%H:%M:%SZ')
+    filter_str = f'{filter_field} >= "{lo_str}" AND {filter_field} < "{hi_str}"'
+
+    out = []
+    token = None
+    while True:
+        params = {'filter': filter_str}
+        if token:
+            params['pageToken'] = token
+        body = _get(creds, f'{USER}/dataTypes/{data_type}/dataPoints', params)
+        out.extend(body.get('dataPoints', []))
+        token = body.get('nextPageToken')
+        if not token:
             break
     return out
 
@@ -331,6 +380,10 @@ from .googlehealth_daily import (  # noqa: E402
     fetch_hrv, fetch_breathing_rate, fetch_temperature_skin, fetch_heart_rate,
     fetch_spo2, fetch_activity, fetch_active_zone_minutes, fetch_temperature_core,
 )
+from .googlehealth_intraday import (  # noqa: E402
+    fetch_heart_rate_intraday, fetch_steps_intraday, fetch_spo2_intraday,
+    fetch_hrv_intraday, fetch_br_intraday,
+)
 
 # sleep は他と違い、1回の取得で sleep.csv / sleep_levels.csv の2つの行リストを
 # 作るため (sleep_rows, level_rows) のタプルを返す。
@@ -351,4 +404,9 @@ FETCHERS = {
     'nutrition_logs': fetch_nutrition_logs,
     'weight': fetch_weight,
     'body_fat': fetch_body_fat,
+    'heart_rate_intraday': fetch_heart_rate_intraday,
+    'steps_intraday': fetch_steps_intraday,
+    'spo2_intraday': fetch_spo2_intraday,
+    'hrv_intraday': fetch_hrv_intraday,
+    'br_intraday': fetch_br_intraday,
 }

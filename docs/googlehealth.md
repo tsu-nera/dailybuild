@@ -1,4 +1,4 @@
-# Google Health（カフェイン・栄養・安静時心拍数・SpO2・体重・体脂肪率・運動）
+# Google Health（カフェイン・栄養・安静時心拍数・SpO2・体重・体脂肪率・運動・intraday）
 
 ## 運動（exercise）
 
@@ -110,3 +110,66 @@
   が落ちたときの予備経路になる
 - 体組成の計測は数日〜週おきで疎なので、0件を正常扱いにしてある（`allow_empty`）
 - マージキーは `exercise` / `caffeine` と同じく `id`（19桁の整数。`dtype=str` 必須）
+
+## intraday（心拍数・歩数・SpO2・HRV・呼吸数の分刻み、Issue #76）
+
+`fetch_googlehealth.py` の `heart_rate_intraday` / `steps_intraday` /
+`spo2_intraday` / `hrv_intraday` / `br_intraday` エンドポイント。既存の
+`data/fitbit/*_intraday.csv` と同一スキーマで出力する。daily-* 型と違い
+`list` の `filter` クエリパラメータで期間を絞る
+（`googlehealth_api.list_filtered_points`）。
+
+- **`filter` のフィールド名は snake_case で完全修飾する。** camelCase は
+  `INVALID_DATA_POINT_FILTER_DATA_TYPE_RESTRICTION` で 400 になる。
+  **上限（`<`）を付けないと新しい順に返るだけで過去に届かない**（下限だけでは
+  ページングが止まらず全履歴を延々引く）
+- `physicalTime` は UTC、`civilTime` がローカル（JST, utcOffset=32400s）。
+  UTC の暦日で filter を切るとローカル暦日と1日ずれるため、filter の窓は
+  ±15時間広く取り（UTC オフセット -12〜+14 のどれでもローカル暦日を覆う）、
+  最終的な期間の絞り込みは civilTime の日付で行う
+- **steps は4系統が同居し、素で合算すると3.6倍になる。** 実測（JST
+  2026-09-01）:
+
+  | dataSource | points | 合計歩数 | 既存CSVとの一致 |
+  |---|---|---|---|
+  | platform=FITBIT, device.displayName="Charge 6" | 139 | 3267 | 1440/1440 完全一致 |
+  | platform=FITBIT, device.displayName="MobileTrack" | 121 | 3276 | 1253/1440 |
+  | platform=HEALTH_CONNECT, packageName=…healthconnect.phone… | 39 | 3456 | 1297/1440 |
+  | platform=HEALTH_CONNECT, packageName=com.google.android.apps.fitness | 50 | 1863 | 1286/1440 |
+
+  `platform == 'FITBIT'` かつ `device.displayName != 'MobileTrack'` の点だけを
+  採用する（MobileTrack は同じ FITBIT platform なので platform だけでは切れない）
+- steps は非0区間しか返らないため、既存CSVと同じ1440行/日にするにはゼロ埋めが
+  要る。**今日より前は00:00〜23:59の1440分すべて、当日はローカル現在時刻の分
+  まで**（未来の分を0で埋めると欠測の捏造になる）。**1点も返らなかった日は
+  ゼロ埋めしない**: 保存はキーマージで 0 は「値がある」として既存の実測値を
+  上書きするため、取得の沈黙故障（filter の誤り・同期前）が1日ぶんの歩数を
+  黙って消す
+- **steps は Charge 6 だけでは既存CSVと完全一致しない残差がある。** Fitbit は
+  トラッカーに記録が無い分だけ MobileTrack の歩数で埋めており、Google の点から
+  は「トラッカーが0を記録した」と「記録が無い」を区別できないため再現できない。
+  実測（2026-09-03〜04の2,880分）で不一致は2分・計9歩で、すべて Google < CSV
+  の方向。parity テストは完全一致ではなく「Google > CSV が0件（＝二重計上の
+  検出）」と「取り逃しが総歩数の1%未満」で見ている
+- heart-rate は生サンプル（1〜3秒粒度）を civilTime の分でバケットし、
+  **切り捨て平均（`int(mean)`。`round` ではない）** で1分値にする。1日あたり
+  約33,000点=約660ページ=約8分かかり、既存CSV起点（2024-12-01）まで遡ると
+  約84時間になるため **`fetch_all` から除外し、バックフィルはしない**
+  （`--endpoint heart_rate_intraday` で明示指定したときだけ取る）
+- br（呼吸数）は1つの civil date に複数点が届くことがあり、deep/rem/full は
+  同値でも light だけ揺れる。**civil date ごとに physicalTime が最も早い点を
+  採る**とこの揺れが解消する
+- hrv は Google 側に `rmssd` しか無く、既存CSVの `coverage`/`hf`/`lf`/
+  `lf_hf_ratio` に対応するフィールドが無い。行は `datetime`/`rmssd` だけを
+  持たせ、**保存はキーマージ（`merge_csv`）にする**（期間置換にすると
+  この4列が丸ごと消える）
+- 2021-06 に `oxygen-saturation` / `heart-rate-variability` が0件だったのは
+  着用の途切れでも保持期間の限界でもなく、**filter 無しでページングしていた
+  ため2021年まで届いていなかっただけの観測アーティファクト**。filter 付きで
+  引き直すと2021-06にもデータが存在する
+- 日次実行への影響: `--days 2` で intraday 4種（heart_rate_intraday を除く）の
+  追加取得は実測で79ページ・約57秒
+- parity テスト（`pytest -m net`）の比較窓は**現在時刻ではなく既存CSVの最終行
+  から取る**。CSV は最後に取得を回した時点までしか無いので、現在時刻から窓を
+  切ると重なりが0件になり `compared == 0` で落ちる。heart-rate は日付単位でしか
+  引けず1日約8分かかるので、intraday の net テストは全体で5分以上かかる

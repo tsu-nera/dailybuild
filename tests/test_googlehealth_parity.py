@@ -351,6 +351,139 @@ def test_nutrition_matches_existing_csv(creds):
     assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
 
 
+# =============================================================================
+# intraday 5種（Issue #76）
+#
+# 既存の _compare は日付キー前提（1日1行）だが intraday は1分ごとに複数行
+# あるため、datetime キーで突き合わせる専用ヘルパーを使う。共通するキーだけを
+# 比較し、片側にしか無いキーは比較対象外にする（Google と既存CSVの点集合が
+# 完全に一致するとは限らないため。特に spo2/hrv は intraday の元となる
+# データ自体がどちらかにしか無い点を持ちうる）。
+# =============================================================================
+
+def _compare_intraday(rows: list[dict], old: dict[str, dict], key: str,
+                      columns: list[str], tolerance: float = 0.001):
+    """intraday の行リストと既存CSVを datetime（または date）キーで突き合わせる"""
+    mismatches = []
+    compared = 0
+    for row in rows:
+        ref = old.get(row[key])
+        if ref is None:
+            continue
+        for col in columns:
+            got, want = row.get(col), ref.get(col)
+            if want in (None, '') or got is None:
+                continue
+            compared += 1
+            if abs(float(got) - float(want)) > tolerance:
+                mismatches.append(f"{row[key]} {col}: Google={got} CSV={want}")
+    return compared, mismatches
+
+
+def test_steps_intraday_never_exceeds_existing_csv(creds):
+    """取得元を絞り損ねた二重計上（3.6倍）を検出する
+
+    完全一致では見ない。Fitbit の既存 CSV は Charge 6 に記録が無い分だけ
+    MobileTrack（スマホ）の歩数で埋めており、Google の点からは「トラッカーが
+    0を記録した」と「記録が無い」を区別できないため再現できない。実測
+    （2026-09-03〜04の2,880分）で不一致は2分・計9歩、すべて Google < CSV。
+
+    危険なのは逆向き（Google > CSV = 二重計上）なので、そちらを0件で縛り、
+    取り逃し側は総歩数の1%以内に収まることだけを見る。
+    """
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['steps_intraday'](creds, start, end)
+    assert rows, 'steps_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('steps_intraday', key='datetime')
+    compared = 0
+    over = []
+    google_total = csv_total = 0
+    for row in rows:
+        ref = old.get(row['datetime'])
+        if ref is None or ref.get('steps') in (None, ''):
+            continue
+        compared += 1
+        got, want = int(row['steps']), int(ref['steps'])
+        google_total += got
+        csv_total += want
+        if got > want:
+            over.append(f"{row['datetime']}: Google={got} CSV={want}")
+
+    assert compared > 0, '比較対象が1件も無い'
+    assert not over, f'既存CSVを超える分がある（二重計上）: {len(over)}件 {over[:5]}'
+    assert csv_total > 0, '既存CSV側の歩数が0で、比較が成立していない'
+    shortfall = (csv_total - google_total) / csv_total
+    assert shortfall < 0.01, \
+        f'取り逃しが総歩数の1%を超える: Google={google_total} CSV={csv_total}'
+
+
+def test_spo2_intraday_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['spo2_intraday'](creds, start, end)
+    assert rows, 'spo2_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('spo2_intraday', key='datetime')
+    compared, mismatches = _compare_intraday(rows, old, 'datetime', ['spo2'], tolerance=0.051)
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_hrv_intraday_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['hrv_intraday'](creds, start, end)
+    assert rows, 'hrv_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('hrv_intraday', key='datetime')
+    compared, mismatches = _compare_intraday(rows, old, 'datetime', ['rmssd'])
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_br_intraday_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['br_intraday'](creds, start, end)
+    assert rows, 'br_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('br_intraday', key='date')
+    columns = ['br_full_sleep', 'br_deep', 'br_light', 'br_rem']
+    compared, mismatches = _compare_intraday(rows, old, 'date', columns, tolerance=0.051)
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_heart_rate_intraday_matches_existing_csv(creds):
+    """比較の窓は「現在時刻の直近1時間」ではなく既存CSVの最終行から取る
+
+    CSV は最後に取得を回した時点までしか無いので、現在時刻から窓を切ると
+    重なりが0件になり `compared == 0` で落ちる（実際に落ちた）。CSV の
+    最終 datetime で終わる1時間を窓にすれば必ず重なる。
+
+    Google 側は日付単位でしか引けず1日分は約8分かかるため、CSV 最終行の
+    日付1日だけを取得して、そのうち最後の1時間を突き合わせる。
+    """
+    old = _load_csv('heart_rate_intraday', key='datetime')
+    csv_max = max(old)
+    target_date = dt.date.fromisoformat(csv_max[:10])
+    if target_date < COMPARE_FROM:
+        pytest.skip(f'既存CSVの最終行 {csv_max} が COMPARE_FROM より前')
+
+    rows = gh.FETCHERS['heart_rate_intraday'](creds, target_date, target_date)
+    assert rows, 'heart_rate_intraday: Google から1件も取得できていない'
+
+    window_start = (dt.datetime.fromisoformat(csv_max)
+                    - dt.timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+    rows = [r for r in rows if window_start <= r['datetime'] <= csv_max]
+
+    compared, mismatches = _compare_intraday(rows, old, 'datetime', ['heart_rate'])
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
 NUTRITION_LOGS_COMPARE_FROM = dt.date(2025, 12, 12)
 NUTRITION_LOGS_COMPARE_TO = dt.date(2026, 2, 1)
 
