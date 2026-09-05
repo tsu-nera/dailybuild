@@ -1,12 +1,12 @@
 ---
-name: cbt
-description: AIとの会話形式で認知行動療法(CBT)の思考記録を実施・保存し、認知の歪みのパターンを蓄積・分析する
+name: cognitive-restructuring
+description: CBT の認知再構成成分。コラム法（思考記録）を会話形式で実施・保存し、認知の歪みのパターンを蓄積・分析する。落ち込み・不安・自己批判・頭から離れない考え・自動思考が出たとき、または過去の思考記録を振り返りたいときに使う。
 argument-hint: "[今日の思考・不安] [--quick|--full] | --analyze [--days N] | --review"
 user-invocable: true
 allowed-tools: Bash, Read, Write, Glob
 ---
 
-# CBT 思考記録スキル
+# 認知再構成（コラム法）スキル
 
 「思考記録 × AI」によるセルフリフレクションを、毎日5-10分の会話形式で実施する。
 生理データレポート（body/sleep/mind）とは独立した**思考ドリブン**の軸。
@@ -162,16 +162,19 @@ Step 2 の感情をアンカーに、その瞬間の自動思考（ホットな�
 
 ### Step 8b（振り返り追記モード）
 
-`--review` の場合、新規思考記録は作らず、**直近のエントリーファイル**（`reports/cbt/` 内で最新の `YYYY-MM-DD-NN.md`）の末尾に短い振り返り（バランス思考を実生活で試した結果など）を `## 振り返り (HH:MM)` 節として追記する。既存セクションは上書きしない。
+`--review` の場合、新規思考記録は作らず、**直近のエントリーファイル**（`reports/cognitive-restructuring/` 内で最新の `YYYY-MM-DD-NN.md`）の末尾に短い振り返り（バランス思考を実生活で試した結果など）を `## 振り返り (HH:MM)` 節として追記する。既存セクションは上書きしない。
 
 ---
 
 ## 4. ファイル保存
 
-**1思考記録 = 1ファイル**。`reports/cbt/YYYY-MM-DD-NN.md` に保存する（`NN` はその日の連番、`01` 始まり・2桁ゼロ埋め）。ディレクトリが無ければ作成する。
+**1思考記録 = 1ファイル**。`reports/cognitive-restructuring/YYYY-MM-DD-NN.md` に保存する（`NN` はその日の連番、`01` 始まり・2桁ゼロ埋め）。ディレクトリが無ければ作成する。
 
-- 連番は保存前に `reports/cbt/YYYY-MM-DD-*.md` を Glob し、既存の最大値 +1 を採番する（同日2件目は `-02`）。
+- 連番は保存前に `reports/cognitive-restructuring/YYYY-MM-DD-*.md` を Glob し、既存の最大値 +1 を採番する（同日2件目は `-02`）。
 - 既存ファイルへの追記・上書きはしない。常に新規ファイルを作る。
+- 保存後、`reports/cognitive-restructuring/INDEX.md` の表に**1行だけ**追記する（新しい順で先頭）。
+  列は 日付 / ファイル / 状況 / 中心の歪み / 動き。「動き」は感情強度と確信度の再評価を数字で書く。
+  索引に考察・集計は書かない（恒久的な知見は memory へ）。
 
 **プライバシー方針**: 思考記録は機微情報のため、`/journal` と異なり **GitHub Issue には投稿しない**。ローカルファイル保存のみ。
 
@@ -191,7 +194,7 @@ Step 2 の感情をアンカーに、その瞬間の自動思考（ホットな�
 
 ### Step 1: 範囲決定
 
-`--days N`（デフォルト30）。`reports/cbt/` 配下の対象期間のファイルを Glob で収集する。
+`--days N`（デフォルト30）。`reports/cognitive-restructuring/` 配下の対象期間のファイルを Glob で収集する。
 
 ### Step 2: パターン抽出
 
@@ -207,7 +210,7 @@ Step 2 の感情をアンカーに、その瞬間の自動思考（ホットな�
 - 診断はしない。気づきと、本人が選べる次の一歩の提案にとどめる
 - 蓄積から深刻な傾向（絶望の増悪など）が見えたら、§1に従い専門家相談を促す
 
-分析結果は `reports/cbt/analysis-YYYY-MM-DD.md` に保存する（任意。ユーザーに確認）。
+分析結果は `reports/cognitive-restructuring/analysis-YYYY-MM-DD.md` に保存する（任意。ユーザーに確認）。
 
 ---
 
