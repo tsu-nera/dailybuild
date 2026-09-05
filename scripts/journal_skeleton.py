@@ -15,10 +15,17 @@ journal スキルは対話の記録が主目的で、人がレビューを回さ
 **マーカーを持たない既存エントリには一切触れない。** journal 移行前に人と
 agent が書いた日次エントリ（2026-08-07 など）を機械が書き換えないため。
 
+同時に `reports/journal/STATE.md` を全上書きで生成する。週ファイルが
+「その日そう判断した」という**不変の経過**なのに対し、STATE.md は
+「いま何がどうなっているか」という**揮発する現在値**で、性質が正反対のため
+別ファイルに分けてある。ストリーク（連続日数）と鮮度は毎日計算し直せるので
+agent に書かせない。書かせると毎日言い換えが発生して事実が漂流する。
+
 Usage:
     uv run scripts/journal_skeleton.py                 # 今日
     uv run scripts/journal_skeleton.py --date 2026-08-20
     uv run scripts/journal_skeleton.py --since 2026-08-10   # 範囲を遡って生成
+    uv run scripts/journal_skeleton.py --state-only    # STATE.md だけ作り直す
 """
 
 import argparse
@@ -28,6 +35,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
@@ -35,11 +43,15 @@ sys.path.insert(0, str(project_root / 'src'))
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
+from lib.emotion import render as emotion_render  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
 
 BASE_DIR = project_root
 JOURNAL_DIR = BASE_DIR / 'reports' / 'journal'
 INDEX_FILE = JOURNAL_DIR / 'JOURNAL.md'
+STATE_FILE = JOURNAL_DIR / 'STATE.md'
+ACTIONS_FILE = JOURNAL_DIR / 'ACTIONS.md'
+EMOTION_DEF = BASE_DIR / 'config' / 'emotion_def.yaml'
 
 WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
 
@@ -462,12 +474,382 @@ def ensure_index_row(target: dt.date) -> str:
     return 'added'
 
 
+# ---------------------------------------------------------------------------
+# STATE.md（現在の状態）
+#
+# 週ファイルは「その日そう判断した」という不変の経過で、追記しかしない。
+# STATE.md はその逆で、毎回まるごと捨てて作り直す揮発した現在値。両者を
+# 同じファイルに置くと、集約（毎日書き換わる）を追記の場所に置くことになり、
+# agent が毎日 rollup を書き直す羽目になる。実際その運用で、事実が変わって
+# いないのに表現だけが毎日漂流していた。
+# ---------------------------------------------------------------------------
+
+# ストリークを遡る上限。睡眠負債は1日ずつ計算するので伸ばすと比例して遅くなる
+STREAK_LOOKBACK_DAYS = 60
+
+# 欠測が何日続いたらストリークを打ち切るか。1〜2日の穴は取得の失敗でも起きる
+# ので跨ぐが、それ以上は「続いていた」と言えない
+STREAK_MAX_GAP = 2
+
+# (表示名, 系列キー, 条件, 当日を数えるか)
+#
+# 当日を数えないものは、当日の値がまだ確定しない指標。歩数は進行中で、
+# 陽性感情は「まだ記録していないだけ」なので、当日を条件に入れると毎朝
+# ストリークが1日伸びる。欠測を不調として数えるのと同じ捏造になる。
+STREAK_SPECS = [
+    ('睡眠時間 < 6h', 'sleep_hours', lambda v: v < 6.0, True),
+    ('睡眠効率 < 85%', 'sleep_efficiency', lambda v: v < 85, True),
+    ('睡眠負債 > 0h', 'sleep_debt', lambda v: v > 0, True),
+    ('主観 mind <= 1', 'mind', lambda v: v <= 1, True),
+    ('主観 body <= 2', 'body', lambda v: v <= 2, True),
+    ('主観 sleep <= 1', 'sleep_score', lambda v: v <= 1, True),
+    ('歩数 < 3000', 'steps', lambda v: v < 3000, False),
+    ('陽性感情なし', 'positive', lambda v: v < 1, False),
+]
+
+# 取得パイプラインの鮮度。(表示名, パス, 日付列, 許容遅れ日数, 状態, 備考)
+# パスの {year} は対象日の年で埋める（MF は年ごとにファイルが分かれる）。
+#
+# 状態の3分類。**「直さないと決めたもの」を要確認のまま置かない。** 毎日赤い行が
+# あると表そのものが読み飛ばされるようになり、本当に新しい異常が埋もれる
+# （SPARSE_SOURCES で疎な指標の不在を毎日「欠測」と書かないのと同じ理由）。
+#   active   … 通常。遅れたら要確認
+#   degraded … 取得は続くが構造的に不完全。鮮度は通常どおり評価しつつ、
+#              欠損を常時注記する。取得が動いている分こちらの方が危険で、
+#              欠けた数字を完全なものとして読まれる
+#
+# 運用をやめたソースはここから**行ごと消す**（`retired` のような状態は作らない）。
+# 停止したものを毎日表に出しても、読み手にできることが何も無い。停止した事実と
+# 理由は memory と CLAUDE.md が持つ。
+PIPELINE_SOURCES = [
+    ('Fitbit sleep', 'data/fitbit/sleep.csv', 'dateOfSleep', 1, 'active', ''),
+    ('Fitbit HRV', 'data/fitbit/hrv.csv', 'date', 1, 'active', ''),
+    ('Fitbit activity', 'data/fitbit/activity.csv', 'date', 1, 'active', ''),
+    ('手動記録', 'data/manual.csv', 'date', 2, 'active', ''),
+    ('体組成', 'data/healthplanet_innerscan.csv', 'date', 3, 'active',
+     '測らない日があるのが常態'),
+    ('気分記録', 'data/emotion.csv', 'date', 3, 'active', '断続で運用が成立している'),
+    ('排便記録', 'data/bowel.csv', 'date', 4, 'active', '出ない日がある'),
+    ('PHQ-9', 'data/phq9.csv', 'date', 8, 'active', '週次'),
+    ('Toggl', 'data/toggl/time_entries.csv', 'start', 2, 'active', ''),
+    ('MoneyForward', 'data/mf/収入・支出詳細_{year}.csv', '日付', 4, 'degraded',
+     '連携が切れた口座の明細が入らない。**MF の集計は過少**。再認証しない方針'),
+    ('Habitica', 'data/habitica/cron_log.csv', 'date', 1, 'active', ''),
+]
+
+# 毎日出る既知のログ警告。新規と同じ場所に並べると新規が埋もれるので分けて出す。
+# 消さないのは、件数や範囲が変わったときに文言も変わるため（9件→15件は見える）。
+KNOWN_LOG_WARNINGS = [
+    '連携が正常でない口座が',
+    'activityCalories / sedentaryMinutes',
+    'メイン睡眠に重なる短いセッション',
+    'push 対象期間',
+]
+
+# ACTIONS.md の状態欄。ここに無い語は「未解決」に倒す（見落とすより出しすぎる）
+ACTION_CLOSED = {'達成', '撤回', '不要'}
+
+
+def _valence_map() -> dict:
+    """気分記録の label -> valence。読めなければ空 dict"""
+    if not EMOTION_DEF.exists():
+        return {}
+    try:
+        with open(EMOTION_DEF, encoding='utf-8') as f:
+            conf = yaml.safe_load(f) or {}
+    except yaml.YAMLError:
+        return {}
+    return emotion_render.valence_map(conf)
+
+
+def _positive_series(lo, hi):
+    """日ごとの陽性ラベル件数。記録の無い日は 0 で埋める（欠測ではない）
+
+    「陽性が N 日途切れている」を数えるための系列なので、記録が無い日は
+    陽性が無かった日として数えるのが正しい。
+
+    emotion の show は streak を出さない方針（src/lib/emotion/render.py の
+    docstring）。あれは**人が読む**出力で、不調期に折れると自己批判の材料に
+    なるため。こちらは agent しか読まない状態ファイルで、daily-review が
+    「陽性が N 日途切れている」を明示的に求めている。
+    """
+    idx = pd.date_range(lo, hi, freq='D')
+    df = _read('data/emotion.csv', 'date')
+    if df.empty or 'emotions' not in df.columns:
+        return None
+    vmap = _valence_map()
+    if not vmap:
+        # 極性が引けない状態で 0 埋めすると「陽性ゼロが60日continuing」に化ける
+        return None
+    hits = df[df['emotions'].apply(lambda e: emotion_render.has_positive(e, vmap))]
+    counts = hits.groupby('_date').size() if not hits.empty else pd.Series(dtype=float)
+    return counts.reindex(idx, fill_value=0).astype(float)
+
+
+def _state_series(target: dt.date) -> dict:
+    """ストリーク判定に使う日次系列を集める。値は日付 index の Series"""
+    ts = pd.Timestamp(target)
+    lo = ts - pd.Timedelta(days=STREAK_LOOKBACK_DAYS)
+    out = {}
+
+    def add(key, df, column, scale=1.0):
+        if df.empty or column not in df.columns:
+            return
+        series = pd.to_numeric(df[column], errors='coerce') * scale
+        series.index = pd.DatetimeIndex(df['_date'].values)
+        series = series[(series.index >= lo) & (series.index <= ts)].dropna()
+        if len(series):
+            out[key] = series[~series.index.duplicated(keep='first')].sort_index()
+
+    sleep = _main_sleep(_read('data/fitbit/sleep.csv', 'dateOfSleep'))
+    if not sleep.empty:
+        sleep = sleep.groupby('_date').first().reset_index()
+    add('sleep_hours', sleep, 'minutesAsleep', 1 / 60)
+    add('sleep_efficiency', sleep, 'efficiency')
+
+    man = _read('data/manual.csv', 'date')
+    add('mind', man, 'mind_score')
+    add('body', man, 'body_score')
+    add('sleep_score', man, 'sleep_score')
+
+    add('steps', _read('data/fitbit/activity.csv', 'date'), 'steps')
+    add('sleep_debt', _sleep_debt_series(lo, ts), 'debt')
+
+    positive = _positive_series(lo, ts)
+    if positive is not None:
+        out['positive'] = positive
+    return out
+
+
+def _streak(series, predicate, target: dt.date, include_today: bool) -> dict | None:
+    """target から遡って条件が続いている日数を数える
+
+    欠測の扱いが要点。起点が欠測なら数え始めない（続いているか分からない）。
+    途中の穴は STREAK_MAX_GAP まで跨ぐが、日数には数えず gaps に出す。
+    穴を「条件を満たした日」として数えると欠測を不調に化けさせる。
+    末尾の穴は捨てる（開始日は必ず実データのある日になる）。
+    """
+    ts = pd.Timestamp(target)
+    start = ts if include_today else ts - pd.Timedelta(days=1)
+    limit = ts - pd.Timedelta(days=STREAK_LOOKBACK_DAYS)
+
+    hits = []
+    gaps = 0
+    run_gap = 0
+    cursor = start
+    while cursor >= limit:
+        if cursor in series.index:
+            value = series.loc[cursor]
+            if pd.isna(value) or not predicate(float(value)):
+                break
+            hits.append(cursor)
+            gaps += run_gap          # 穴の手前にも該当日があったので中の穴として確定
+            run_gap = 0
+        else:
+            if not hits:
+                break
+            run_gap += 1
+            if run_gap > STREAK_MAX_GAP:
+                break
+        cursor -= pd.Timedelta(days=1)
+
+    if len(hits) < 2:
+        return None
+    first = hits[-1]
+    return {'days': len(hits), 'gaps': gaps, 'first': first,
+            'span': (start - first).days + 1, 'through_today': include_today}
+
+
+def collect_streaks(target: dt.date) -> list[dict]:
+    """継続中のストリークを長い順に返す"""
+    series = _state_series(target)
+    out = []
+    for label, key, predicate, include_today in STREAK_SPECS:
+        if key not in series:
+            continue
+        hit = _streak(series[key], predicate, target, include_today)
+        if hit:
+            out.append({'label': label, **hit})
+    return sorted(out, key=lambda r: r['days'], reverse=True)
+
+
+def collect_pipeline(target: dt.date) -> list[dict]:
+    """各ソースの最終行と遅れ日数。未来日は当日で切る（MF は未来明細を持つ）"""
+    ts = pd.Timestamp(target)
+    rows = []
+    for name, path, column, tolerance, status, note in PIPELINE_SOURCES:
+        df = _read(path.format(year=target.year), column)
+        past = df[df['_date'] <= ts] if not df.empty else df
+        if past.empty:
+            rows.append({'name': name, 'last': None, 'behind': None,
+                         'ok': False, 'status': status, 'note': note})
+            continue
+        last = past['_date'].max()
+        behind = (ts - last).days
+        rows.append({'name': name, 'last': last, 'behind': behind,
+                     'ok': behind <= tolerance, 'status': status, 'note': note})
+    return rows
+
+
+def collect_last_run() -> dict | None:
+    """最後の daily-routine.sh 実行のログから、完了と失敗ステップと警告を拾う
+
+    ログの書式に依存するのはこの3つだけにしてある（完了マーカー・失敗行・
+    警告行）。いずれも daily-routine.sh と各スクリプトが固定文字列で出す。
+    """
+    log_dir = BASE_DIR / 'logs' / 'daily-routine'
+    logs = sorted(log_dir.glob('*.log')) if log_dir.is_dir() else []
+    if not logs:
+        return None
+    latest = logs[-1]
+    text = latest.read_text(encoding='utf-8', errors='replace')
+    failed = re.findall(r'^=== 失敗した取得: (.+) ===$', text, re.MULTILINE)
+    fresh, known = [], []
+    for line in re.findall(r'^\s*[⚠!].*$', text, re.MULTILINE):
+        line = line.strip()
+        if not line:
+            continue
+        bucket = known if any(k in line for k in KNOWN_LOG_WARNINGS) else fresh
+        if line not in bucket:
+            bucket.append(line)
+    return {
+        'date': latest.stem,
+        'complete': '=== Daily Routine Complete ===' in text,
+        'failed': failed[-1] if failed else None,
+        'warnings': fresh[:6],
+        'known_warnings': known[:6],
+    }
+
+
+def collect_open_actions() -> list[dict]:
+    """ACTIONS.md の未解決行。ファイルが無ければ空
+
+    台帳を別ファイルにしてあるのは、書き込みを1行に局所化するため。
+    日次 review の散文に埋めると「何を出して、どうなったか」を引くのに
+    週ファイル全体を読み直すことになる（実際そうなっていた）。
+    """
+    if not ACTIONS_FILE.exists():
+        return []
+    rows = []
+    for line in ACTIONS_FILE.read_text(encoding='utf-8').splitlines():
+        if not line.startswith('|'):
+            continue
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) < 3 or set(cells[0]) <= set('- :'):
+            continue
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', cells[0]):
+            continue
+        if cells[2] in ACTION_CLOSED:
+            continue
+        rows.append({'issued': cells[0], 'action': cells[1], 'status': cells[2],
+                     'note': cells[4] if len(cells) > 4 else ''})
+    return rows
+
+
+def _fmt_streak(row: dict) -> str:
+    when = row['first'].strftime('%m-%d')
+    body = f"{row['days']}日（{when}〜"
+    body += '当日' if row['through_today'] else '前日'
+    body += '）'
+    if row['gaps']:
+        body += f" ※欠測{row['gaps']}日を挟む"
+    return body
+
+
+def render_state(target: dt.date) -> str:
+    """STATE.md の全文。生成物なので毎回まるごと差し替える"""
+    lines = [
+        '# STATE',
+        '',
+        '**生成物。手で編集しない**（`scripts/journal_skeleton.py` が毎日全上書きする）。',
+        'ここは「いま何がどうなっているか」だけを持つ。「その日そう判断した」という',
+        '経過は週ファイル（`YYYY-Wxx.md`）、来月も真な事実は memory に置く。',
+        '',
+        f'- 対象日: {target.isoformat()} ({WEEKDAY_JA[target.weekday()]})',
+        '',
+        '## 現在値',
+        '',
+        '| 指標 | 当日 | 直近7日 | 前7日 | 変化 |',
+        '|---|---|---|---|---|',
+    ]
+    for m in collect_metrics(target):
+        lines.append(
+            f"| {m['label']} | {_fmt(m['today'], m['unit'], m['digits'])} "
+            f"| {_fmt(m['recent'], m['unit'], m['digits'])} "
+            f"| {_fmt(m['prior'], m['unit'], m['digits'])} "
+            f"| {_fmt_delta(m['recent'], m['prior'], m['unit'], m['digits'])} |"
+        )
+
+    lines += ['', '## 継続中のストリーク', '']
+    streaks = collect_streaks(target)
+    if streaks:
+        lines += ['| 条件 | 継続 |', '|---|---|']
+        lines += [f"| {r['label']} | {_fmt_streak(r)} |" for r in streaks]
+        lines += ['', '> 2日以上のものだけ。歩数・陽性感情は当日が未確定なので前日まで。']
+    else:
+        lines.append('継続中のものは無い（2日以上）。')
+
+    lines += ['', '## 最終記録（疎な指標）', '']
+    lines.append('、'.join(collect_last_seen(target)) or '-')
+
+    lines += ['', '## 未解決のアクション', '']
+    actions = collect_open_actions()
+    if actions:
+        lines += ['| 発行日 | アクション | 状態 | 備考 |', '|---|---|---|---|']
+        lines += [f"| {a['issued']} | {a['action']} | {a['status']} | {a['note']} |"
+                  for a in actions]
+        lines += ['', f'> 全履歴は [ACTIONS.md]({ACTIONS_FILE.name})。']
+    else:
+        lines.append(f'なし（台帳: [ACTIONS.md]({ACTIONS_FILE.name})）。')
+
+    lines += ['', '## パイプライン', '',
+              '| ソース | 最終 | 遅れ | 判定 | 備考 |', '|---|---|---|---|---|']
+    for row in collect_pipeline(target):
+        if row['status'] == 'degraded':
+            verdict = '欠損あり' if row['ok'] else '欠損あり・要確認'
+        else:
+            verdict = 'OK' if row['ok'] else '要確認'
+        if row['last'] is None:
+            lines.append(f"| {row['name']} | - | - | {verdict} | データなし |")
+            continue
+        lines.append(
+            f"| {row['name']} | {row['last'].strftime('%m-%d')} | {row['behind']}日 "
+            f"| {verdict} | {row['note']} |")
+    lines += ['', '> `欠損あり` は取得が動いているのにデータが構造的に欠けているもので、'
+                  '**数値をそのまま読むと過少になる**。']
+
+    run = collect_last_run()
+    if run:
+        lines += ['', f"**最終実行**: {run['date']} "
+                      f"({'完了' if run['complete'] else '未完了'})"]
+        if run['failed']:
+            lines.append(f"**失敗ステップ**: {run['failed']}")
+        if run['warnings']:
+            lines += ['', '**ログの警告（新規）**:']
+            lines += [f'- {w}' for w in run['warnings']]
+        if run['known_warnings']:
+            lines += ['', '**ログの警告（既知・毎日出る）**:']
+            lines += [f'- {w}' for w in run['known_warnings']]
+
+    lines += ['', *[f'⚠️ {w}' for w in warn_unwritten(target)]]
+    return '\n'.join(lines).rstrip('\n') + '\n'
+
+
+def write_state(target: dt.date) -> str:
+    path = require_private_write(STATE_FILE)
+    ensure_dir(path.parent)
+    path.write_text(render_state(target), encoding='utf-8')
+    return str(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Journal skeleton writer')
     parser.add_argument('--date', type=dt.date.fromisoformat, default=None,
                         help='対象日（既定: 今日）')
     parser.add_argument('--since', type=dt.date.fromisoformat, default=None,
                         help='この日から --date までを遡って生成')
+    parser.add_argument('--state-only', action='store_true',
+                        help='週ファイルに触らず STATE.md だけ作り直す')
     args = parser.parse_args()
 
     end = args.date or dt.date.today()
@@ -476,12 +858,17 @@ def main():
         print(f'エラー: --since {start} が対象日 {end} より後', file=sys.stderr)
         return 1
 
-    day = start
-    while day <= end:
-        action = upsert_entry(day)
-        index = ensure_index_row(day)
-        print(f'{day} {week_file(day).name}: {action} (index: {index})')
-        day += dt.timedelta(days=1)
+    if not args.state_only:
+        day = start
+        while day <= end:
+            action = upsert_entry(day)
+            index = ensure_index_row(day)
+            print(f'{day} {week_file(day).name}: {action} (index: {index})')
+            day += dt.timedelta(days=1)
+
+    # STATE.md は生成物なので毎回まるごと差し替える。遡り生成でも「いまの状態」は
+    # 1つしか無いので、対象日ではなく最終日ぶんだけを書く
+    print(f'STATE: {write_state(end)}')
 
     for w in warn_unwritten(end):
         print(f'\u26a0\ufe0f {w}', file=sys.stderr)
