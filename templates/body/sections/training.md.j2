@@ -12,6 +12,7 @@
 {% for row in aerobic_data %}
 | {{ row.date | date_format }} | {{ row.steps | number_format(0) }} | {{ row.total_zone_min | number_format(0) }} | {{ row.z1_min | number_format(0) }} | {{ row.z2_min | number_format(0) }} | {{ row.z3_min | number_format(0) }} | {{ row.z4_min | number_format(0) }} | {{ row.z5_min | number_format(0) }} | {{ row.zone2_min | number_format(0) }} |
 {% endfor %}
+{% include 'partials/hr_intraday_notice.md.j2' %}
 {% if vo2max_final %}
 > VO2 Max: 計測終了（最終計測 {{ vo2max_final.date }} / {{ vo2max_final.vo2_max | number_format(0) }}）
 {% endif %}

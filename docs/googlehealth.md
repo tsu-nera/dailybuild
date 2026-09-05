@@ -221,6 +221,37 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   約33,000点=約660ページ=約8分かかり、既存CSV起点（2024-12-01）まで遡ると
   約84時間になるため **`fetch_all` から除外し、バックフィルはしない**
   （`--endpoint heart_rate_intraday` で明示指定したときだけ取る）
+- **heart_rate_intraday の on-demand 取得**: 日次には組み込んでいないので、
+  古くなったら手動で取る。
+
+  ```bash
+  uv run python scripts/fetch_googlehealth.py --endpoint heart_rate_intraday --days N
+  ```
+
+  所要の目安（1日約8分が effectively 線形に伸びる）:
+
+  | 窓 | 所要 |
+  |---|---|
+  | 1日 | 約8分 |
+  | 7日 | 約1時間 |
+  | 1ヶ月 | 約4時間 |
+
+  **遡り制限は無い**（Google 側の保持期間切れは起きない）。溜めておいても
+  失われないという点で、ログが7日で消える Tuya（`docs/` 参照、運用停止済み）
+  とは事情が異なる。取得を後回しにしても損はしないが、取らない限り
+  intraday 依存の分析は空欄のままになる。
+- **heart_rate_intraday に依存する分析**（Issue #128）: 以下のレポートは
+  CSV が古い/不在だと該当欄が空欄になる。body/mind/sleep の日次レポートは
+  レポート期間の終端に CSV が追いついていないとき「intraday が N 日古い
+  （最終 YYYY-MM-DD）」という警告と取得コマンドを自動で出す
+  （`src/lib/utils/intraday_freshness.py`）。追いついていれば何も出さない。
+
+  | レポート | 依存する欄 |
+  |---|---|
+  | `templates/body/sections/training.md.j2` | Zone合計 / Z1〜Z5 / Zone2 |
+  | `templates/mind/sections/exertion_balance.md.j2` | Z1〜Z5 |
+  | `templates/sleep/sections/sleep_heart_rate.md.j2` | dip_rate / time_to_min_hr |
+  | `templates/sleep/sections/nutrition_sleep.md.j2` | min_hr / min_hr_time / dip_rate |
 - br（呼吸数）は1つの civil date に複数点が届くことがあり、deep/rem/full は
   同値でも light だけ揺れる。**civil date ごとに physicalTime が最も早い点を
   採る**とこの揺れが解消する
