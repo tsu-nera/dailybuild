@@ -28,7 +28,7 @@
 
 - metric: sleep_score
   unit: "1-5"
-  description: 主観睡眠スコア（高=良好）。fitbit_sleep_score（客観）と乖離する場合は要注目
+  description: 主観睡眠スコア（高=良好）。客観側は sleep レポート（効率・覚醒時間）と突き合わせる
   active: true
 
 - metric: comment
