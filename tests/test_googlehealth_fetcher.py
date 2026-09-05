@@ -938,6 +938,66 @@ def test_spo2_filters_out_of_range_resolved_dates(fake_get_pages, monkeypatch):
     assert [r['date'] for r in rows] == ['2026-08-21']
 
 
+def test_spo2_sleep_window_starts_one_day_before_start_date(fake_get_pages, monkeypatch):
+    """睡眠セッションを start_date-1 日から取ること
+
+    Google 側の最も古い対象点は start_date-1 日のラベルを持つ（stop_before）。
+    その窓に重なるのは dateOfSleep = start_date-1 のセッションなので、
+    start_date から取ると候補が欠ける。
+    """
+    from lib.clients import googlehealth_sleep as gh_sleep
+
+    fake_get_pages([{'dataPoints': [_spo2_point('p1', 2026, 9, 3)]}])
+    called = {}
+
+    def fake_fetch_sleep_all(creds, s, e):
+        called['start'], called['end'] = s, e
+        return [], []
+
+    monkeypatch.setattr(gh_sleep, 'fetch_sleep_all', fake_fetch_sleep_all)
+    googlehealth_api.fetch_spo2(None, dt.date(2026, 9, 3), dt.date(2026, 9, 5))
+
+    assert called['start'] == dt.date(2026, 9, 2), '睡眠の取得が start_date から始まっている'
+    assert called['end'] == dt.date(2026, 9, 5)
+
+
+def test_spo2_resolution_is_independent_of_window_length(fake_get_pages, monkeypatch):
+    """同じ点が、短い窓でも長い窓でも同じ日付に解決すること
+
+    実データでの再現（2026-09-02 の点）:
+      - 前夜の主睡眠 09-01 20:31 -> 09-02 12:37（timeInBed 966、正午を37分跨ぐ）
+      - その夜の主睡眠 09-02 21:41 -> 09-03 10:02（timeInBed 741）
+    どちらも [09-02 12:00, 09-03 12:00) に重なる。長い方（966）が採られて
+    09-02 になるのが正しいが、睡眠を start_date から取ると 966 の方が
+    候補に入らず 09-03 に解決し、既存の正しい行を1日ずらして上書きしていた。
+    """
+    from lib.clients import googlehealth_sleep as gh_sleep
+
+    all_sessions = [
+        _sleep_row_dict('2026-09-02', '2026-09-01T20:31:00.000', '2026-09-02T12:37:00.000',
+                        time_in_bed=966),
+        _sleep_row_dict('2026-09-03', '2026-09-02T21:41:00.000', '2026-09-03T10:02:00.000',
+                        time_in_bed=741),
+    ]
+
+    def fake_fetch_sleep_all(creds, s, e):
+        # 実装と同じく dateOfSleep で期間を切る
+        return [r for r in all_sessions
+                if s.isoformat() <= r['dateOfSleep'] <= e.isoformat()], []
+
+    monkeypatch.setattr(gh_sleep, 'fetch_sleep_all', fake_fetch_sleep_all)
+
+    resolved = []
+    for start in (dt.date(2026, 9, 3), dt.date(2026, 8, 1)):
+        fake_get_pages([{'dataPoints': [_spo2_point('p1', 2026, 9, 2, avg=96.5)]}])
+        rows = googlehealth_api.fetch_spo2(None, start, dt.date(2026, 9, 5))
+        resolved.append([r['date'] for r in rows])
+
+    # 09-02 に解決するので、start=09-03 の窓では範囲外として落ちる（09-03 を捏造しない）
+    assert resolved[0] == [], f'短い窓で日付がずれている: {resolved[0]}'
+    assert resolved[1] == ['2026-09-02'], f'長い窓の解決が変わった: {resolved[1]}'
+
+
 # =============================================================================
 # weight / body_fat: Health Connect 経由の体重・体脂肪率（Issue #94）
 # =============================================================================
