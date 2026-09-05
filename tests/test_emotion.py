@@ -35,7 +35,7 @@ emotion = _load_script()
 
 CONF = {
     'questions': {
-        'score': 'いまの気分', 'body': '身体の軽さ', 'head': '頭の冴え',
+        'score': 'いまの気分', 'body': '身体の軽さ', 'head': '頭の軽さ',
         'emotions': 'いまの気持ち', 'note': '何があった？',
     },
     'grid_rows': ['score', 'body', 'head'],
@@ -59,7 +59,7 @@ def _form():
                         {'questionId': 'q_body', 'required': True,
                          'rowQuestion': {'title': '身体の軽さ'}},
                         {'questionId': 'q_head', 'required': True,
-                         'rowQuestion': {'title': '頭の冴え'}},
+                         'rowQuestion': {'title': '頭の軽さ'}},
                     ],
                     'grid': {'columns': {
                         'type': 'RADIO',
@@ -320,7 +320,7 @@ def test_sync_questions_raises_on_unmatched_existing_item():
 def _existing_grid_form(row_ids):
     """行タイトルは実際のフォームの並びのまま（q_score/q_body/q_head の
     questionId を持つ3行）。row_ids は questionId のリスト（出現順）"""
-    titles = ['いまの気分', '身体の軽さ', '頭の冴え']
+    titles = ['いまの気分', '身体の軽さ', '頭の軽さ']
     return {
         'items': [
             {
@@ -357,15 +357,15 @@ def _run_sync(items, existing_form):
 
 def test_sync_questions_grid_row_order_change_is_detected():
     """グリッドの行順を変えると、過去の「いまの気分」の questionId が
-    別の行（頭の冴え）に付け替わることを検知する
+    別の行（頭の軽さ）に付け替わることを検知する
 
     行の対応付けはタイトルでなく出現順（FIFO）。PHQ-9 の9問と同じ制約が
     グリッドの行にも効くことを固定するテスト（docs/forms.md 参照）。
     """
     existing_form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
-    # 行順を入れ替えた spec: 頭の冴え / 身体の軽さ / いまの気分
+    # 行順を入れ替えた spec: 頭の軽さ / 身体の軽さ / いまの気分
     reordered = gforms_client.grid_item(
-        'いまの状態', ['頭の冴え', '身体の軽さ', 'いまの気分'], 1, 5, '悪い', '良い')
+        'いまの状態', ['頭の軽さ', '身体の軽さ', 'いまの気分'], 1, 5, '悪い', '良い')
 
     requests = _run_sync([reordered], existing_form)
     updates = [r['updateItem'] for r in requests if 'updateItem' in r]
@@ -373,10 +373,10 @@ def test_sync_questions_grid_row_order_change_is_detected():
     questions = updates[0]['item']['questionGroupItem']['questions']
 
     # 出現順で対応付けているため、旧「いまの気分」(q_score) の questionId が
-    # 新しい先頭行「頭の冴え」に付け替わってしまう
-    assert questions[0]['rowQuestion']['title'] == '頭の冴え'
+    # 新しい先頭行「頭の軽さ」に付け替わってしまう
+    assert questions[0]['rowQuestion']['title'] == '頭の軽さ'
     assert questions[0]['questionId'] == 'q_score'
-    # 逆に、末尾の「いまの気分」行は元の「頭の冴え」の questionId を引き継ぐ
+    # 逆に、末尾の「いまの気分」行は元の「頭の軽さ」の questionId を引き継ぐ
     assert questions[2]['rowQuestion']['title'] == 'いまの気分'
     assert questions[2]['questionId'] == 'q_head'
 
@@ -389,7 +389,7 @@ def test_sync_questions_grid_add_row_preserves_existing_row_ids():
     """
     existing_form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
     extended = gforms_client.grid_item(
-        'いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え', '快'], 1, 5, '悪い', '良い')
+        'いまの状態', ['いまの気分', '身体の軽さ', '頭の軽さ', '快'], 1, 5, '悪い', '良い')
 
     requests = _run_sync([extended], existing_form)
     updates = [r['updateItem'] for r in requests if 'updateItem' in r]
@@ -411,7 +411,7 @@ def test_question_id_by_title_reads_grid_rows():
     by_title = gforms_client.question_id_by_title(form)
     assert by_title['いまの気分'] == 'q_score'
     assert by_title['身体の軽さ'] == 'q_body'
-    assert by_title['頭の冴え'] == 'q_head'
+    assert by_title['頭の軽さ'] == 'q_head'
 
 
 # --- gforms_client.grid_item: 行ごとの required ---
@@ -419,14 +419,14 @@ def test_question_id_by_title_reads_grid_rows():
 def test_grid_item_required_per_row():
     """required にリストを渡すと行ごとに反映される（いまの気分だけ必須の運用）"""
     item = gforms_client.grid_item(
-        'いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え'], 1, 5, '悪い', '良い',
+        'いまの状態', ['いまの気分', '身体の軽さ', '頭の軽さ'], 1, 5, '悪い', '良い',
         required=[True, False, False])
     questions = item['questionGroupItem']['questions']
     assert questions[0]['rowQuestion']['title'] == 'いまの気分'
     assert questions[0]['required'] is True
     assert questions[1]['rowQuestion']['title'] == '身体の軽さ'
     assert questions[1]['required'] is False
-    assert questions[2]['rowQuestion']['title'] == '頭の冴え'
+    assert questions[2]['rowQuestion']['title'] == '頭の軽さ'
     assert questions[2]['required'] is False
 
 
@@ -447,7 +447,7 @@ def test_grid_item_required_list_length_mismatch_raises():
 
 def test_build_items_required_matches_grid_required_config():
     """emotion.py の build_items が yaml の grid_required を行ごとに反映すること。
-    いまの気分だけ required、身体の軽さ・頭の冴えは任意"""
+    いまの気分だけ required、身体の軽さ・頭の軽さは任意"""
     conf = {**CONF, 'grid_title': 'いまの状態',
             'grid_required': {'score': True, 'body': False, 'head': False}}
     items = emotion.build_items(conf)
@@ -456,7 +456,7 @@ def test_build_items_required_matches_grid_required_config():
     by_title = {q['rowQuestion']['title']: q['required'] for q in questions}
     assert by_title['いまの気分'] is True
     assert by_title['身体の軽さ'] is False
-    assert by_title['頭の冴え'] is False
+    assert by_title['頭の軽さ'] is False
 
 
 def test_build_items_missing_grid_required_defaults_to_required():
@@ -512,7 +512,7 @@ def _existing_scale_form():
 
 def _migration_items():
     return [
-        gforms_client.grid_item('いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え'],
+        gforms_client.grid_item('いまの状態', ['いまの気分', '身体の軽さ', '頭の軽さ'],
                              1, 5, '悪い', '良い'),
         gforms_client.checkbox_item('いまの気持ち', ['落ち着いている'], required=True),
         gforms_client.text_item('何があった？'),
