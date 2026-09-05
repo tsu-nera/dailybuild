@@ -168,14 +168,35 @@ def test_steps_intraday_zero_fills_past_day_to_1440_rows(monkeypatch):
 
 
 def test_steps_intraday_does_not_fabricate_future_minutes_for_today(monkeypatch):
-    monkeypatch.setattr(gh, '_get', fake_get([]))
     today = dt.date.today()
-    rows = intraday.fetch_steps_intraday(CREDS, today, today)
     now = dt.datetime.now()
+    monkeypatch.setattr(gh, '_get', fake_get([
+        steps_point(today.isoformat(), 0, 0, 3, 'FITBIT', device_name='Charge 6'),
+    ]))
+    rows = intraday.fetch_steps_intraday(CREDS, today, today)
     last_expected = f'{today.isoformat()} {now.hour:02d}:{now.minute:02d}:00'
     assert rows[-1]['datetime'] == last_expected
     assert len(rows) == now.hour * 60 + now.minute + 1
     assert rows[-1]['datetime'] <= f'{today.isoformat()} 23:59:59'
+
+
+def test_steps_intraday_does_not_zero_fill_a_day_without_any_point(monkeypatch):
+    """1点も返らなかった日を0で埋めない。保存はキーマージなので、埋めると
+    取得の沈黙故障（filter の誤り・同期前）が既存の実測値を0で上書きする"""
+    monkeypatch.setattr(gh, '_get', fake_get([
+        steps_point('2026-08-31', 10, 0, 5, 'FITBIT', device_name='Charge 6'),
+    ]))
+    rows = intraday.fetch_steps_intraday(CREDS, dt.date(2026, 8, 30), dt.date(2026, 8, 31))
+    assert {r['datetime'][:10] for r in rows} == {'2026-08-31'}
+    assert len(rows) == 1440
+
+
+def test_steps_intraday_ignores_a_day_whose_only_points_are_other_sources(monkeypatch):
+    """MobileTrack しか無い日も「Charge 6 の記録が無い日」なのでゼロ埋めしない"""
+    monkeypatch.setattr(gh, '_get', fake_get([
+        steps_point('2026-08-30', 10, 0, 5, 'FITBIT', device_name='MobileTrack'),
+    ]))
+    assert intraday.fetch_steps_intraday(CREDS, dt.date(2026, 8, 30), dt.date(2026, 8, 30)) == []
 
 
 # --- 6. br: civil date ごとに physicalTime 最早の点 --------------------------

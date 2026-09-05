@@ -111,7 +111,13 @@ def fetch_steps_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[
     Google は非0区間しか返さないため、既存CSV（1440行中1359行が0）と
     同一スキーマにするにはゼロ埋めが要る。**過去日は00:00〜23:59の1440分
     すべて、当日はローカル現在時刻の分まで**（未来の分を0で埋めると
-    欠測の捏造になる）。
+    欠測の捏造になる）。**1点も返らなかった日はゼロ埋めしない**（同上）。
+
+    既存CSVと完全には一致しない残差がある: Fitbit は Charge 6 に記録が無い
+    分だけ MobileTrack（スマホ）の歩数で埋めており、Google 側の点からは
+    「トラッカーが0を記録した」と「記録が無い」を区別できないため再現できない。
+    実測（2026-09-03〜04の2,880分）で不一致は2分・計9歩、いずれも
+    Google=0 / CSV>0 の方向のみ（過大計上は0件）。
     """
     points = api.list_filtered_points(
         creds, 'steps', 'steps.interval.start_time', start_date, end_date,
@@ -138,12 +144,20 @@ def fetch_steps_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[
 
     today = dt.date.today()
     now = dt.datetime.now()
+    days_with_data = {key[:10] for key in minute_counts}
 
     rows = []
     day = start_date
     while day <= end_date:
         if day > today:
             break  # 未来日は作らない
+        # Google が1点も返さなかった日はゼロ埋めしない。保存はキーマージなので
+        # 0 は「値がある」として既存の実測値を上書きしてしまう。取得の沈黙故障
+        # （filter の誤り・同期前）と「本当に1歩も歩いていない日」は区別できず、
+        # 埋めた側に倒すと1日ぶんの歩数が黙って消える
+        if day.isoformat() not in days_with_data:
+            day += dt.timedelta(days=1)
+            continue
         last_minute = 1439 if day < today else now.hour * 60 + now.minute
         for minute in range(last_minute + 1):
             hh, mm = divmod(minute, 60)
