@@ -39,7 +39,8 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   最終日は 2026-09-03。列は履歴保持のため残し、レポートは `active_minutes`（light/fairly/very
   の合成）を使う
 - 副次的に部分日行（#70、`caloriesOut` が極端に低い行）が36行→1行（当日のみ）に解消された。
-  ただし**当日の行が部分日になる構造そのものは変わっていない**ので #70 は閉じない
+  当日の行が部分日になる構造そのものは変わっていないが、これは翌日以降に取り直されれば
+  正常な過程。取り直しの保証は取得窓の側で担保する（下記「取得窓」節、#125）
 - `sedentary-period` は叩かない（Google の定義が Fitbit の `sedentaryMinutes` と違う。詳細は
   `fetch_activity` の docstring）
 - `fetch_activity` は当日以外で `caloriesOut < 1200kcal`（`MIN_PLAUSIBLE_CALORIES_OUT`）を

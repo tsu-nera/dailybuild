@@ -17,7 +17,7 @@ from . import googlehealth_client as api
 from . import googlehealth_sleep as sleep_mod
 from .googlehealth_client import _daily_rows, _num, _rollup_by_date, _to_date
 
-# 完全に安静に過ごした日でも基礎代謝（BMI）が丸1日分積み上がるため、
+# 完全に安静に過ごした日でも基礎代謝（BMR）が丸1日分積み上がるため、
 # 1日分の caloriesOut が生理的にこれを下回ることは無い（Issue #125）。
 # 部分日（today）を除いて閾値を割った場合は、--days の窓が狭くて
 # 取り直されていない部分日である可能性を警告する（データは書き換えない、
