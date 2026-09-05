@@ -16,18 +16,18 @@ from lib import exercise_source
 from lib.toggl.push import Interval
 
 BASE_DIR = Path(__file__).resolve().parents[3]
-SLEEP_CSV_FILE = BASE_DIR / 'data' / 'fitbit' / 'sleep.csv'
+SLEEP_CSV_FILE = BASE_DIR / 'data' / 'wearable' / 'sleep.csv'
 
 
-def fitbit_sleep_intervals(
+def googlehealth_sleep_intervals(
     since: dt.date, until: dt.date, config: dict, tz: ZoneInfo,
 ) -> list[Interval]:
-    """data/fitbit/sleep.csv から [since, until] のInterval列を作る
+    """data/wearable/sleep.csv から [since, until] のInterval列を作る
 
     昼寝（isMainSleep=False）も含める。startTime/endTimeはnaiveなJSTローカル時刻
     なので、UTC解釈にならないようtzを明示付与する。
     """
-    source_config = config.get('sources', {}).get('fitbit_sleep', {})
+    source_config = config.get('sources', {}).get('googlehealth_sleep', {})
     if not source_config.get('enabled', False):
         return []
 
@@ -50,7 +50,7 @@ def fitbit_sleep_intervals(
         start = dt.datetime.fromisoformat(row['startTime']).replace(tzinfo=tz)
         stop = dt.datetime.fromisoformat(row['endTime']).replace(tzinfo=tz)
         intervals.append(Interval(
-            source='fitbit_sleep',
+            source='googlehealth_sleep',
             source_id=str(row['logId']),
             start=start,
             stop=stop,
@@ -124,6 +124,6 @@ def googlehealth_exercise_intervals(
 
 
 SOURCES = {
-    'fitbit_sleep': fitbit_sleep_intervals,
+    'googlehealth_sleep': googlehealth_sleep_intervals,
     'googlehealth_exercise': googlehealth_exercise_intervals,
 }

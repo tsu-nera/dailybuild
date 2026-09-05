@@ -35,7 +35,7 @@ bodyレポートの注記「Z2（50-69% HRmax）」は実体（%HRR）と不一�
 
 ### (3) 安静時心拍数
 
-- `data/fitbit/heart_rate.csv` の `resting_heart_rate` 列を使用
+- `data/wearable/heart_rate.csv` の `resting_heart_rate` 列を使用
 - レポート終了日を基準とした直近 30日の中央値（期間内固定）
 - レポート長に依存しない安定した値となる
 - ウィンドウ内にデータが無い場合は `fallback` 値（デフォルト 48bpm）を使用
@@ -56,7 +56,7 @@ bodyレポートの注記「Z2（50-69% HRmax）」は実体（%HRR）と不一�
 
 - `src/lib/clients/fitbit_api.py` の `parse_active_zone_minutes`
 - `src/lib/fitbit_fetcher.py` の active_zone_minutes 定義
-- `data/fitbit/active_zone_minutes.csv`
+- `data/wearable/active_zone_minutes.csv`
 
 上記は一切変更しない。
 

@@ -28,17 +28,17 @@ from lib.utils.data_loader import load_csv_with_baseline_window, determine_targe
 from lib.utils.private_data import ensure_dir
 
 BASE_DIR = project_root
-HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
-HEART_RATE_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
-HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
-SLEEP_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
-SLEEP_LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
-BREATHING_RATE_CSV = BASE_DIR / 'data/fitbit/breathing_rate.csv'
-SPO2_CSV = BASE_DIR / 'data/fitbit/spo2.csv'
-TEMPERATURE_SKIN_CSV = BASE_DIR / 'data/fitbit/temperature_skin.csv'
-ACTIVITY_CSV = BASE_DIR / 'data/fitbit/activity.csv'
+HRV_CSV = BASE_DIR / 'data/wearable/hrv.csv'
+HEART_RATE_CSV = BASE_DIR / 'data/wearable/heart_rate.csv'
+HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/wearable/heart_rate_intraday.csv'
+SLEEP_CSV = BASE_DIR / 'data/wearable/sleep.csv'
+SLEEP_LEVELS_CSV = BASE_DIR / 'data/wearable/sleep_levels.csv'
+BREATHING_RATE_CSV = BASE_DIR / 'data/wearable/breathing_rate.csv'
+SPO2_CSV = BASE_DIR / 'data/wearable/spo2.csv'
+TEMPERATURE_SKIN_CSV = BASE_DIR / 'data/wearable/temperature_skin.csv'
+ACTIVITY_CSV = BASE_DIR / 'data/wearable/activity.csv'
 BLOOD_PRESSURE_CSV = BASE_DIR / 'data/healthplanet_bp.csv'
-CORE_TEMPERATURE_CSV = BASE_DIR / 'data/fitbit/temperature_core.csv'
+CORE_TEMPERATURE_CSV = BASE_DIR / 'data/wearable/temperature_core.csv'
 
 
 

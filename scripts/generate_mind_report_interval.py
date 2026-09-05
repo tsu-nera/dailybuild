@@ -25,10 +25,10 @@ from lib.utils.private_data import ensure_dir
 
 # データファイルパス
 BASE_DIR = project_root
-HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
-HEART_RATE_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
-BREATHING_RATE_CSV = BASE_DIR / 'data/fitbit/breathing_rate.csv'
-SPO2_CSV = BASE_DIR / 'data/fitbit/spo2.csv'
+HRV_CSV = BASE_DIR / 'data/wearable/hrv.csv'
+HEART_RATE_CSV = BASE_DIR / 'data/wearable/heart_rate.csv'
+BREATHING_RATE_CSV = BASE_DIR / 'data/wearable/breathing_rate.csv'
+SPO2_CSV = BASE_DIR / 'data/wearable/spo2.csv'
 
 
 def prepare_interval_report_data(weekly):

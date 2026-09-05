@@ -28,14 +28,14 @@ from lib.utils.private_data import ensure_dir
 
 # データファイルパス
 BASE_DIR = project_root
-MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
-LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
-HRV_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
-HRV_INTRADAY_CSV = BASE_DIR / 'data/fitbit/hrv_intraday.csv'
-HR_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
-HR_DAILY_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
+MASTER_CSV = BASE_DIR / 'data/wearable/sleep.csv'
+LEVELS_CSV = BASE_DIR / 'data/wearable/sleep_levels.csv'
+HRV_CSV = BASE_DIR / 'data/wearable/hrv.csv'
+HRV_INTRADAY_CSV = BASE_DIR / 'data/wearable/hrv_intraday.csv'
+HR_INTRADAY_CSV = BASE_DIR / 'data/wearable/heart_rate_intraday.csv'
+HR_DAILY_CSV = BASE_DIR / 'data/wearable/heart_rate.csv'
 SUN_TIMES_CSV = BASE_DIR / 'data/sun_times.csv'
-NUTRITION_CSV = BASE_DIR / 'data/fitbit/nutrition.csv'
+NUTRITION_CSV = BASE_DIR / 'data/wearable/nutrition.csv'
 
 
 def prepare_sleep_report_data(results):

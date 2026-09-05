@@ -139,7 +139,7 @@
 
 ## 6. 睡眠・回復（Fitbit）
 
-**ソース**: `data/fitbit/sleep.csv`
+**ソース**: `data/wearable/sleep.csv`
 
 | カラム名 | 説明 | 単位 |
 |----------|------|------|

@@ -35,7 +35,7 @@ from lib.utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent
 CSV_FILE = BASE_DIR / 'data' / 'weather.csv'
-SLEEP_CSV = BASE_DIR / 'data' / 'fitbit' / 'sleep.csv'
+SLEEP_CSV = BASE_DIR / 'data' / 'wearable' / 'sleep.csv'
 
 
 def resolve_backfill_start() -> dt.date:

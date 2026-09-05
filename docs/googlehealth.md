@@ -2,7 +2,7 @@
 
 ## 活動量（activity）
 
-`data/fitbit/activity.csv` は Issue #50 の型別方針で **(b) 全再取得**（Google に統一）を選んだ
+`data/wearable/activity.csv` は Issue #50 の型別方針で **(b) 全再取得**（Google に統一）を選んだ
 （#50 の型別リストに `activity` が抜けていたのを埋めた形）。2025-11-27〜2026-09-05 の全 283 日を
 Google で取り直した（#120）。正典コマンド:
 
@@ -60,7 +60,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 - **優先度・閾値は `exercise_source.py` のモジュール定数に固定してあり、
   `config/toggl_push.yaml` からは読まない。** consumer（push / レポート）
   ごとに yaml キーを持たせると、片方だけ設定がずれても誰も気づけないため
-- `data/fitbit/activity_logs.csv`（Fitbit Web API 由来、2025-12-03〜）とは
+- `data/wearable/activity_logs.csv`（Fitbit Web API 由来、2025-12-03〜）とは
   **統合しない。** id 空間が別物（Fitbit の logId と Google の dataPoint
   id）、`activeZoneMinutes` の構造が別（dict の JSON 文字列 vs 数値）、
   距離の単位系が別（Mile 混在 vs m）。Fitbit Web API 廃止（2026年9月）後
@@ -99,7 +99,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 ## 栄養（食事ログ）
 
 ソースは Google Health API の `nutrition-log`（`fetch_googlehealth.py` の
-`nutrition` / `nutrition_logs` エンドポイント、`data/fitbit/nutrition.csv` /
+`nutrition` / `nutrition_logs` エンドポイント、`data/wearable/nutrition.csv` /
 `nutrition_logs.csv`）。
 
 - `nutrition-log` は**個別食事ログしか持たない**。日次サマリのデータ型は
@@ -123,7 +123,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 ## 安静時心拍数・SpO2
 
 `fetch_googlehealth.py` の `heart_rate` / `spo2` エンドポイント。出力先は既存の
-`data/fitbit/heart_rate.csv` / `spo2.csv`（スキーマ据え置き）。
+`data/wearable/heart_rate.csv` / `spo2.csv`（スキーマ据え置き）。
 
 - **`daily-resting-heart-rate` は FITBIT と HEALTH_CONNECT の2系統が同じ日付に
   届く。** FITBIT（`calculationMethod: WITH_SLEEP`）だけが既存 CSV と一致し、
@@ -143,7 +143,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 `fetch_googlehealth.py` の `weight` / `body_fat` エンドポイントで
 `data/googlehealth/weight.csv` / `body_fat.csv` に取り込む。
 
-- 既存の `data/fitbit/body_weight.csv` / `body_fat.csv` とも
+- 既存の `data/wearable/body_weight.csv` / `body_fat.csv` とも
   `data/healthplanet_innerscan.csv` とも統合しない。bmi が返らない
   （Google は身長を持たない）のと、logId 空間が別物（Fitbit は epoch-ms、
   Google は19桁の dataPoint ID）のため、統合すると同じ列に別空間の ID が
@@ -158,7 +158,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 
 `fetch_googlehealth.py` の `heart_rate_intraday` / `steps_intraday` /
 `spo2_intraday` / `hrv_intraday` / `br_intraday` エンドポイント。既存の
-`data/fitbit/*_intraday.csv` と同一スキーマで出力する。daily-* 型と違い
+`data/wearable/*_intraday.csv` と同一スキーマで出力する。daily-* 型と違い
 `list` の `filter` クエリパラメータで期間を絞る
 （`googlehealth_client.list_filtered_points`）。
 
