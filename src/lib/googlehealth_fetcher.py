@@ -29,7 +29,8 @@ GOOGLEHEALTH_DIR = BASE_DIR / 'data' / 'googlehealth'
 HISTORY_BOUNDARY = dt.date(2026, 6, 1)
 
 # 値が既存 CSV と完全一致することを実測で確認済みのエンドポイントのみ（Issue #49）。
-# spo2 は未解決の定義差があるため未対応。
+# heart_rate / spo2 は Issue #78 で対応（heart_rate はプラットフォーム選択、
+# spo2 は日付ラベルの1日ずれを睡眠セッションの引き当てで解決）。
 #
 # sleep は他と違い:
 #   - 'kind': 'period_replace' -> 期間置換（logId 空間が Fitbit と Google で
@@ -50,6 +51,14 @@ ENDPOINTS = {
         'description': '皮膚温（睡眠中）',
         'date_column': 'date',
     },
+    'heart_rate': {
+        'description': '安静時心拍数',
+        'date_column': 'date',
+    },
+    'spo2': {
+        'description': 'SpO2（血中酸素飽和度）',
+        'date_column': 'date',
+    },
     'sleep': {
         'description': '睡眠',
         'date_column': 'dateOfSleep',
@@ -67,10 +76,15 @@ ENDPOINTS = {
     # 実測時刻の行と日次固定00:00:00の行が混在するため、キーマージではなく
     # sleep と同じ期間置換にする（src/lib/clients/googlehealth_api.py の
     # fetch_temperature_core docstring 参照）
+    # 体温計で測って Google Health に手で記録するもので、自動計測ではない。
+    # 測り忘れる日があるのが常態（通算31件、月0〜12件）なので0件をエラーにしない。
+    # allow_empty にする前は測らなかった日すべてで daily-routine.sh が非ゼロ終了し、
+    # 「Google Health の取得に失敗」と毎日出ていた（実際は測っていないだけ）
     'temperature_core': {
         'description': '深部体温',
         'date_column': 'date_time',
         'kind': 'period_replace',
+        'allow_empty': True,
     },
     # 1日に複数行が立つセッション型。既存の Fitbit CSV を書き換えないよう
     # data/googlehealth/ に別ファイルとして持つ（activity_logs.csv との
@@ -246,6 +260,10 @@ def _save_period_replace(endpoint: str, config: dict, result, start_date: dt.dat
     else:
         rows, extra_rows = result, None
     if not rows:
+        if config.get('allow_empty'):
+            msg = f'{start_date}〜{end_date} のデータが0件。正常な場合もあるが取得の故障とは区別できない'
+            print(f'  ⚠️ {msg}')
+            return {'records': 0, 'path': None}
         msg = f'{start_date}〜{end_date} のデータが0件。Google側に無いか取得が壊れている'
         print(f'  ⚠️ {msg}')
         return {'records': 0, 'path': None, 'error': msg}

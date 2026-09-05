@@ -1,0 +1,61 @@
+# PHQ-9（週次）の定義
+#
+# 日本語版の設問文は著作権者の許諾表示（「無断複写・転載・改変を禁じます」）
+# により本リポジトリにコミットできない。このファイルをコピーして
+# config/phq9_def.yaml を作り（.gitignore 済みで追跡されない）、
+# 出典から設問文を書き写すこと。
+#
+#   cp config/phq9_def.yaml.sample config/phq9_def.yaml
+#
+# 出典: ©kumiko.muramatsu「PHQ-9 日本語版 2018版」
+#   Muramatsu K, Miyaoka H, Kamijima K et al.
+#   General Hospital Psychiatry. 52: 64-69, 2018.
+source_url: https://www.cocoro.chiba-u.jp/recruit/tubuanDB/files/PHQ-9.pdf
+
+# 設問文・選択肢・並び順は凍結する。規準値・MCID（意味のある変化=5点）は
+# その文言・その順序で検証された数字であり、翻訳し直したり並び替えたりした
+# 時点で自作スコアに戻る（agent による英語版からの翻訳でも代替しない）。
+#
+# sync_questions() は同型の質問が並ぶとき「出現順」で既存質問と対応付ける
+# （タイトルは見ない）。PHQ-9 は同型（ラジオボタン）が9問並ぶため、
+# questions の並び順を変えて setup-form --update を回すと questionId が
+# 別の設問に引き継がれ、過去の回答が別の質問の回答として読めてしまう。
+# 上記の理由により、q1〜q9 の並び順を変えないこと。
+
+# setup-form が書き戻す。空なら未作成
+form_id:
+form_title: PHQ-9
+
+# 教示文（この2週間、次のような問題にどのくらい頻繁に悩まされていますか、等）。
+# 現状は setup-form で フォームには反映していない（記録用のメタデータ）。
+instruction: ""
+
+# 9項目。この順序を変えないこと（キーは q1〜q9 固定、この順で回答紙面に出す）
+questions:
+  q1: ""
+  q2: ""
+  q3: ""
+  q4: ""
+  q5: ""
+  q6: ""
+  q7: ""
+  q8: ""
+  q9: ""
+
+# 選択肢（9問共通）。ラベル→配点（0〜3の4段階）
+choices:
+  - {label: "", score: 0}
+  - {label: "", score: 1}
+  - {label: "", score: 2}
+  - {label: "", score: 3}
+
+# 機能障害の設問（採点対象外。合計には含めない）。
+# enabled: false でフォームから外せる
+impairment:
+  enabled: true
+  question: ""
+  choices:
+    - ""
+    - ""
+    - ""
+    - ""

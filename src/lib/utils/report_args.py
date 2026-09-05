@@ -50,6 +50,11 @@ def add_common_report_args(parser, default_output: Path, default_days: Optional[
         default=None,
         help='年（--week/--month指定時に使用、デフォルト: 今年）'
     )
+    parser.add_argument(
+        '--no-charts',
+        action='store_true',
+        help='グラフの生成と埋め込みを省く（agent がレビューする経路では画像を読まないため）'
+    )
 
 
 def parse_period_args(args) -> Tuple[Optional[int], Optional[int], Optional[int]]:

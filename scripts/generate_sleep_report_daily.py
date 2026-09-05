@@ -24,6 +24,7 @@ sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import sleep
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
+from lib.utils.private_data import ensure_dir
 
 # データファイルパス
 BASE_DIR = project_root
@@ -287,7 +288,7 @@ def prepare_sleep_report_data(results):
             'max': stats['efficiency']['max'],
             'avg_fall_asleep': f"{stats.get('timing', {}).get('avg_fall_asleep', 0):.0f}",
             'avg_after_wakeup': f"{stats.get('timing', {}).get('avg_after_wakeup', 0):.0f}",
-            'image': f"img/{results['time_in_bed_img']}",
+            'image': f"img/{results['time_in_bed_img']}" if results.get('time_in_bed_img') else None,
             'table': results['efficiency_table'].to_markdown(index=False),
             'integrity': stats.get('integrity'),
         },
@@ -307,9 +308,9 @@ def prepare_sleep_report_data(results):
             'rem_pct': f"{stats['stages'].get('rem_pct', 0):.1f}",
             'rem_count': f"{stats['stages']['rem_count']:.0f}",
             'wake_minutes': f"{stats['stages']['wake_minutes']:.0f}",
-            'stacked_image': f"img/{results['stages_stacked_img']}",
+            'stacked_image': f"img/{results['stages_stacked_img']}" if results.get('stages_stacked_img') else None,
             'table': results['stages_table'].to_markdown(index=False),
-            'timeline_image': f"img/{results['timeline_img']}"
+            'timeline_image': f"img/{results['timeline_img']}" if results.get('timeline_img') else None
         },
         'timing': {
             'bedtime_mean': stats['bedtime']['mean'],
@@ -359,6 +360,7 @@ def generate_markdown_report(output_dir, results):
 
     # コンテキストデータ準備
     context = prepare_sleep_report_data(results)
+    context['show_charts'] = results.get('show_charts', True)
 
     # テンプレートレンダリング
     renderer = SleepReportRenderer()
@@ -373,7 +375,7 @@ def generate_markdown_report(output_dir, results):
     return report_path
 
 
-def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_need_override=None):
+def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_need_override=None, show_charts=True):
     """
     睡眠データの分析を実行
 
@@ -397,9 +399,10 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
 
     # 画像出力ディレクトリ
     img_dir = output_dir / 'img'
-    img_dir.mkdir(parents=True, exist_ok=True)
+    if show_charts:
+        ensure_dir(img_dir)
 
-    results = {}
+    results = {'show_charts': show_charts}
 
     # データ読み込み
     print(f'Loading: {MASTER_CSV}')
@@ -552,13 +555,14 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
     results['timing_table'] = pd.DataFrame(timing_data)
 
     # 個別グラフ生成
-    print('プロット中: Time in Bed...')
-    sleep.plot_time_in_bed_stacked(df_master, save_path=img_dir / 'time_in_bed.png')
-    results['time_in_bed_img'] = 'time_in_bed.png'
+    if show_charts:
+        print('プロット中: Time in Bed...')
+        sleep.plot_time_in_bed_stacked(df_master, save_path=img_dir / 'time_in_bed.png')
+        results['time_in_bed_img'] = 'time_in_bed.png'
 
-    print('プロット中: 睡眠ステージ推移...')
-    sleep.plot_sleep_stages_stacked(df_master, save_path=img_dir / 'sleep_stages_stacked.png')
-    results['stages_stacked_img'] = 'sleep_stages_stacked.png'
+        print('プロット中: 睡眠ステージ推移...')
+        sleep.plot_sleep_stages_stacked(df_master, save_path=img_dir / 'sleep_stages_stacked.png')
+        results['stages_stacked_img'] = 'sleep_stages_stacked.png'
 
     # タイムライン生成・入眠潜時計算
     if LEVELS_CSV.exists():
@@ -582,10 +586,11 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
             df_levels_timeline = df_levels[df_levels['dateOfSleep'].isin(latest_dates)]
             print(f'タイムライン表示: 最新7日分に制限（全体: {len(df_master)}日）')
 
-        print('プロット中: 睡眠タイムライン...')
-        timeline_img = 'sleep_timeline.png'
-        sleep.plot_sleep_timeline(df_levels_timeline, save_path=img_dir / timeline_img)
-        results['timeline_img'] = timeline_img
+        if show_charts:
+            print('プロット中: 睡眠タイムライン...')
+            timeline_img = 'sleep_timeline.png'
+            sleep.plot_sleep_timeline(df_levels_timeline, save_path=img_dir / timeline_img)
+            results['timeline_img'] = timeline_img
 
         # サイクル分析
         print('計算中: 睡眠サイクル...')
@@ -715,42 +720,17 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
 
     # 睡眠負債計算の基準値（Rise app の必要睡眠時間に合わせる）
     # 注: 表示用の sleep_need とは別物。Rise負債値の再現を目的とした実効値。
-    SLEEP_NEED_FOR_DEBT_DEFAULT = 7.75
     sleep_need_for_debt = (
         sleep_need_override if sleep_need_override is not None
-        else SLEEP_NEED_FOR_DEBT_DEFAULT
+        else sleep.SLEEP_NEED_FOR_DEBT_DEFAULT
     )
     print(f'  → 睡眠負債計算の基準値: {sleep_need_for_debt:.2f}h'
           f'{" (override)" if sleep_need_override is not None else " (default)"}')
 
-    # 日別に全睡眠時間（主睡眠+昼寝）を集計
+    # 日別集計と計算機の組み立ては build_debt_calculator が持つ。ジャーナルの
+    # 骨組みも同じ関数を使う（片方だけ条件を変えると同じ日について2つの負債が出る）
     print('計算中: 睡眠負債...')
-    df_daily_total_sleep = df_all_sleep.groupby('dateOfSleep', as_index=False).agg({
-        'minutesAsleep': 'sum',  # 同じ日の全睡眠時間を合計
-        'timeInBed': 'sum'
-    })
-
-    # 欠損日を0埋め（Rise app互換: データ欠損日も負債としてカウント）
-    df_daily_total_sleep['dateOfSleep'] = pd.to_datetime(df_daily_total_sleep['dateOfSleep'])
-    full_range = pd.date_range(
-        df_daily_total_sleep['dateOfSleep'].min(),
-        df_daily_total_sleep['dateOfSleep'].max(),
-        freq='D'
-    )
-    df_daily_total_sleep = (
-        df_daily_total_sleep.set_index('dateOfSleep')
-        .reindex(full_range, fill_value=0)
-        .rename_axis('dateOfSleep')
-        .reset_index()
-    )
-
-    calculator = sleep.SleepDebtCalculator(
-        sleep_data=df_daily_total_sleep,  # 日別総睡眠時間（昼寝込み）
-        sleep_need_hours=sleep_need_for_debt,
-        window_days=14,
-        min_data_points=5,
-        rise_last_night_ratio=0.20,  # 最新日20%、残り80%を線形配分
-    )
+    calculator = sleep.build_debt_calculator(df_all_sleep, sleep_need_for_debt)
 
     # フィルタリング期間の睡眠負債履歴を取得
     try:
@@ -780,7 +760,7 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
         results['avg_total_sleep_hours'] = None
 
     # 睡眠負債トレンドグラフ
-    if results.get('debt_history') is not None:
+    if show_charts and results.get('debt_history') is not None:
         print('プロット中: 睡眠負債トレンド...')
         sleep.plot_sleep_debt_trend(
             results['debt_history'],
@@ -820,10 +800,11 @@ def main():
 
     # 出力ディレクトリの決定
     output_dir = determine_output_dir(BASE_DIR, 'sleep', args.output, week, month, year)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_dir(output_dir)
 
     run_analysis(output_dir, days=args.days, week=week, month=month, year=year,
-                 sleep_need_override=args.sleep_need_override)
+                 sleep_need_override=args.sleep_need_override,
+                 show_charts=not args.no_charts)
 
     return 0
 

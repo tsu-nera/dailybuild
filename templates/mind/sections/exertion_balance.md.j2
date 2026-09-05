@@ -1,19 +1,12 @@
 ## 🏃 運動バランス
 
-身体活動レベルとバランスを評価
-
 > 心拍ゾーン（%HRR カルボーネン法）: maxHR={{ hr_zone_meta.max_hr }} / 安静時HR={{ hr_zone_meta.resting_hr | number_format(0) }} / 直近{{ hr_zone_meta.window_days }}日中央値固定
 > 境界(bpm): Z1≥{{ hr_zone_meta.bounds.Z1|number_format(0) }} / Z2≥{{ hr_zone_meta.bounds.Z2|number_format(0) }} / Z3≥{{ hr_zone_meta.bounds.Z3|number_format(0) }} / Z4≥{{ hr_zone_meta.bounds.Z4|number_format(0) }} / Z5≥{{ hr_zone_meta.bounds.Z5|number_format(0) }}
 
 | 日付 | 歩数 | 軽 | 中 | 高 | Z1 | Z2 | Z3 | Z4 | Z5 | 合計 |
 |------|------|----|----|----|----|----|----|----|----|------|
 {% for day in exertion_balance_data %}
-| {{ day.date.strftime('%m-%d') }} | {{ day.steps|number_format(0) if day.steps else '-' }} | {{ day.lightly_min|number_format(0) if day.lightly_min is not none else '-' }} | {{ day.fairly_min|number_format(0) if day.fairly_min is not none else '-' }} | {{ day.very_min|number_format(0) if day.very_min is not none else '-' }} | {{ day.z1_min|number_format(0) if day.z1_min is not none else '-' }} | {{ day.z2_min|number_format(0) if day.z2_min is not none else '-' }} | {{ day.z3_min|number_format(0) if day.z3_min is not none else '-' }} | {{ day.z4_min|number_format(0) if day.z4_min is not none else '-' }} | {{ day.z5_min|number_format(0) if day.z5_min is not none else '-' }} | {{ day.total_zone_min|number_format(0) if day.total_zone_min is not none else '-' }} |
+| {{ day.date.strftime('%m-%d') }} | {{ day.steps|number_format(0) if day.steps is not none else '-' }} | {{ day.lightly_min|number_format(0) if day.lightly_min is not none else '-' }} | {{ day.fairly_min|number_format(0) if day.fairly_min is not none else '-' }} | {{ day.very_min|number_format(0) if day.very_min is not none else '-' }} | {{ day.z1_min|number_format(0) if day.z1_min is not none else '-' }} | {{ day.z2_min|number_format(0) if day.z2_min is not none else '-' }} | {{ day.z3_min|number_format(0) if day.z3_min is not none else '-' }} | {{ day.z4_min|number_format(0) if day.z4_min is not none else '-' }} | {{ day.z5_min|number_format(0) if day.z5_min is not none else '-' }} | {{ day.total_zone_min|number_format(0) if day.total_zone_min is not none else '-' }} |
 {% endfor %}
-
-**解釈**:
-- Z2(有酸素)中心の有酸素ベース構築が土台。週合計でZ1-2の低強度volumeを確保
-- 1日8,000歩以上が健康的な目標
-- 軽/中/高は Google Health の active-minutes（座位時間の代替。Issue #82）
 
 ---

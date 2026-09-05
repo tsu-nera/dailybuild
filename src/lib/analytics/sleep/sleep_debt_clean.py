@@ -31,7 +31,7 @@ class SleepDebtResult:
         sleep_debt_hours: 睡眠負債（時間）
         category: カテゴリ (None/Low/Moderate/High)
         avg_sleep_hours: 計算期間の平均睡眠時間（時間）
-        actual_sleep_hours: 当日の実際の睡眠時間（時間）
+        actual_sleep_hours: 当日の実際の睡眠時間（時間）。計測が無い日は None
         data_points: データ点数
         daily_deficits: 日ごとの不足分（分）
         recovery_days_estimate: 推定回復日数
@@ -41,7 +41,7 @@ class SleepDebtResult:
     sleep_debt_hours: float
     category: str
     avg_sleep_hours: float
-    actual_sleep_hours: float
+    actual_sleep_hours: Optional[float]
     data_points: int
     daily_deficits: List[float]
     recovery_days_estimate: int
@@ -179,7 +179,8 @@ class SleepDebtCalculator:
             sleep_debt_hours=round(sleep_debt_hours, 2),
             category=category,
             avg_sleep_hours=round(avg_sleep_minutes / 60, 1),
-            actual_sleep_hours=round(actual_sleep_minutes / 60, 1),
+            actual_sleep_hours=(None if actual_sleep_minutes is None
+                                else round(actual_sleep_minutes / 60, 1)),
             data_points=len(window_data),
             daily_deficits=daily_deficits.tolist(),
             recovery_days_estimate=recovery_days,
@@ -314,7 +315,8 @@ class SleepDebtCalculator:
             matching_rows = self.sleep_data[self.sleep_data.index == target_date]
 
         if len(matching_rows) == 0:
-            return 0.0
+            # 計測が無い日。0.0 を返すと「0時間寝た」と区別できなくなる
+            return None
 
         return matching_rows['minutesAsleep'].iloc[0]
 
@@ -435,7 +437,9 @@ def format_debt_history_table(history_df: pd.DataFrame) -> pd.DataFrame:
     # テーブル用にフォーマット
     table_data = pd.DataFrame()
     table_data['日付'] = pd.to_datetime(df['date']).dt.strftime('%m/%d')
-    table_data['実績'] = df['actual_sleep_hours'].apply(lambda x: f'{x:.1f}h')
+    # 計測が無い日は '-'。0.0h と書くと「0時間寝た」に見える
+    table_data['実績'] = df['actual_sleep_hours'].apply(
+        lambda x: '-' if pd.isna(x) else f'{x:.1f}h')
     table_data['負債'] = df['sleep_debt_hours'].apply(lambda x: f'{x:.1f}h')
 
     # 増減：最初の日は'-'、それ以降は+/-付きで表示
@@ -489,3 +493,33 @@ def print_debt_report(result: SleepDebtResult):
 
     print()
     print("=" * 60)
+
+
+# 睡眠負債の計算条件。レポートとジャーナルの骨組みが同じ値を出すよう、
+# 定数と計算機の組み立てをここに集約する。片方だけ変えると同じ日について
+# 2つの負債が出て、どちらが正か分からなくなる
+SLEEP_NEED_FOR_DEBT_DEFAULT = 7.75
+DEBT_WINDOW_DAYS = 14
+DEBT_MIN_DATA_POINTS = 5
+DEBT_LAST_NIGHT_RATIO = 0.20
+DEBT_WEIGHT_METHOD = 'recency_linear'
+
+
+def build_debt_calculator(df_all_sleep, sleep_need_hours=None):
+    """主睡眠+昼寝を日別合計して SleepDebtCalculator を組み立てる
+
+    計測が無い日は行を作らない（0埋めしない）。詳細は docs/reports.md「睡眠負債」。
+    """
+    daily = df_all_sleep.groupby('dateOfSleep', as_index=False).agg({
+        'minutesAsleep': 'sum',
+        'timeInBed': 'sum',
+    })
+    daily['dateOfSleep'] = pd.to_datetime(daily['dateOfSleep'])
+    return SleepDebtCalculator(
+        sleep_data=daily,
+        sleep_need_hours=(SLEEP_NEED_FOR_DEBT_DEFAULT if sleep_need_hours is None
+                          else sleep_need_hours),
+        window_days=DEBT_WINDOW_DAYS,
+        min_data_points=DEBT_MIN_DATA_POINTS,
+        rise_last_night_ratio=DEBT_LAST_NIGHT_RATIO,
+    )

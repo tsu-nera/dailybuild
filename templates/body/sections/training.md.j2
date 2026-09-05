@@ -1,10 +1,10 @@
 ## 🏋️ トレーニング
 
 {% if aerobic_data %}
-> 歩数と活動強度の記録。心拍ゾーン（%HRR カルボーネン法, maxHR=Tanaka{{ hr_zone_meta.max_hr }}/RHR{{ hr_zone_meta.resting_hr|number_format(0) }}）: Z1回復 Z2有酸素 Z3テンポ Z4閾値 Z5VO2max
+> 心拍ゾーン（%HRR カルボーネン法, maxHR=Tanaka{{ hr_zone_meta.max_hr }} / RHR{{ hr_zone_meta.resting_hr|number_format(0) }}）
 > 境界(bpm): Z1≥{{ hr_zone_meta.bounds.Z1|number_format(0) }} / Z2≥{{ hr_zone_meta.bounds.Z2|number_format(0) }} / Z3≥{{ hr_zone_meta.bounds.Z3|number_format(0) }} / Z4≥{{ hr_zone_meta.bounds.Z4|number_format(0) }} / Z5≥{{ hr_zone_meta.bounds.Z5|number_format(0) }}
 {% if zone2_meta %}
-> **Zone2**(いわゆる有酸素ベース/LT1直下): LT1={{ zone2_meta.lt1|number_format(0) }}bpm（{{ zone2_meta.lt1_source }}{% if zone2_meta.lt1_source == 'maf' %}=180-{{ zone2_meta.age }}・暫定/低体力者は過大傾向{% endif %}）, Zone2帯=[{{ zone2_meta.band_lower|number_format(0) }}, {{ zone2_meta.band_upper|number_format(0) }}) bpm。Talk Test実測値で config の manual_bpm 上書き較正可
+> **Zone2**(いわゆる有酸素ベース/LT1直下): LT1={{ zone2_meta.lt1|number_format(0) }}bpm（{{ zone2_meta.lt1_source }}{% if zone2_meta.lt1_source == 'maf' %}=180-{{ zone2_meta.age }}・暫定/低体力者は過大傾向{% endif %}）, Zone2帯=[{{ zone2_meta.band_lower|number_format(0) }}, {{ zone2_meta.band_upper|number_format(0) }}) bpm
 {% endif %}
 
 | 日付 | 歩数 | Zone合計 | Z1 | Z2 | Z3 | Z4 | Z5 | Zone2 | VO2 Max |
@@ -21,11 +21,8 @@
 |------|------|----------|--------|------|
 {% for row in strength_data %}
 | {{ row.date | date_format }} | {{ row.count }} | {{ row.duration | number_format(0) }} | {{ row.avg_hr | number_format(0) }} | {{ row.calories | number_format(0) }} |
-{% endfor %}
-
-> 種目別詳細は [Hevy](https://hevy.com/profile) を参照
-{% else %}
-> 現在記録なし。トレーニングログは [Hevy](https://hevy.com/profile) を参照
+{% endfor %}{% else %}
+> 記録なし
 {% endif %}
 
 ### 🚴 サイクリング

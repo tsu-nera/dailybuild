@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from lib import googlehealth_fetcher as ghf
-from lib.clients import googlehealth_api
+from lib.clients import googlehealth_api, googlehealth_sessions
 from lib.utils import private_data
 
 
@@ -96,7 +96,7 @@ def test_overwrite_replaces_existing_rows(data_dir, fake_rows):
 
 def test_unknown_endpoint_raises():
     with pytest.raises(ValueError, match='Unknown endpoint'):
-        ghf.fetch_endpoint(None, 'spo2', days=3)
+        ghf.fetch_endpoint(None, 'nonexistent_endpoint', days=3)
 
 
 def test_history_boundary_blocks_rewrite_by_default(data_dir, fake_rows):
@@ -795,6 +795,150 @@ def test_allow_empty_absent_endpoint_still_errors_on_zero_rows(data_dir, fake_ro
 
 
 # =============================================================================
+# heart_rate: FITBIT / HEALTH_CONNECT の2系統選択（Issue #78）
+# =============================================================================
+
+def _hr_point(point_id: str, year: int, month: int, day: int, bpm: float,
+             platform: str, calculation_method: str | None = None) -> dict:
+    payload = {
+        'date': {'year': year, 'month': month, 'day': day},
+        'beatsPerMinute': str(bpm),
+    }
+    if calculation_method:
+        payload['dailyRestingHeartRateMetadata'] = {'calculationMethod': calculation_method}
+    return {
+        'name': f'users/me/dataTypes/daily-resting-heart-rate/dataPoints/{point_id}',
+        'dataSource': {'platform': platform},
+        'dailyRestingHeartRate': payload,
+    }
+
+
+def test_heart_rate_prefers_fitbit_over_health_connect(fake_get_pages):
+    """同じ日付に2系統届いたら FITBIT 側の値だけが行になること"""
+    fake_get_pages([{'dataPoints': [
+        _hr_point('hc', 2026, 8, 20, 49, 'HEALTH_CONNECT'),
+        _hr_point('fb', 2026, 8, 20, 56, 'FITBIT', calculation_method='WITH_SLEEP'),
+    ]}])
+    rows = googlehealth_api.fetch_heart_rate(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
+    assert rows == [{'date': '2026-08-20', 'resting_heart_rate': 56.0}]
+
+
+def test_heart_rate_skips_day_with_health_connect_only(fake_get_pages, capsys):
+    """FITBIT 点が無く HEALTH_CONNECT のみの日は、低い値を混ぜず行を作らないこと"""
+    fake_get_pages([{'dataPoints': [
+        _hr_point('hc', 2026, 8, 21, 49, 'HEALTH_CONNECT'),
+    ]}])
+    rows = googlehealth_api.fetch_heart_rate(None, dt.date(2026, 8, 21), dt.date(2026, 8, 21))
+    assert rows == []
+    captured = capsys.readouterr()
+    assert '1件' in captured.out
+
+
+def test_heart_rate_prefers_with_sleep_among_multiple_fitbit_points(fake_get_pages):
+    """FITBIT 点が複数あるとき WITH_SLEEP を持つ方が選ばれること"""
+    fake_get_pages([{'dataPoints': [
+        _hr_point('fb1', 2026, 8, 22, 55, 'FITBIT'),
+        _hr_point('fb2', 2026, 8, 22, 57, 'FITBIT', calculation_method='WITH_SLEEP'),
+    ]}])
+    rows = googlehealth_api.fetch_heart_rate(None, dt.date(2026, 8, 22), dt.date(2026, 8, 22))
+    assert rows == [{'date': '2026-08-22', 'resting_heart_rate': 57.0}]
+
+
+def test_daily_rows_without_pick_is_unchanged(fake_get_pages):
+    """pick を渡さない既存経路（hrv 等）の回帰: 1点1行のまま変わらないこと"""
+    fake_get_pages([{'dataPoints': [
+        {'dailyHeartRateVariability': {
+            'date': {'year': 2026, 'month': 8, 'day': 20},
+            'averageHeartRateVariabilityMilliseconds': '30.0',
+        }},
+    ]}])
+    rows = googlehealth_api.fetch_hrv(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
+    assert rows == [{'date': '2026-08-20', 'daily_rmssd': 30.0, 'deep_rmssd': None}]
+
+
+# =============================================================================
+# spo2: 日付ラベルは「その夜が始まった暦日」。正午〜正午の窓で重なる睡眠
+# セッションの dateOfSleep に解決する（Issue #78）
+# =============================================================================
+
+def _spo2_point(point_id: str, year: int, month: int, day: int,
+                avg: float = 97.0, lo: float = 95.0, hi: float = 99.0) -> dict:
+    return {
+        'name': f'users/me/dataTypes/daily-oxygen-saturation/dataPoints/{point_id}',
+        'dataSource': {'platform': 'FITBIT', 'recordingMethod': 'PASSIVELY_MEASURED'},
+        'dailyOxygenSaturation': {
+            'date': {'year': year, 'month': month, 'day': day},
+            'averagePercentage': str(avg),
+            'lowerBoundPercentage': str(lo),
+            'upperBoundPercentage': str(hi),
+        },
+    }
+
+
+def test_spo2_resolves_date_via_overlapping_sleep_session_after_midnight_start(
+    fake_get_pages, fake_points,
+):
+    """深夜0時過ぎ就寝（セッション開始日は翌日）でも正午〜正午の窓で正しく解決すること
+
+    素朴な「Google日付+1」規則ならこのケースでも同じ結果になりうるが、ここで
+    検証したいのは機械的な+1でなく実時刻での引き当てであること。PR本文に
+    記載の通り、素朴な開始日規則は別の10日で破綻することを実測済み。
+    """
+    fake_get_pages([{'dataPoints': [_spo2_point('p1', 2026, 8, 18, avg=97.5, lo=95.0, hi=99.0)]}])
+    fake_points([
+        _raw_point('s1', '2026-08-19T00:05:00Z', '2026-08-19T07:00:00Z', 415, main_sleep=True),
+    ])
+
+    rows = googlehealth_api.fetch_spo2(None, dt.date(2026, 8, 18), dt.date(2026, 8, 19))
+
+    assert rows == [{'date': '2026-08-19', 'avg_spo2': 97.5, 'min_spo2': 95.0, 'max_spo2': 99.0}]
+
+
+def test_spo2_point_without_overlapping_session_is_skipped(fake_get_pages, fake_points, capsys):
+    """重なる睡眠セッションが無い点は行にならないこと（一律+1日のフォールバックはしない）"""
+    fake_get_pages([{'dataPoints': [_spo2_point('p1', 2026, 8, 20)]}])
+    fake_points([])
+
+    rows = googlehealth_api.fetch_spo2(None, dt.date(2026, 8, 20), dt.date(2026, 8, 21))
+
+    assert rows == []
+    captured = capsys.readouterr()
+    assert '1件' in captured.out
+
+
+def _sleep_row_dict(date_of_sleep: str, start_time: str, end_time: str,
+                    is_main: bool = True, time_in_bed: int = 480) -> dict:
+    return {
+        'startTime': start_time, 'endTime': end_time, 'dateOfSleep': date_of_sleep,
+        'isMainSleep': is_main, 'timeInBed': time_in_bed,
+    }
+
+
+def test_spo2_filters_out_of_range_resolved_dates(fake_get_pages, monkeypatch):
+    """睡眠セッションで解決した日付が要求期間の外なら返らないこと"""
+    from lib.clients import googlehealth_sleep as gh_sleep
+
+    fake_get_pages([{'dataPoints': [
+        _spo2_point('out-before', 2026, 8, 9),
+        _spo2_point('in-range', 2026, 8, 20),
+        _spo2_point('out-after', 2026, 8, 30),
+    ]}])
+
+    def fake_fetch_sleep_all(creds, s, e):
+        return [
+            _sleep_row_dict('2026-08-10', '2026-08-09T23:00:00.000', '2026-08-10T07:00:00.000'),
+            _sleep_row_dict('2026-08-21', '2026-08-20T23:00:00.000', '2026-08-21T07:00:00.000'),
+            _sleep_row_dict('2026-08-31', '2026-08-30T23:00:00.000', '2026-08-31T07:00:00.000'),
+        ], []
+
+    monkeypatch.setattr(gh_sleep, 'fetch_sleep_all', fake_fetch_sleep_all)
+
+    rows = googlehealth_api.fetch_spo2(None, dt.date(2026, 8, 15), dt.date(2026, 8, 25))
+
+    assert [r['date'] for r in rows] == ['2026-08-21']
+
+
+# =============================================================================
 # weight / body_fat: Health Connect 経由の体重・体脂肪率（Issue #94）
 # =============================================================================
 
@@ -958,8 +1102,8 @@ def fake_nutrition_pages(monkeypatch):
     """
     # モジュールレベルのキャッシュを汚すと他ファイル（test_googlehealth_parity.py）の
     # 実 API 呼び出しがこのフェイクの値を読んでしまうため、退避して確実に戻す
-    saved_cache = dict(googlehealth_api._UNIT_NAME_CACHE)
-    googlehealth_api._UNIT_NAME_CACHE.clear()
+    saved_cache = dict(googlehealth_sessions._UNIT_NAME_CACHE)
+    googlehealth_sessions._UNIT_NAME_CACHE.clear()
 
     def install(pages):
         it = iter(pages)
@@ -973,8 +1117,8 @@ def fake_nutrition_pages(monkeypatch):
 
     yield install
 
-    googlehealth_api._UNIT_NAME_CACHE.clear()
-    googlehealth_api._UNIT_NAME_CACHE.update(saved_cache)
+    googlehealth_sessions._UNIT_NAME_CACHE.clear()
+    googlehealth_sessions._UNIT_NAME_CACHE.update(saved_cache)
 
 
 def test_fetch_nutrition_logs_excludes_points_without_food_display_name(fake_nutrition_pages):
@@ -1096,3 +1240,34 @@ def test_nutrition_allow_empty_does_not_error(data_dir, monkeypatch):
 
     assert result['records'] == 0
     assert 'error' not in result
+
+
+# =============================================================================
+# temperature_core: 体温計で測って Google Health に手で記録する疎な指標
+# =============================================================================
+
+def test_temperature_core_allow_empty_does_not_error(data_dir, monkeypatch):
+    """測り忘れた日は0件が正常。period_replace 経路でも allow_empty を尊重すること
+
+    allow_empty を入れる前は、測らなかった日すべてで daily-routine.sh が
+    非ゼロ終了し「Google Health の取得に失敗」と毎日出ていた。実際は
+    測っていないだけで、故障ではない。
+    """
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'temperature_core',
+                        lambda creds, s, e: [])
+
+    result = ghf.fetch_endpoint(None, 'temperature_core', days=3)
+
+    assert result['records'] == 0
+    assert 'error' not in result
+    assert not (data_dir / 'temperature_core.csv').exists(), '0件なのにCSVを書いている'
+
+
+def test_period_replace_without_allow_empty_still_errors(data_dir, monkeypatch):
+    """period_replace でも allow_empty が無ければ0件はエラーのままであること"""
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'sleep', lambda creds, s, e: ([], []))
+
+    result = ghf.fetch_endpoint(None, 'sleep', days=3)
+
+    assert result['records'] == 0
+    assert result['error']

@@ -11,16 +11,39 @@
 form_id: 12H4gK9DnVl0tphr2DUBx5jgfXZmdkqYkaD8GArRBrus
 form_title: 気分記録
 
+# グリッド item 自体のタイトル（行ごとの questionId には無関係。画面の
+# 見出しとしてのみ使う）
+grid_title: いまの状態
+
 # 質問タイトル。回答は questionId で引くので、ここを変えたら
-# setup-form --update でフォーム側も合わせること
+# setup-form --update でフォーム側も合わせること。
+# score/body/head はグリッド（1つの questionGroupItem）の行になる
 questions:
   score: いまの気分
+  body: 身体の軽さ
+  head: 頭の冴え
   emotions: いまの気持ち
   note: 何があった？
 
-# 気分の良し悪し（valence）。高=良好。manual_metrics の mind_score と同じ向きで、
-# 将来一本化できるようにしてある。感情の「強さ」ではない（強さは複数ラベルに
-# 対して単一スカラーでは定義できない）
+# グリッドの行タイトル（questions のキー）の並び順。
+# **この並びが questionId の対応付けそのもの（出現順=FIFO）。並び替えると
+# 既存回答の questionId が別の行に付け替わる（PHQ-9 の9問と同じ制約。
+# 詳細は docs/forms.md）。行を足すのは末尾に追加するだけでよい（既存行の
+# questionId は保持される）が、既存行の削除・並べ替えはしないこと**
+grid_rows: [score, body, head]
+
+# グリッドの行ごとの必須/任意。grid_rows と同じキーで指定する。
+# 全行必須にすると、気分だけ記録したいときも身体・頭を必ず答えることになり
+# 1回あたりの記録コストが上がる（続けられるかに直結する）。いまの気分だけを
+# 必須にし、身体の軽さ・頭の冴えは任意にしてある
+grid_required:
+  score: true
+  body: false
+  head: false
+
+# グリッドの列（1〜5）。全行共通で、向きは全行「高=良好」（グリッドの列見出しが
+# 行共通のため構造的に強制される）。manual_metrics の mind_score / body_score と
+# 同じ向きで、将来一本化できるようにしてある。感情や身体感覚の「強さ」ではない
 score:
   low: 1
   high: 5

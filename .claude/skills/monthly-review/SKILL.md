@@ -82,7 +82,7 @@ uv run python scripts/generate_mind_report_interval.py --weeks 8
 
 #### 体組成（Body）
 - 月間の体重・筋肉量・体脂肪率の変化量と達成度
-- 月間目標（+0.75kg/月、FFMI 21.0）に対する進捗
+- 月間目標（+0.75kg/月、FFMI は `show_targets.py` の宣言値）に対する進捗
 - 8週トレンドでの増量/減量カーブの形状
 - カロリー収支の月平均と栄養バランス
 
@@ -137,4 +137,6 @@ uv run python scripts/generate_mind_report_interval.py --weeks 8
 - 週次レベルでは解決できなかった課題の取り扱い
 ```
 
-レビュー後、ディスカッションを経て記録を残す場合は `/journal` を使用する。
+## ジャーナルへ記録（確認不要）
+
+`journal` スキルの monthly モードで記録する。**確認は取らない。**

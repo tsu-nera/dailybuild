@@ -15,12 +15,16 @@ Usage:
     python scripts/mf.py fetch --year 2025          # 2025年を丸ごと
     python scripts/mf.py fetch --start 2026-01 --end 2026-08
 
-    python scripts/mf.py show                       # 月次（直近3ヶ月）
+    python scripts/mf.py show                       # 月次（当月）
+    python scripts/mf.py show --months 3            # 直近3ヶ月
     python scripts/mf.py show --months 12
     python scripts/mf.py show --unit year           # 年次（全期間）
     python scripts/mf.py show --year 2018           # 2018年を丸ごと
     python scripts/mf.py show --month 1 --year 2026 # 指定月
     python scripts/mf.py show --unit day --days 14  # 日次
+    python scripts/mf.py show --sections all        # 全セクション
+    python scripts/mf.py show --sections +change    # 既定 + 前期比の増減
+    python scripts/mf.py show --sections +merchant  # 既定 + 店舗別
     python scripts/mf.py show --list                # 明細一覧
     python scripts/mf.py show --update              # 取得してから表示
 
@@ -38,6 +42,7 @@ import io
 from typing import IO
 
 import pandas as pd
+import yaml
 
 from lib.mf import client as mf_client
 from lib.mf import render, store
@@ -46,14 +51,24 @@ from lib.utils.report_args import filter_dataframe_by_period, parse_period_args
 
 BASE_DIR = Path(__file__).parent.parent
 STATE_FILE = BASE_DIR / 'config' / 'mf_state.json'
+SHOW_CONFIG_FILE = BASE_DIR / 'config' / 'mf_show.yaml'
 
 # 連携が生きている状態。これ以外は明細が欠けている可能性がある
 HEALTHY_STATUS = '正常'
 # 更新実行中。異常ではないので警告しない
 PENDING_STATUS = '更新中'
 
-# 取得・表示の既定月数
-DEFAULT_MONTHS = 3
+# fetch の既定取得月数。MF は後から明細を埋めるので当月だけでは取りこぼす
+DEFAULT_FETCH_MONTHS = 3
+# show の既定表示月数
+DEFAULT_SHOW_MONTHS = 1
+
+# show のセクション。--sections で選ぶ。名前は ASCII に揃える（表の見出しは
+# 日本語だが、指定側に全角を要求するとタイプもエスケープも面倒になる）
+SECTIONS = ['balance', 'change', 'matrix', 'category',
+            'subcategory', 'merchant', 'account']
+# 既定は全体像まで。列挙系（中項目・店舗・金融機関）は指定したときだけ出す
+DEFAULT_SECTIONS = ['balance', 'matrix', 'category']
 
 # MF に明細が存在する最古の年（2015-02 が初出。それ以前は 0 件）。
 # --unit year の既定期間を全期間にするために使う
@@ -139,7 +154,7 @@ def run_fetch(args, out: IO[str]) -> None:
 def fetch_args_for_update() -> argparse.Namespace:
     """show --update から呼ぶ fetch 相当の引数（既定の直近Nヶ月を取り直す）"""
     return argparse.Namespace(
-        login=False, refresh=False, months=DEFAULT_MONTHS,
+        login=False, refresh=False, months=DEFAULT_FETCH_MONTHS,
         year=None, start=None, end=None,
     )
 
@@ -167,7 +182,63 @@ def default_months(args) -> int:
     if args.unit == 'year':
         today = dt.date.today()
         return (today.year - EARLIEST_YEAR) * 12 + today.month
-    return DEFAULT_MONTHS
+    return DEFAULT_SHOW_MONTHS
+
+
+def non_living_categories() -> list[str]:
+    """--scope living で除外するカテゴリ。config/mf_show.yaml が実体。
+
+    コードに埋めない。MF 側のカテゴリ改定や事業経費の扱いで動くため。
+    """
+    if not SHOW_CONFIG_FILE.exists():
+        raise SystemExit(f"{SHOW_CONFIG_FILE} が無い。--scope all なら不要")
+    with open(SHOW_CONFIG_FILE, encoding='utf-8') as f:
+        return (yaml.safe_load(f) or {}).get('non_living_categories', [])
+
+
+def resolve_excluded(args, df: pd.DataFrame) -> tuple[list[str], str]:
+    """除外するカテゴリと、残る側に付ける見出しラベルを決める"""
+    excluded = non_living_categories() if args.scope == 'living' else []
+    label = '生活費' if excluded else '対象支出'
+
+    if args.exclude_category:
+        extra = [c.strip() for c in args.exclude_category.split(',') if c.strip()]
+        known = set(df[store.COL_CATEGORY].dropna().unique())
+        unknown = [c for c in extra if c not in known]
+        if unknown:
+            # 名前を打ち間違えても黙って「除外0件」になるだけなので落とす
+            raise SystemExit(f"期間内に存在しないカテゴリ: {', '.join(unknown)}\n"
+                             f"あるのは: {', '.join(sorted(known))}")
+        excluded = list(dict.fromkeys(excluded + extra))
+
+    return excluded, label
+
+
+def resolve_sections(spec: str) -> list[str]:
+    """--sections の指定を解決する。
+
+    'all' で全部、'+name' で既定への追加、それ以外は列挙したものだけ。
+    追加と列挙の混在は意図が読めないのでエラーにする。
+    """
+    if spec == 'all':
+        return list(SECTIONS)
+
+    names = [n.strip() for n in spec.split(',') if n.strip()]
+    if not names:
+        raise SystemExit('--sections が空')
+
+    additive = [n.startswith('+') for n in names]
+    if any(additive) and not all(additive):
+        raise SystemExit("--sections は '+name' での追加と名前の列挙を混ぜられない")
+
+    names = [n.lstrip('+') for n in names]
+    unknown = [n for n in names if n not in SECTIONS]
+    if unknown:
+        raise SystemExit(f"未知のセクション: {', '.join(unknown)}\n"
+                         f"指定できるのは: {', '.join(SECTIONS)}, all")
+
+    selected = set(DEFAULT_SECTIONS) | set(names) if all(additive) else set(names)
+    return [s for s in SECTIONS if s in selected]
 
 
 def cmd_fetch(args) -> None:
@@ -184,7 +255,8 @@ def cmd_show(args) -> None:
 
     week, month, year = parse_period_args(args)
 
-    df = store.load_entries()
+    df_all = store.load_entries()
+    df = df_all
     if df.empty:
         print(f"エラー: {store.DATA_DIR}/{store.CSV_GLOB} が存在しません", file=sys.stderr)
         sys.exit(1)
@@ -216,35 +288,65 @@ def cmd_show(args) -> None:
         print(render.render_totals(render.expenses(df), store.COL_CATEGORY, 'カテゴリ'))
         return
 
+    sections = resolve_sections(args.sections)
+    excluded, focus_label = resolve_excluded(args, df)
+
     df = render.add_bucket(df, args.unit)
     exp = render.expenses(df)
+    # 収支表は除外ぶんも列に残すので df 全体を使う。他のセクションは除外後だけ
+    exp_focus = exp[~exp[store.COL_CATEGORY].isin(excluded)]
 
     unit_label = render.unit_label(args.unit)
     print(f"# Money サマリ（{unit_label}: {start} 〜 {end}）\n")
 
-    print(f"## {unit_label}収支\n")
-    print(render.render_balance(df, args.unit))
-    print()
+    if excluded:
+        off = exp[exp[store.COL_CATEGORY].isin(excluded)][store.COL_AMOUNT].sum()
+        print(f"除外: {' / '.join(excluded)}（{render.format_yen(off)}）\n")
 
-    print("## カテゴリ別内訳（支出）\n")
-    print(render.render_category_matrix(exp, args.unit))
-    print()
+    if 'balance' in sections:
+        print(f"## {unit_label}収支\n")
+        print(render.render_balance(df, args.unit, excluded, focus_label))
+        print()
 
-    print("## カテゴリ別合計（期間全体・支出）\n")
-    print(render.render_totals(exp, store.COL_CATEGORY, 'カテゴリ'))
-    print()
+    if 'change' in sections:
+        # 比較相手は表示期間の外から取る（既定の表示は当月だけなので）
+        all_exp = render.expenses(render.add_bucket(df_all, args.unit))
+        all_exp = all_exp[~all_exp[store.COL_CATEGORY].isin(excluded)]
+        cur_b = max(exp_focus['bucket'])
+        prev_b = render.previous_bucket(all_exp, cur_b)
+        change = (render.render_period_change(all_exp, prev_b, cur_b, top=args.change_top)
+                  if prev_b else '')
+        if change:
+            print(f"## 前{render.bucket_label(args.unit)}比の増減"
+                  f"（{prev_b} → {cur_b}・中項目・支出）\n")
+            print(change)
+            print()
 
-    print(f"## 中項目別（上位{args.top}・支出）\n")
-    print(render.render_totals(
-        exp, [store.COL_CATEGORY, store.COL_SUBCATEGORY], 'カテゴリ', top=args.top))
-    print()
+    if 'matrix' in sections:
+        print("## カテゴリ別内訳（支出）\n")
+        print(render.render_category_matrix(exp_focus, args.unit))
+        print()
 
-    print(f"## 店舗別（上位{args.top}・支出）\n")
-    print(render.render_totals(exp, store.COL_NAME, '店舗', top=args.top))
-    print()
+    if 'category' in sections:
+        print("## カテゴリ別合計（期間全体・支出）\n")
+        print(render.render_totals(exp_focus, store.COL_CATEGORY, 'カテゴリ'))
+        print()
 
-    print("## 金融機関別（支出）\n")
-    print(render.render_totals(exp, store.COL_ACCOUNT, '金融機関'))
+    if 'subcategory' in sections:
+        print(f"## 中項目別（上位{args.top}・支出）\n")
+        print(render.render_totals(
+            exp_focus, [store.COL_CATEGORY, store.COL_SUBCATEGORY], 'カテゴリ', top=args.top))
+        print()
+
+    if 'merchant' in sections:
+        print(f"## 店舗別（上位{args.top}・支出）\n")
+        print(render.render_totals(exp_focus, store.COL_NAME, '店舗', top=args.top))
+        print()
+
+    if 'account' in sections:
+        print("## 金融機関別（支出）\n")
+        print(render.render_totals(exp_focus, store.COL_ACCOUNT, '金融機関'))
+        print()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -256,7 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
                               help='ブラウザを開いて手動ログインし、セッションを保存する')
     fetch_parser.add_argument('--refresh', action='store_true',
                               help='取得後に金融機関からのデータ一括更新をキックする（完了は待たない）')
-    fetch_parser.add_argument('--months', type=int, default=DEFAULT_MONTHS,
+    fetch_parser.add_argument('--months', type=int, default=DEFAULT_FETCH_MONTHS,
                               help='取得月数（当月から遡る）')
     fetch_parser.add_argument('--year', type=int, help='指定年を丸ごと取得')
     fetch_parser.add_argument('--start', type=str, help='開始月（YYYY-MM）')
@@ -268,7 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
                              default='month',
                              help='集計単位（デフォルト: month）')
     show_parser.add_argument('--months', type=int, default=None,
-                             help=f'直近Nヶ月（--days/--week/--month 未指定時のデフォルト: {DEFAULT_MONTHS}）')
+                             help=f'直近Nヶ月（--days/--week/--month 未指定時のデフォルト: {DEFAULT_SHOW_MONTHS}）')
     show_parser.add_argument('--days', type=int, default=None,
                              help='直近N日')
     show_parser.add_argument('--week', type=str, default=None,
@@ -279,6 +381,18 @@ def build_parser() -> argparse.ArgumentParser:
                              help='年。単独指定でその年を丸ごと（--week/--month と併用も可）')
     show_parser.add_argument('--top', type=int, default=10,
                              help='中項目別・店舗別で表示する件数（デフォルト: 10）')
+    show_parser.add_argument('--scope', choices=['living', 'all'], default='living',
+                             help='living は config/mf_show.yaml のカテゴリを除外する'
+                                  '（デフォルト: living）')
+    show_parser.add_argument('--exclude-category', type=str, default=None,
+                             help='除外するカテゴリを追加（カンマ区切り・カテゴリ名そのまま）')
+    show_parser.add_argument('--sections', type=str, default=','.join(DEFAULT_SECTIONS),
+                             help='表示するセクション（カンマ区切り）。'
+                                  f"指定可能: {', '.join(SECTIONS)}, all。"
+                                  "'+merchant' のように + を付けると既定に追加。"
+                                  f"デフォルト: {','.join(DEFAULT_SECTIONS)}")
+    show_parser.add_argument('--change-top', type=int, default=5,
+                             help='前期比の増減で表示する増加・減少それぞれの件数（デフォルト: 5）')
     show_parser.add_argument('--list', action='store_true',
                              help='集計せず明細を時系列で一覧表示する')
     show_parser.add_argument('--update', action='store_true',

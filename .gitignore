@@ -19,6 +19,7 @@ venv/
 
 # Project specific
 config/*.json
+config/phq9_def.yaml
 tmp/
 
 # データとレポートの実体は private リポジトリ dailybuild-private にあり、
