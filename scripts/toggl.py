@@ -120,7 +120,7 @@ def run_fetch(args, out: IO[str]) -> None:
               "Toggl側に記録が無いか、取得が壊れている可能性がある", file=out)
         return
 
-    df_merged = store.save_merged(df_new)
+    df_merged = store.save_merged(df_new, window=(start, end))
 
     period_min = df_merged['start'].min()
     period_max = df_merged['start'].max()

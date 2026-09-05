@@ -31,6 +31,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yaml
 
+from lib.toggl import store as toggl_store
 from lib.utils.private_data import require_private_path
 
 BASE_DIR = Path(__file__).resolve().parents[3]
@@ -336,6 +337,7 @@ def push_intervals(
         to_push = [i for i in to_push if i.project in project_map]
 
     ledger_rows = []
+    created_entries = []
     pushed = 0
     now_str = dt.datetime.now(load_timezone()).isoformat()
 
@@ -343,6 +345,7 @@ def push_intervals(
         for interval in to_push:
             payload = build_payload(interval, workspace_id, project_map)
             created = toggl_client.create_time_entry(api_token, workspace_id, payload)
+            created_entries.append(created)
 
             ledger_rows.append({
                 'source': interval.source,
@@ -353,7 +356,17 @@ def push_intervals(
             })
             pushed += 1
     finally:
+        # push が作った分は time_entries.csv にも書く。ここを飛ばすと
+        # push.select_pending の削除検出が「fetch していないだけ」の行を
+        # 「Toggl 側で手動削除された」と誤読し、次回 push で再投入してしまう
+        # （Issue #130）。途中で例外が出ても、投入済みの分は台帳・CSV の
+        # 両方に必ず残す
         append_ledger(ledger_rows)
+        if created_entries and not dry_run:
+            projects_by_id = {pid: name for name, pid in project_map.items()}
+            df_created = toggl_store.build_dataframe(created_entries, projects_by_id)
+            if not df_created.empty:
+                toggl_store.save_merged(df_created)
 
     return {
         'pending': pending, 'skipped': skipped, 'pushed': pushed,

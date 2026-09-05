@@ -7,6 +7,7 @@ fetch 側のマージ保存と show 側の読み込みをまとめる。
 
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -100,8 +101,63 @@ def last_recorded_date() -> dt.date | None:
     return df['start'].max().date()
 
 
-def save_merged(df_new: pd.DataFrame) -> pd.DataFrame:
-    """新規データを既存 CSV にマージして保存し、マージ後の DataFrame を返す"""
+def drop_stale_rows_in_window(df_new: pd.DataFrame, window: tuple[dt.date, dt.date]) -> int:
+    """fetch窓の中で、API レスポンスに無くなった行を CSV から削除する
+
+    fetch した窓については CSV を正本にする（Issue #130）。push --since の
+    過去日一括投入は fetch 窓に入らず恒久的に欠測扱いになっていた問題への対応で、
+    削除検出（push.select_pending）が「CSV に無い＝手動削除された」を正しく
+    再び意味を持つようにするための前段。
+
+    安全弁（外すと欠測を捏造する）:
+    - df_new が空なら何もしない（通信不調と「本当に0件」を区別できないため）
+    - 削除対象は既存行の start が窓の内側にあるものだけ
+      （JST の暦日 [start, end] 両端含む → start <= row.start < end+1日）。
+      窓の外の行には一切触れない
+
+    Returns
+    -------
+    int
+        削除した行数
+    """
+    if df_new.empty:
+        return 0
+    if not CSV_FILE.exists():
+        return 0
+
+    df_old = pd.read_csv(CSV_FILE)
+    if df_old.empty:
+        return 0
+
+    start, end = window
+    lower = pd.Timestamp(start)
+    upper = pd.Timestamp(end) + pd.Timedelta(days=1)
+    old_start = pd.to_datetime(df_old['start'])
+    in_window = (old_start >= lower) & (old_start < upper)
+
+    new_ids = set(df_new['id'].astype(str))
+    old_ids = df_old['id'].astype(str)
+    stale = in_window & ~old_ids.isin(new_ids)
+
+    removed = int(stale.sum())
+    if removed:
+        df_old = df_old[~stale]
+        CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
+        df_old.to_csv(CSV_FILE, index=False)
+    return removed
+
+
+def save_merged(df_new: pd.DataFrame, window: tuple[dt.date, dt.date] | None = None) -> pd.DataFrame:
+    """新規データを既存 CSV にマージして保存し、マージ後の DataFrame を返す
+
+    window を渡すと、その窓の中で df_new に無くなった既存行を先に削除してから
+    マージする（drop_stale_rows_in_window 参照）。
+    """
+    if window is not None:
+        removed = drop_stale_rows_in_window(df_new, window)
+        if removed:
+            print(f'Toggl 側で削除された {removed}件を CSV から除去', file=sys.stderr)
+
     df_merged = csv_utils.merge_csv_by_columns(
         df_new, CSV_FILE, key_columns=['id'], sort_by=['start'],
     )
