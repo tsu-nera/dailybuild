@@ -245,33 +245,30 @@ def format_time(hour: float) -> str:
     return f"{h:02d}:{m:02d}"
 
 
-def load_activity_periods(activity_logs_file: str) -> list:
+def load_activity_periods(start_date=None, end_date=None) -> list:
     """
-    activity_logsから運動時間帯を抽出
+    exercise.csvから運動時間帯を抽出（心拍データから除外する用途）
 
     Parameters
     ----------
-    activity_logs_file : str
-        activity_logs.csvのパス
+    start_date, end_date : datetime.date, optional
+        期間フィルタ（両端含む）。未指定なら絞らない。
 
     Returns
     -------
     list of tuple
         [(start_time, end_time), ...] の運動時間帯リスト
     """
-    activity_df = pd.read_csv(activity_logs_file)
+    from lib import exercise_source
 
-    # startTimeをパース
-    activity_df['startTime'] = pd.to_datetime(
-        activity_df['startTime'], format='ISO8601'
-    ).dt.tz_localize(None)
+    df = exercise_source.load_sessions(start_date, end_date)
+    if df is None:
+        return []
 
     activity_periods = []
-    for _, row in activity_df.iterrows():
-        start_time = row['startTime']
-        duration_minutes = row['durationMinutes']
-        end_time = start_time + pd.Timedelta(minutes=duration_minutes)
-
+    for _, row in df.iterrows():
+        start_time = row['start']
+        end_time = start_time + pd.Timedelta(minutes=row['duration_min'])
         activity_periods.append((start_time, end_time))
 
     return activity_periods

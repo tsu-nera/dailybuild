@@ -12,11 +12,8 @@ sources:
     enabled: true
     # 同じ運動が複数プラットフォームから届く（Fitbit の Charge 6 と、
     # Health Connect 経由の Google Fit / Hevy が、ほぼ同じ時間帯を
-    # 別セッションとして返す）。時間が重なったら先に載っている
-    # platform を残し、後ろのものを落とす
-    platform_priority: [FITBIT, HEALTH_CONNECT]
-    # 重なりがこの秒数を超えたら同一セッションとみなす
-    overlap_threshold_sec: 60
+    # 別セッションとして返す）重複解決（優先度・重なり閾値）は
+    # src/lib/exercise_source.py の定数を使う（レポートと共有するため）
     # ここに無い exerciseType（WALKING / RUNNING 等）は投入しない
     categories:
       cycling:

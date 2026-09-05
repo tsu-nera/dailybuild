@@ -306,7 +306,7 @@ def main():
     print(f"   心拍数: {len(hr_df):,}件")
 
     # activity_logsから運動時間を抽出
-    activity_periods = load_activity_periods('data/fitbit/activity_logs.csv')
+    activity_periods = load_activity_periods()
 
     # 運動時間を除外
     print("\n⏰ 運動時間を除外中...")

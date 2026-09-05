@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
+from lib import exercise_source
 from lib.analytics import sleep, hrv, body, nutrition, activity, training
 from lib.analytics import hr_zones
 from lib.analytics import zone2
@@ -31,7 +32,6 @@ BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
 SLEEP_MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
 ACTIVITY_MASTER_CSV = BASE_DIR / 'data/fitbit/activity.csv'
-ACTIVITY_LOGS_CSV = BASE_DIR / 'data/fitbit/activity_logs.csv'
 HRV_MASTER_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
 HEART_RATE_MASTER_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
 HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
@@ -251,39 +251,24 @@ def calc_eat_stats_for_period(start_date, end_date):
     dict or None
         EAT統計。データがない場合はNone
     """
-    if not ACTIVITY_LOGS_CSV.exists():
-        return None
-
-    df_activity_logs = pd.read_csv(ACTIVITY_LOGS_CSV)
-    df_activity_logs['startTime'] = pd.to_datetime(df_activity_logs['startTime'], format='ISO8601')
-
-    # 期間でフィルタ
-    mask = (df_activity_logs['startTime'] >= start_date) & (df_activity_logs['startTime'] <= end_date)
-    df_period = df_activity_logs[mask]
-
-    if len(df_period) == 0:
+    df_period = _load_exercise_sessions_for_period(start_date, end_date)
+    if df_period is None:
         return None
 
     # ライブラリの関数を使用してEAT統計を計算
     return activity.calc_eat_stats_for_period(df_period)
 
 
-def _load_activity_logs_for_period(start_date, end_date):
-    """activity_logs.csv を読み込み、期間でスライス"""
-    if not ACTIVITY_LOGS_CSV.exists():
-        return None
-    df = pd.read_csv(ACTIVITY_LOGS_CSV)
-    df['startTime'] = pd.to_datetime(df['startTime'], format='ISO8601', utc=True).dt.tz_convert('Asia/Tokyo').dt.tz_localize(None)
-    start = pd.Timestamp(start_date)
-    end = pd.Timestamp(end_date) + pd.Timedelta(days=1)
-    mask = (df['startTime'] >= start) & (df['startTime'] < end)
-    df_period = df[mask]
-    return df_period if len(df_period) > 0 else None
+def _load_exercise_sessions_for_period(start_date, end_date):
+    """exercise.csv を読み込み、期間でスライス（platform 重複解決済み）"""
+    start = pd.Timestamp(start_date).date()
+    end = pd.Timestamp(end_date).date()
+    return exercise_source.load_sessions(start, end)
 
 
 def calc_cycling_stats_for_period(start_date, end_date):
     """指定期間のサイクリング統計を計算"""
-    df_period = _load_activity_logs_for_period(start_date, end_date)
+    df_period = _load_exercise_sessions_for_period(start_date, end_date)
     if df_period is None:
         return None
     return activity.calc_cycling_stats_for_period(df_period)
@@ -291,7 +276,7 @@ def calc_cycling_stats_for_period(start_date, end_date):
 
 def calc_strength_stats_for_period(start_date, end_date):
     """指定期間の筋トレ統計を計算"""
-    df_period = _load_activity_logs_for_period(start_date, end_date)
+    df_period = _load_exercise_sessions_for_period(start_date, end_date)
     if df_period is None:
         return None
     return activity.calc_strength_stats_for_period(df_period)
