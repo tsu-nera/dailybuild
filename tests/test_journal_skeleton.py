@@ -350,3 +350,150 @@ def test_state_series_head_all_missing_does_not_raise(data_root):
 
     assert 'head' not in series
     assert series['mind'].loc[pd.Timestamp('2026-09-05')] == 1
+
+
+# --- metrics_daily.csv（Issue #139: 日次指標の横持ちCSV） ---
+
+def _write_sleep(root, rows):
+    """rows: (dateOfSleep, minutesAsleep, efficiency, wakeCount) のリスト
+
+    timeInBed は collect_metrics() が計算する睡眠負債（build_debt_calculator）
+    が要求するために足す。metrics_daily.csv には出ない列だが、collect_metrics()
+    が例外なく走るために必要
+    """
+    (root / 'data' / 'wearable').mkdir(parents=True, exist_ok=True)
+    lines = ['dateOfSleep,isMainSleep,minutesAsleep,timeInBed,efficiency,wakeCount']
+    for date, minutes, eff, wake in rows:
+        lines.append(f'{date},True,{minutes},{minutes},{eff},{wake}')
+    (root / 'data' / 'wearable' / 'sleep.csv').write_text(
+        '\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def _write_series_csv(root, name, column, rows):
+    """data/wearable/{name}.csv を date,{column} で書く。rows: (date, value)"""
+    (root / 'data' / 'wearable').mkdir(parents=True, exist_ok=True)
+    lines = [f'date,{column}']
+    lines += [f'{date},{value}' for date, value in rows]
+    (root / 'data' / 'wearable' / name).write_text(
+        '\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def _write_innerscan(root, rows):
+    """data/healthplanet_innerscan.csv を date,weight,body_fat_rate で書く"""
+    (root / 'data').mkdir(exist_ok=True)
+    lines = ['date,weight,body_fat_rate']
+    lines += [f'{date},{weight},{fat}' for date, weight, fat in rows]
+    (root / 'data' / 'healthplanet_innerscan.csv').write_text(
+        '\n'.join(lines) + '\n', encoding='utf-8')
+
+
+@pytest.fixture
+def metrics_root(data_root, monkeypatch, tmp_path):
+    """metrics_daily.csv の書き先も一時ディレクトリへ向ける"""
+    monkeypatch.setattr(js, 'METRICS_FILE', tmp_path / 'reports' / 'metrics_daily.csv')
+    return data_root
+
+
+def _seed_metrics_sources(root):
+    """3日分の指標を各ソースに書く。2026-09-02 は主観だけ欠測にする"""
+    _write_sleep(root, [
+        ('2026-09-01', 450, 90, 3),
+        ('2026-09-02', 420, 85, 2),
+        ('2026-09-03', 480, 88, 4),
+    ])
+    _write_series_csv(root, 'hrv.csv', 'daily_rmssd', [
+        ('2026-09-01', 40.0), ('2026-09-02', 38.0), ('2026-09-03', 45.0),
+    ])
+    _write_series_csv(root, 'heart_rate.csv', 'resting_heart_rate', [
+        ('2026-09-01', 50), ('2026-09-02', 49), ('2026-09-03', 48),
+    ])
+    _write_series_csv(root, 'breathing_rate.csv', 'breathing_rate', [
+        ('2026-09-01', 15.0), ('2026-09-02', 15.5), ('2026-09-03', 16.0),
+    ])
+    _write_series_csv(root, 'activity.csv', 'steps', [
+        ('2026-09-01', 3000), ('2026-09-02', 1000), ('2026-09-03', 5000),
+    ])
+    _write_innerscan(root, [
+        ('2026-09-01', 60.0, 16.0), ('2026-09-03', 61.0, 16.5),
+    ])
+    _write_daily_summary(root, [
+        {'date': '2026-09-01', 'source': 'sheet', 'mind_score': 3,
+         'body_score': 3, 'sleep_score': 3},
+        # 2026-09-02 は主観の記録なし（欠測のまま）
+        {'date': '2026-09-03', 'source': 'sheet', 'mind_score': 4,
+         'body_score': 4, 'head_score': 4, 'sleep_score': 4},
+    ])
+
+
+def test_metrics_daily_csv_excludes_zero_filled_columns(metrics_root):
+    """positive / sleep_debt は 0 埋め列なので出さない"""
+    _seed_metrics_sources(metrics_root)
+    js.write_metrics_csv()
+
+    df = pd.read_csv(js.METRICS_FILE)
+    assert 'positive' not in df.columns
+    assert 'sleep_debt' not in df.columns
+
+
+def test_metrics_daily_csv_missing_cells_stay_empty(metrics_root):
+    """記録の無い日のセルは空のまま。0 に埋めない"""
+    _seed_metrics_sources(metrics_root)
+    js.write_metrics_csv()
+
+    df = pd.read_csv(js.METRICS_FILE, index_col='date')
+    assert pd.isna(df.loc['2026-09-02', 'mind_score'])
+    assert pd.isna(df.loc['2026-09-02', 'weight'])
+
+
+def test_metrics_daily_csv_is_full_overwrite(metrics_root):
+    """再生成すると、既存ファイルの余分な行は消える（merge も追記もしない）"""
+    _seed_metrics_sources(metrics_root)
+    js.write_metrics_csv()
+
+    stale_path = js.METRICS_FILE
+    stale = pd.read_csv(stale_path, index_col='date')
+    stale.loc['1999-01-01'] = stale.iloc[0]
+    stale.to_csv(stale_path)
+
+    js.write_metrics_csv()
+
+    df = pd.read_csv(stale_path, index_col='date')
+    assert '1999-01-01' not in df.index
+
+
+def test_metrics_daily_csv_readable_with_date_index_and_corr(metrics_root):
+    """date を index に読め、数値列同士の corr() が例外なく通る"""
+    _seed_metrics_sources(metrics_root)
+    js.write_metrics_csv()
+
+    df = pd.read_csv(js.METRICS_FILE, index_col='date')
+    corr = df[['hrv', 'mind_score']].dropna().corr()
+    assert corr.loc['hrv', 'mind_score'] == pytest.approx(1.0)
+
+
+def test_metrics_frame_matches_collect_metrics_today(metrics_root):
+    """_metrics_frame() の当日値が collect_metrics() の today と一致する
+
+    同じソースから読んでいることの固定。ここがズレると骨組み(STATE.md)と
+    metrics_daily.csv で数字が食い違う。
+    """
+    _seed_metrics_sources(metrics_root)
+    target = dt.date(2026, 9, 3)
+
+    frame = js._metrics_frame(pd.Timestamp('2026-09-01'), pd.Timestamp(target))
+    today = frame.loc[pd.Timestamp(target)]
+
+    metrics = {m['label']: m for m in js.collect_metrics(target)}
+    assert today['hrv'] == metrics['HRV']['today']
+    assert today['rhr'] == metrics['RHR']['today']
+    assert today['breathing_rate'] == metrics['BR']['today']
+    assert today['steps'] == metrics['歩数']['today']
+    assert today['weight'] == metrics['体重']['today']
+    assert today['body_fat'] == metrics['体脂肪率']['today']
+    assert today['sleep_hours'] == metrics['睡眠時間']['today']
+    assert today['sleep_efficiency'] == metrics['睡眠効率']['today']
+    assert today['wake_count'] == metrics['中途覚醒']['today']
+    assert today['mind_score'] == metrics['主観 mind']['today']
+    assert today['body_score'] == metrics['主観 body']['today']
+    assert today['head_score'] == metrics['主観 head']['today']
+    assert today['sleep_score'] == metrics['主観 sleep']['today']
