@@ -23,6 +23,10 @@ CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv'
 # （詳細は push.select_pending）
 FETCH_STATE_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'fetch_state.json')
 
+# CSV は常に JST naive で持つ（表示・突合の都合）。取得窓の tz（push.load_timezone、
+# 既定 Asia/Tokyo）とは別に固定で定義してあり、personal.yaml で timezone を変えても
+# ここは追従しない。両者がズレると「取得した窓」と「CSV上の時刻」が食い違うので、
+# 変える場合は client.fetch_time_entries に渡す tz とセットで検討すること（Issue #127）
 JST = dt.timezone(dt.timedelta(hours=9))
 
 NO_PROJECT = '(no project)'

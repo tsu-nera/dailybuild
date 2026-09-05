@@ -25,12 +25,16 @@ QUOTA_EXCEEDED_STATUS = 402
 
 
 def _request(api_token: str, method: str, path: str,
-              params: dict | None = None, json_body: dict | None = None) -> requests.Response:
+              params: dict | None = None, json_body: dict | None = None,
+              allow_404: bool = False) -> requests.Response | None:
     """API を叩き、クォータ残量をログへ出す
 
     クォータ超過は HTTP 402 で返る。Toggl の 402 は決済要求ではなくレート制限で、
     そのままだと「Premium が必要」と読める汎用エラーになるため専用の例外にする。
     書き込み（POST）も同じ /me 系の枠を共有する前提で扱う。
+
+    allow_404=True のときは 404 を例外にせず None を返す（1件取得系で
+    「存在しない」を正常系として扱いたい呼び出し向け）。
     """
     response = requests.request(
         method,
@@ -52,6 +56,9 @@ def _request(api_token: str, method: str, path: str,
             f'{resets_in} 秒後に回復。Premium 制限ではない'
         )
 
+    if allow_404 and response.status_code == 404:
+        return None
+
     response.raise_for_status()
     return response
 
@@ -60,8 +67,12 @@ def _get(api_token: str, path: str, params: dict) -> requests.Response:
     return _request(api_token, 'GET', path, params=params)
 
 
-def fetch_time_entries(api_token: str, start: dt.date, end: dt.date) -> list[dict]:
+def fetch_time_entries(api_token: str, start: dt.date, end: dt.date, tz: dt.tzinfo) -> list[dict]:
     """指定期間のタイムエントリを取得
+
+    start_date / end_date はタイムゾーンオフセット付きの RFC3339 で送る。
+    date のまま（例: "2026-09-04"）渡すと Toggl は UTC として解釈するため、
+    JST では取得窓が意図から9時間ずれる（Issue #127）。
 
     Parameters
     ----------
@@ -69,18 +80,41 @@ def fetch_time_entries(api_token: str, start: dt.date, end: dt.date) -> list[dic
         Toggl Track の API token
     start, end : datetime.date
         取得期間（両端を含む）。API の end_date は排他的なので内部で +1日 して渡す
+    tz : datetime.tzinfo
+        start/end を解釈するタイムゾーン（呼び出し側が指定。本モジュールは
+        push.py に依存しないため、既定値は持たず必須引数にしてある）
 
     Returns
     -------
     list[dict]
         タイムエントリのリスト
     """
+    start_dt = dt.datetime.combine(start, dt.time.min, tzinfo=tz)
+    end_dt = dt.datetime.combine(end + dt.timedelta(days=1), dt.time.min, tzinfo=tz)
     params = {
-        'start_date': start.isoformat(),
-        'end_date': (end + dt.timedelta(days=1)).isoformat(),
+        'start_date': start_dt.isoformat(),
+        'end_date': end_dt.isoformat(),
     }
     response = _get(api_token, '/me/time_entries', params)
     return response.json()
+
+
+def fetch_time_entry(api_token: str, entry_id: str) -> dict | None:
+    """GET /me/time_entries/{id} で1件取得する
+
+    存在しない（404）場合は None を返す。Toggl は削除済みエントリを 404 ではなく
+    server_deleted_at が立った 200 で返すことがあるため、その場合も None 扱いにする
+    （push.select_pending の再投入判定が「まだ Toggl に実体があるか」を確認するのに使う）。
+    """
+    response = _request(api_token, 'GET', f'/me/time_entries/{entry_id}', allow_404=True)
+    if response is None:
+        return None
+    data = response.json()
+    if data is None:
+        return None
+    if data.get('server_deleted_at'):
+        return None
+    return data
 
 
 def fetch_me(api_token: str) -> dict:
