@@ -666,6 +666,38 @@ def test_activity_new_date_has_empty_activity_calories_and_sedentary_minutes(
     assert pd.isna(row['sedentaryMinutes'])
 
 
+def test_activity_refetch_keeps_dates_missing_from_new_data(data_dir, fake_activity_rows):
+    """全期間の再取得（#120）で、取得期間に含まれていても新データに無い日付は消さない。
+
+    Google 全再取得で Google が返さない日を欠測として捏造しないことの確認。
+    """
+    existing = pd.DataFrame(
+        {'caloriesOut': [2000.0, 2100.0], 'activityCalories': [700.0, 710.0],
+         'steps': [5000.0, 5200.0], 'distance': [3.5, 3.6],
+         'sedentaryMinutes': [900.0, 910.0], 'lightlyActiveMinutes': [120.0, 122.0],
+         'fairlyActiveMinutes': [30.0, 32.0], 'veryActiveMinutes': [5.0, 6.0]},
+        index=pd.to_datetime(['2026-08-15', '2026-08-16']),
+    )
+    existing.index.name = 'date'
+    existing.to_csv(data_dir / 'activity.csv')
+
+    # Google は 2026-08-15 の1行しか返さない（2026-08-16 は欠測扱いで返ってこない）
+    fake_activity_rows([{
+        'date': '2026-08-15', 'caloriesOut': 1900.0, 'activityCalories': None,
+        'steps': 5100.0, 'distance': 3.6, 'sedentaryMinutes': None,
+        'lightlyActiveMinutes': 121.0, 'fairlyActiveMinutes': 31.0, 'veryActiveMinutes': 6.0,
+    }])
+    ghf.fetch_endpoint(
+        None, 'activity', start_date=dt.date(2026, 8, 15), end_date=dt.date(2026, 8, 16),
+        allow_history_rewrite=True,
+    )
+
+    saved = pd.read_csv(data_dir / 'activity.csv')
+    assert '2026-08-16' in saved['date'].values  # 新データに無い日付の行が消えていない
+    row = saved[saved['date'] == '2026-08-16'].iloc[0]
+    assert row['caloriesOut'] == 2100.0  # 既存値のまま
+
+
 # =============================================================================
 # caffeine: nutrition-log から CAFFEINE のみ拾う（Issue #90）
 # =============================================================================
