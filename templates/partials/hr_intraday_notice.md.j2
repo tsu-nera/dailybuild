@@ -1,0 +1,8 @@
+{% if hr_intraday_notice %}
+{% if hr_intraday_notice.last_date %}
+> 心拍 intraday が {{ hr_intraday_notice.days_behind }} 日古い（最終 {{ hr_intraday_notice.last_date }}）。上の表の心拍由来の欄は最終日以降が空になる。
+{% else %}
+> 心拍 intraday が未取得。上の表の心拍由来の欄は空になる。
+{% endif %}
+> 取得: uv run python scripts/fetch_googlehealth.py --endpoint heart_rate_intraday --days {{ hr_intraday_notice.fetch_days }}
+{% endif %}

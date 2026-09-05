@@ -8,5 +8,6 @@
 {% for day in exertion_balance_data %}
 | {{ day.date.strftime('%m-%d') }} | {{ day.steps|number_format(0) if day.steps is not none else '-' }} | {{ day.lightly_min|number_format(0) if day.lightly_min is not none else '-' }} | {{ day.fairly_min|number_format(0) if day.fairly_min is not none else '-' }} | {{ day.very_min|number_format(0) if day.very_min is not none else '-' }} | {{ day.z1_min|number_format(0) if day.z1_min is not none else '-' }} | {{ day.z2_min|number_format(0) if day.z2_min is not none else '-' }} | {{ day.z3_min|number_format(0) if day.z3_min is not none else '-' }} | {{ day.z4_min|number_format(0) if day.z4_min is not none else '-' }} | {{ day.z5_min|number_format(0) if day.z5_min is not none else '-' }} | {{ day.total_zone_min|number_format(0) if day.total_zone_min is not none else '-' }} |
 {% endfor %}
+{% include 'partials/hr_intraday_notice.md.j2' %}
 
 ---

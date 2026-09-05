@@ -27,6 +27,7 @@ from lib.analytics import zone2
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir, filter_dataframe_by_period
 from lib.utils.data_loader import determine_target_period
 from lib.utils.private_data import ensure_dir
+from lib.utils.intraday_freshness import hr_intraday_freshness
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
@@ -399,6 +400,12 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     zone2_meta = getattr(_prepare_aerobic_data, 'zone2_meta', None)
     vo2max_final = getattr(_prepare_aerobic_data, 'vo2max_final', None)
 
+    # heart_rate_intraday.csv の鮮度（Issue #128）
+    try:
+        hr_intraday_notice = hr_intraday_freshness(HEART_RATE_INTRADAY_CSV, end_date)
+    except Exception:
+        hr_intraday_notice = None
+
     # コンテキスト構築
     context = {
         'report_title': 'フィットネスデイリーレポート',
@@ -419,6 +426,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
         'hr_zone_meta': hr_zone_meta,
         'zone2_meta': zone2_meta,
         'vo2max_final': vo2max_final,
+        'hr_intraday_notice': hr_intraday_notice,
         'detail_data': {
             'trend_image': 'img/trend.png',
             'daily_table': body.format_daily_table(

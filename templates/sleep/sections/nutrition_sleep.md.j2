@@ -6,4 +6,5 @@
 {% for row in nutrition.table -%}
 | {{ row.date }} | {{ row.carbs }} | {{ row.fiber }} | {{ row.predicted_gl }}({{ row.gl_category }}) | {{ row.deep_minutes }} | {{ row.efficiency }} | {{ row.min_hr }} | {{ row.min_hr_time }} | {{ row.dip_rate }} |
 {% endfor %}
+{% include 'partials/hr_intraday_notice.md.j2' %}
 {% endif %}
