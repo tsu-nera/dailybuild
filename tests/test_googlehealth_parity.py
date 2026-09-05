@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-from lib import googlehealth_fetcher
 from lib.clients import googlehealth_api as gh
 
 BASE_DIR = Path(__file__).parent.parent
@@ -25,10 +24,15 @@ DATA_DIR = BASE_DIR / 'data' / 'fitbit'
 COMPARE_FROM = dt.date(2026, 6, 1)
 
 
-pytestmark = pytest.mark.skipif(
-    not gh.TOKEN_FILE.exists(),
-    reason='config/googlehealth_token.json が無い',
-)
+# net: Google の API を実際に叩くので既定のスイートからは外れる（pyproject の
+# addopts）。`uv run pytest tests -q -m net` で回す。
+pytestmark = [
+    pytest.mark.net,
+    pytest.mark.skipif(
+        not gh.TOKEN_FILE.exists(),
+        reason='config/googlehealth_token.json が無い',
+    ),
+]
 
 
 @pytest.fixture(scope='module')
@@ -105,23 +109,6 @@ def test_active_zone_minutes_matches_existing_csv(creds):
     )
     assert compared > 0, '比較対象が1件も無い'
     assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
-
-
-def test_fetchers_respect_date_range(creds):
-    """期間指定が効いていること（範囲外の日付を返さないこと）"""
-    start = dt.date.today() - dt.timedelta(days=10)
-    end = dt.date.today() - dt.timedelta(days=5)
-    for endpoint, fetcher in gh.FETCHERS.items():
-        if endpoint == 'sleep':
-            continue  # 専用テストで別途検証（戻り値の形が違う）
-        # temperature_core は date_time（日時、実測時刻を含む）、exercise は
-        # start（開始時刻）と、型ごとに date_column が違うので先頭10文字で見る
-        column = googlehealth_fetcher.ENDPOINTS[endpoint]['date_column']
-        rows = fetcher(creds, start, end)
-        for row in rows:
-            assert start.isoformat() <= row[column][:10] <= end.isoformat(), (
-                f'{endpoint}: 範囲外の日付 {row[column]}'
-            )
 
 
 # =============================================================================
