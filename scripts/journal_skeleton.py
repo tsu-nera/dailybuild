@@ -50,6 +50,7 @@ BASE_DIR = project_root
 JOURNAL_DIR = BASE_DIR / 'reports' / 'journal'
 INDEX_FILE = JOURNAL_DIR / 'JOURNAL.md'
 STATE_FILE = JOURNAL_DIR / 'STATE.md'
+METRICS_FILE = BASE_DIR / 'reports' / 'metrics_daily.csv'
 ACTIONS_FILE = JOURNAL_DIR / 'ACTIONS.md'
 EMOTION_DEF = BASE_DIR / 'config' / 'emotion_def.yaml'
 
@@ -147,27 +148,54 @@ def _main_sleep(df):
     return df[flag]
 
 
-def collect_metrics(target: dt.date) -> list[dict]:
-    """当日値・直近7日平均・前7日平均を指標ごとに集める"""
-    ts = pd.Timestamp(target)
-    recent = (ts - pd.Timedelta(days=6), ts)
-    prior = (ts - pd.Timedelta(days=13), ts - pd.Timedelta(days=7))
-
-    sleep = _main_sleep(_read('data/wearable/sleep.csv', 'dateOfSleep'))
-    if not sleep.empty:
-        sleep = sleep.groupby('_date').first().reset_index()
-    hrv = _read('data/wearable/hrv.csv', 'date')
-    rhr = _read('data/wearable/heart_rate.csv', 'date')
-    br = _read('data/wearable/breathing_rate.csv', 'date')
-    act = _read('data/wearable/activity.csv', 'date')
-    man = _read('data/daily_summary.csv', 'date')
+# 日次指標の元データ。source key -> (path, 日付列)。collect_metrics() と
+# _metrics_frame() の両方が同じソースを読むための単一の定義
+_SOURCE_PATHS = {
+    'sleep': ('data/wearable/sleep.csv', 'dateOfSleep'),
+    'hrv': ('data/wearable/hrv.csv', 'date'),
+    'rhr': ('data/wearable/heart_rate.csv', 'date'),
+    'br': ('data/wearable/breathing_rate.csv', 'date'),
+    'act': ('data/wearable/activity.csv', 'date'),
+    'man': ('data/daily_summary.csv', 'date'),
     # body レポートと同じ healthplanet_innerscan.csv を使う。体組成は3経路
     # （Fitbit / HealthPlanet / Google Health）あるが統合しない方針なので、
     # レポートと違う経路を読むと骨組みとレポートで数字が食い違う
-    body = _read('data/healthplanet_innerscan.csv', 'date')
-    debt = _sleep_debt_series(prior[0], ts)
+    'body': ('data/healthplanet_innerscan.csv', 'date'),
+}
 
-    timing = _sleep_timing(prior[0], ts)
+# (英語列名, 日本語ラベル, ソースキー, 値の取り出し方, 単位, 桁数)
+# collect_metrics()（STATE.md の現在値表）と _metrics_frame()（metrics_daily.csv）
+# が共有する。片方だけ直すとレポート間で数字が食い違うため
+_METRIC_SPECS = [
+    ('sleep_hours', '睡眠時間', 'sleep', lambda d: d['minutesAsleep'] / 60, 'h', 1),
+    ('sleep_efficiency', '睡眠効率', 'sleep', lambda d: d['efficiency'], '%', 0),
+    ('sleep_latency', '入眠潜時', 'tdf', lambda d: d['fall_asleep'], '分', 0),
+    ('minutes_after_wakeup', '起床後臥床', 'tdf', lambda d: d['after_wake'], '分', 0),
+    ('wake_count', '中途覚醒', 'sleep', lambda d: d['wakeCount'], '回', 0),
+    ('hrv', 'HRV', 'hrv', lambda d: d['daily_rmssd'], 'ms', 1),
+    ('rhr', 'RHR', 'rhr', lambda d: d['resting_heart_rate'], 'bpm', 0),
+    ('breathing_rate', 'BR', 'br', lambda d: d['breathing_rate'], '/min', 1),
+    ('steps', '歩数', 'act', lambda d: d['steps'], '', 0),
+    ('weight', '体重', 'body', lambda d: d['weight'], 'kg', 1),
+    ('body_fat', '体脂肪率', 'body', lambda d: d['body_fat_rate'], '%', 1),
+    ('mind_score', '主観 mind', 'man', lambda d: d['mind_score'], '', 1),
+    ('body_score', '主観 body', 'man', lambda d: d['body_score'], '', 1),
+    ('head_score', '主観 head', 'man', lambda d: d['head_score'], '', 1),
+    ('sleep_score', '主観 sleep', 'man', lambda d: d['sleep_score'], '', 1),
+]
+
+
+def _load_sources(lo, hi) -> dict:
+    """collect_metrics() / _metrics_frame() が共有する元データを読む
+
+    tdf（入眠潜時・起床後臥床）だけ lo〜hi で絞る。sleep_levels.csv 由来の
+    計算が日ごとに閉じているため、範囲を広げても各日の値は変わらない。
+    """
+    sleep = _main_sleep(_read(*_SOURCE_PATHS['sleep']))
+    if not sleep.empty:
+        sleep = sleep.groupby('_date').first().reset_index()
+
+    timing = _sleep_timing(lo, hi)
     if timing:
         tdf = pd.DataFrame([
             {'_date': pd.to_datetime(k),
@@ -178,46 +206,95 @@ def collect_metrics(target: dt.date) -> list[dict]:
     else:
         tdf = pd.DataFrame()
 
-    specs = [
-        ('睡眠時間', sleep, lambda d: d['minutesAsleep'] / 60, 'h', 1),
-        ('睡眠効率', sleep, lambda d: d['efficiency'], '%', 0),
-        ('入眠潜時', tdf, lambda d: d['fall_asleep'], '分', 0),
-        ('起床後臥床', tdf, lambda d: d['after_wake'], '分', 0),
-        ('中途覚醒', sleep, lambda d: d['wakeCount'], '回', 0),
-        ('睡眠負債', debt, lambda d: d['debt'], 'h', 1),
-        ('HRV', hrv, lambda d: d['daily_rmssd'], 'ms', 1),
-        ('RHR', rhr, lambda d: d['resting_heart_rate'], 'bpm', 0),
-        ('BR', br, lambda d: d['breathing_rate'], '/min', 1),
-        ('歩数', act, lambda d: d['steps'], '', 0),
-        ('体重', body, lambda d: d['weight'], 'kg', 1),
-        ('体脂肪率', body, lambda d: d['body_fat_rate'], '%', 1),
-        ('主観 mind', man, lambda d: d['mind_score'], '', 1),
-        ('主観 body', man, lambda d: d['body_score'], '', 1),
-        ('主観 head', man, lambda d: d['head_score'], '', 1),
-        ('主観 sleep', man, lambda d: d['sleep_score'], '', 1),
-    ]
+    return {
+        'sleep': sleep,
+        'hrv': _read(*_SOURCE_PATHS['hrv']),
+        'rhr': _read(*_SOURCE_PATHS['rhr']),
+        'br': _read(*_SOURCE_PATHS['br']),
+        'act': _read(*_SOURCE_PATHS['act']),
+        'man': _read(*_SOURCE_PATHS['man']),
+        'body': _read(*_SOURCE_PATHS['body']),
+        'tdf': tdf,
+    }
+
+
+def _series_for(df, pick):
+    """spec の pick 関数を適用し、日付 index の数値 Series にする。空なら None"""
+    if df.empty:
+        return None
+    series = pd.to_numeric(pick(df), errors='coerce')
+    series.index = df['_date'].values
+    return series
+
+
+def _window_mean(series, lo, hi):
+    if series is None:
+        return None
+    w = series[(series.index >= lo) & (series.index <= hi)].dropna()
+    return float(w.mean()) if len(w) else None
+
+
+def _metric_row(label, series, ts, recent, prior, unit, digits) -> dict:
+    if series is None:
+        return {'label': label, 'unit': unit, 'digits': digits,
+                'today': None, 'recent': None, 'prior': None}
+    today = series[series.index == ts].dropna()
+    return {
+        'label': label, 'unit': unit, 'digits': digits,
+        'today': float(today.iloc[0]) if len(today) else None,
+        'recent': _window_mean(series, *recent),
+        'prior': _window_mean(series, *prior),
+    }
+
+
+def collect_metrics(target: dt.date) -> list[dict]:
+    """当日値・直近7日平均・前7日平均を指標ごとに集める"""
+    ts = pd.Timestamp(target)
+    recent = (ts - pd.Timedelta(days=6), ts)
+    prior = (ts - pd.Timedelta(days=13), ts - pd.Timedelta(days=7))
+
+    sources = _load_sources(prior[0], ts)
+    debt = _sleep_debt_series(prior[0], ts)
 
     rows = []
-    for label, df, pick, unit, digits in specs:
-        if df.empty:
-            rows.append({'label': label, 'unit': unit, 'digits': digits,
-                         'today': None, 'recent': None, 'prior': None})
-            continue
-        series = pd.to_numeric(pick(df), errors='coerce')
-        series.index = df['_date'].values
-
-        def window(lo, hi):
-            w = series[(series.index >= lo) & (series.index <= hi)].dropna()
-            return float(w.mean()) if len(w) else None
-
-        today = series[series.index == ts].dropna()
-        rows.append({
-            'label': label, 'unit': unit, 'digits': digits,
-            'today': float(today.iloc[0]) if len(today) else None,
-            'recent': window(*recent),
-            'prior': window(*prior),
-        })
+    for col, label, key, pick, unit, digits in _METRIC_SPECS:
+        series = _series_for(sources[key], pick)
+        rows.append(_metric_row(label, series, ts, recent, prior, unit, digits))
+        if col == 'wake_count':
+            # 睡眠負債は metrics_daily.csv に出さない列なので _METRIC_SPECS に
+            # 無いが、STATE.md の現在値表には元の並び通り中途覚醒の次に挟む
+            debt_series = _series_for(debt, lambda d: d['debt'])
+            rows.append(_metric_row('睡眠負債', debt_series, ts, recent, prior, 'h', 1))
     return rows
+
+
+def _metrics_frame(lo: pd.Timestamp, hi: pd.Timestamp) -> pd.DataFrame:
+    """日付 index × 指標（英語 snake_case 列）の横持ちフレーム
+
+    reports/metrics_daily.csv の生成元。collect_metrics() が当日値・直近7日
+    平均・前7日平均へ畳む直前の日次系列を、畳まずにそのまま返す。
+
+    以下の2列は意図的に含めない。0埋めが相関分析を静かに壊すため:
+    - positive（陽性ラベル件数）: _positive_series() が記録の無い日を0で
+      埋めている。「陽性がN日途切れている」を数えるための意図的な仕様だが、
+      相関では「陽性ゼロの日」として実データ扱いされてしまう
+    - sleep_debt: 欠測日を睡眠0hで計上して膨張する。累積量なので単日の
+      欠測補正もできない
+    どちらも _state_series() のストリーク用途に閉じ込めたままにする。
+    欠測は欠測のまま（空セル）にする。fillna(0) はしない。
+    """
+    sources = _load_sources(lo, hi)
+    index = pd.date_range(lo, hi, freq='D')
+    out = pd.DataFrame(index=index)
+    out.index.name = 'date'
+    for col, _label, key, pick, _unit, _digits in _METRIC_SPECS:
+        series = _series_for(sources[key], pick)
+        if series is None:
+            out[col] = pd.NA
+            continue
+        # 同一日に複数行あるソースは先勝ちにする（today.iloc[0] と同じ扱い）
+        out[col] = series.groupby(level=0).first().reindex(index)
+    return out
 
 
 def collect_missing(target: dt.date) -> list[str]:
@@ -859,6 +936,44 @@ def write_state(target: dt.date) -> str:
     return str(path)
 
 
+def _full_history_bounds() -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """metrics_daily.csv の対象期間（各ソースが持つ範囲の和集合）を求める"""
+    dates = []
+    for path, col in _SOURCE_PATHS.values():
+        df = _read(path, col)
+        if not df.empty:
+            dates.append(df['_date'].min())
+            dates.append(df['_date'].max())
+    timing_df = _read('data/wearable/sleep_levels.csv', 'dateOfSleep')
+    if not timing_df.empty:
+        dates.append(timing_df['_date'].min())
+        dates.append(timing_df['_date'].max())
+    if not dates:
+        return None
+    return min(dates), max(dates)
+
+
+def write_metrics_csv() -> str:
+    """reports/metrics_daily.csv を生成する
+
+    期間は全履歴（各ソースが持つ範囲の和集合）。相関分析用なので窓で
+    切らない。STATE.md と同じ「生成物」の扱いで、毎回**全上書き**する。
+    merge も追記もしない — 指標の定義を変えたときに古い定義の値が
+    残らないようにするため（merge_csv() は df_old の列を保持するので
+    merge すると新旧の定義が混在して見えなくなる）。
+    """
+    path = require_private_write(METRICS_FILE)
+    ensure_dir(path.parent)
+    bounds = _full_history_bounds()
+    if bounds is None:
+        frame = pd.DataFrame(columns=[c for c, *_ in _METRIC_SPECS])
+        frame.index.name = 'date'
+    else:
+        frame = _metrics_frame(*bounds)
+    frame.to_csv(path, date_format='%Y-%m-%d')
+    return str(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Journal skeleton writer')
     parser.add_argument('--date', type=dt.date.fromisoformat, default=None,
@@ -883,9 +998,10 @@ def main():
             print(f'{day} {week_file(day).name}: {action} (index: {index})')
             day += dt.timedelta(days=1)
 
-    # STATE.md は生成物なので毎回まるごと差し替える。遡り生成でも「いまの状態」は
-    # 1つしか無いので、対象日ではなく最終日ぶんだけを書く
+    # STATE.md / metrics_daily.csv はどちらも生成物なので毎回まるごと差し替える。
+    # 遡り生成でも「いまの状態」は1つしか無いので、対象日ではなく最終日ぶんだけを書く
     print(f'STATE: {write_state(end)}')
+    print(f'METRICS: {write_metrics_csv()}')
 
     for w in warn_unwritten(end):
         print(f'\u26a0\ufe0f {w}', file=sys.stderr)
