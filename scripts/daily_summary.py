@@ -152,7 +152,7 @@ def cmd_setup_form(args):
 def build_dataframe(form, responses, conf):
     """回答リストを CSV スキーマの DataFrame にする
 
-    同一 date に複数回答があるときは最後（answered_at 昇順）のものだけを
+    同一 date に複数回答があるときは最後（updated_at 昇順）のものだけを
     残す（date が主キーで、CSV に複数行を残さない）。
     """
     by_title = gforms_client.question_id_by_title(form)
@@ -173,32 +173,32 @@ def build_dataframe(form, responses, conf):
             grid_values[key] = v[0] if v else pd.NA
         comment = gforms_client.answer_values(res, by_title[q['comment']])
         row = {
-            'answered_at': res.get('lastSubmittedTime') or res.get('createTime'),
+            'updated_at': res.get('lastSubmittedTime') or res.get('createTime'),
             'source': 'form',
             'comment': comment[0] if comment and comment[0] else pd.NA,
         }
         row.update(grid_values)
         rows.append(row)
 
-    df = pd.DataFrame(rows, columns=['answered_at', 'source'] + grid_rows + ['comment'])
+    df = pd.DataFrame(rows, columns=['updated_at', 'source'] + grid_rows + ['comment'])
     if df.empty:
         df = df.assign(date=pd.Series(dtype='object'))
         df = df.rename(columns={k: f'{k}_score' for k in grid_rows})
         return df[store.COLUMNS]
 
     # API は RFC3339 の UTC を返す。他データと揃えて JST の naive にする
-    ts = pd.to_datetime(df['answered_at'], format='ISO8601', utc=True)
-    df['answered_at'] = ts.dt.tz_convert(TZ).dt.tz_localize(None).dt.floor('s')
+    ts = pd.to_datetime(df['updated_at'], format='ISO8601', utc=True)
+    df['updated_at'] = ts.dt.tz_convert(TZ).dt.tz_localize(None).dt.floor('s')
     # date = 回答日（設問は「今日」）。日境界の補正はしない
-    df['date'] = df['answered_at'].dt.date
+    df['date'] = df['updated_at'].dt.date
     for key in grid_rows:
         df[key] = pd.to_numeric(df[key], errors='coerce').astype('Int64')
 
-    # 同一 date に複数回答があれば最後（answered_at 昇順で最後）を採る。
+    # 同一 date に複数回答があれば最後（updated_at 昇順で最後）を採る。
     # date が主キーなので複数行を残さない
-    df = df.sort_values('answered_at').drop_duplicates(subset=['date'], keep='last')
+    df = df.sort_values('updated_at').drop_duplicates(subset=['date'], keep='last')
 
-    # スコアの列名を store.COLUMNS に合わせる（mind/body/sleep -> *_score）
+    # スコアの列名を store.COLUMNS に合わせる（mind/body/head/sleep -> *_score）
     df = df.rename(columns={k: f'{k}_score' for k in grid_rows})
     columns = store.COLUMNS
     return df.sort_values('date').reset_index(drop=True)[columns]
@@ -294,8 +294,9 @@ def cmd_migrate_manual(args):
         print('移行対象なし', file=sys.stderr)
         return
 
-    to_migrate['answered_at'] = pd.NA  # Sheets は入力時刻を記録していない（復元不能）
+    to_migrate['updated_at'] = pd.NA  # Sheets は入力時刻を記録していない（復元不能）
     to_migrate['source'] = 'sheet'
+    to_migrate['head_score'] = pd.NA  # manual.csv に頭の記録は無い（0で埋めない）
     to_migrate = to_migrate[store.COLUMNS]
 
     ensure_dir(OUT_FILE.parent)

@@ -32,11 +32,11 @@ daily_summary = _load_script()
 
 CONF = {
     'questions': {
-        'mind': '気分', 'body': '身体の軽さ', 'sleep': '昨夜の眠り',
-        'comment': '今日あったこと',
+        'mind': '気分', 'body': '身体の軽さ', 'head': '頭の軽さ',
+        'sleep': '昨夜の眠り', 'comment': 'コメント',
     },
-    'grid_rows': ['mind', 'body', 'sleep'],
-    'grid_required': {'mind': True, 'body': False, 'sleep': False},
+    'grid_rows': ['mind', 'body', 'head', 'sleep'],
+    'grid_required': {'mind': True, 'body': False, 'head': False, 'sleep': False},
     'score': {'low': 1, 'high': 5, 'low_label': '悪い', 'high_label': '良い'},
 }
 
@@ -52,6 +52,8 @@ def _form():
                          'rowQuestion': {'title': '気分'}},
                         {'questionId': 'q_body', 'required': False,
                          'rowQuestion': {'title': '身体の軽さ'}},
+                        {'questionId': 'q_head', 'required': False,
+                         'rowQuestion': {'title': '頭の軽さ'}},
                         {'questionId': 'q_sleep', 'required': False,
                          'rowQuestion': {'title': '昨夜の眠り'}},
                     ],
@@ -62,7 +64,7 @@ def _form():
                 },
             },
             {
-                'title': '今日あったこと',
+                'title': 'コメント',
                 'questionItem': {'question': {
                     'questionId': 'q_comment',
                     'textQuestion': {'paragraph': False},
@@ -72,12 +74,14 @@ def _form():
     }
 
 
-def _response(timestamp, mind=None, body=None, sleep=None, comment=None):
+def _response(timestamp, mind=None, body=None, head=None, sleep=None, comment=None):
     answers = {}
     if mind is not None:
         answers['q_mind'] = {'textAnswers': {'answers': [{'value': mind}]}}
     if body is not None:
         answers['q_body'] = {'textAnswers': {'answers': [{'value': body}]}}
+    if head is not None:
+        answers['q_head'] = {'textAnswers': {'answers': [{'value': head}]}}
     if sleep is not None:
         answers['q_sleep'] = {'textAnswers': {'answers': [{'value': sleep}]}}
     if comment is not None:
@@ -117,6 +121,23 @@ def test_build_dataframe_scores_are_nullable_int_and_survive_missing():
     assert str(df['body_score'].dtype) == 'Int64'
     assert df.loc[df['date'] == pd.Timestamp('2026-09-01').date(), 'body_score'].iloc[0] == 3
     assert pd.isna(df.loc[df['date'] == pd.Timestamp('2026-09-02').date(), 'body_score'].iloc[0])
+
+
+def test_build_dataframe_assigns_four_grid_rows_without_reordering():
+    """4行のグリッド回答が mind/body/head/sleep に正しく割り当たる（回帰）
+
+    grid_rows の並び順を変えたときに列の取り違えが起きないことを固定する。
+    """
+    responses = [
+        _response('2026-09-01T10:00:00Z', mind='1', body='2', head='3', sleep='4'),
+    ]
+    df = daily_summary.build_dataframe(_form(), responses, CONF)
+
+    row = df.iloc[0]
+    assert row['mind_score'] == 1
+    assert row['body_score'] == 2
+    assert row['head_score'] == 3
+    assert row['sleep_score'] == 4
 
 
 # --- fetch のマージは行ごと置換（セル単位マージにしない） ---
@@ -219,6 +240,27 @@ def test_migrate_manual_does_not_fabricate_missing_dates(tmp_path, monkeypatch):
     assert sorted(result['date'].astype(str).tolist()) == ['2026-08-01', '2026-08-05']
 
 
+def test_migrate_manual_head_score_is_missing_not_zero(tmp_path, monkeypatch):
+    """manual.csv に頭の記録は無いので、移行行の head_score は欠測のまま
+
+    0 や 3 で埋めると「未記録」が「回答した」に化ける。
+    """
+    manual_csv = _write_manual_csv(tmp_path / 'manual.csv', [
+        {'date': '2026-08-01', 'mind_score': 3, 'body_score': 2,
+         'sleep_score': 4, 'comment': 'メモ'},
+    ])
+    out_csv = tmp_path / 'daily_summary.csv'
+    monkeypatch.setattr(daily_summary, 'MANUAL_FILE', manual_csv)
+    monkeypatch.setattr(daily_summary, 'OUT_FILE', out_csv)
+    monkeypatch.setattr(daily_summary.store, 'CSV_FILE', out_csv)
+
+    daily_summary.cmd_migrate_manual(argparse_namespace(dry_run=False))
+
+    result = pd.read_csv(out_csv)
+    assert result.iloc[0]['head_score'] != 0
+    assert pd.isna(result.iloc[0]['head_score'])
+
+
 def test_migrate_manual_dry_run_does_not_write(tmp_path, monkeypatch):
     manual_csv = _write_manual_csv(tmp_path / 'manual.csv', [
         {'date': '2026-08-01', 'mind_score': 3, 'body_score': None,
@@ -242,9 +284,9 @@ def test_migrate_manual_twice_never_overwrites_form_row(tmp_path, monkeypatch):
     out_csv = tmp_path / 'daily_summary.csv'
     # 事前に Form 由来の行が既に存在する状態を作る（同じ date）
     pd.DataFrame([{
-        'date': '2026-08-01', 'answered_at': '2026-08-01 07:00:00',
+        'date': '2026-08-01', 'updated_at': '2026-08-01 07:00:00',
         'source': 'form', 'mind_score': 5, 'body_score': 4,
-        'sleep_score': 3, 'comment': 'form由来のコメント',
+        'head_score': 2, 'sleep_score': 3, 'comment': 'form由来のコメント',
     }])[store.COLUMNS].to_csv(out_csv, index=False)
 
     monkeypatch.setattr(daily_summary, 'MANUAL_FILE', manual_csv)
@@ -272,9 +314,9 @@ def argparse_namespace(**kwargs):
 def test_load_entries_keeps_missing_scores_as_na(tmp_path, monkeypatch):
     csv = tmp_path / 'daily_summary.csv'
     csv.write_text(
-        'date,answered_at,source,mind_score,body_score,sleep_score,comment\n'
-        '2026-08-01,,sheet,3,,,\n'
-        '2026-08-02,2026-08-02 07:00:00,form,4,3,5,元気\n'
+        'date,updated_at,source,mind_score,body_score,head_score,sleep_score,comment\n'
+        '2026-08-01,,sheet,3,,,,\n'
+        '2026-08-02,2026-08-02 07:00:00,form,4,3,2,5,元気\n'
     )
     monkeypatch.setattr(store, 'CSV_FILE', csv)
 
