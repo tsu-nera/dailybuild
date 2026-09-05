@@ -29,6 +29,9 @@
   （最大8週）のレポート窓はこの開始日で覆える
 - マージキーは `caffeine` / `weight` / `body_fat` と同じく `id`（19桁の
   整数。`dtype=str` 必須）
+- **`distance_m` はほぼ空。** 実測で埋まっているのは WALKING（175/175）だけで、
+  OUTDOOR_BIKE は 1/530、BIKING は 44/140、WEIGHTS・STRENGTH_TRAINING は
+  0/43・0/44。レポートはサイクリングの距離を出さない（docs/reports.md 参照）
 
 ## カフェイン摂取
 
