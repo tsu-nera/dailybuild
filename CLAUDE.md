@@ -131,6 +131,9 @@ uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml �
 uv run scripts/bowel.py fetch        # 排便記録（Bristol、Google Form回答）取得
 uv run scripts/bowel.py show         # 排便記録のサマリ（既定は直近7日）
 uv run scripts/bowel.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
+uv run scripts/daily_summary.py fetch  # 日次記録（気分・身体・頭・睡眠・コメント、Google Form回答）取得
+uv run scripts/daily_summary.py show   # 日次記録のサマリ（既定は直近7日）
+uv run scripts/daily_summary.py setup-form --update  # 質問文を yaml に合わせ直す
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
@@ -178,7 +181,7 @@ stdout）。
 | `src/lib/exercise_source.py` / 運動系レポート（body / mind）を変更するとき | `data/googlehealth/exercise.csv` が正本。`data/wearable/activity_logs.csv`（Fitbit Web API 廃止で更新停止）はアーカイブとして凍結し統合しない（id空間・distance単位・activeZoneMinutes構造が別物）。platform 重複解決（優先度・閾値）は `exercise_source.py` のモジュール定数を push とレポートで共有する |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
-| `emotion.py` / `phq9.py` / `bowel.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
+| `emotion.py` / `phq9.py` / `bowel.py` / `daily_summary.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |

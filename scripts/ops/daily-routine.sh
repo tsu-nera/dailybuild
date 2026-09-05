@@ -65,7 +65,7 @@ fi
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
-step "手動記録"       uv run python scripts/fetch_manual.py
+step "日次記録"       uv run scripts/daily_summary.py fetch --non-interactive
 step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
 step "PHQ-9"         uv run python scripts/phq9.py fetch --non-interactive
 step "排便記録"       uv run python scripts/bowel.py fetch --non-interactive

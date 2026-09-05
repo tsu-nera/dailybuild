@@ -13,6 +13,7 @@ import datetime as dt
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
@@ -257,3 +258,95 @@ def test_bowel_unparseable_type_is_not_dropped_silently(data_root):
     assert got['today'] == []
     assert got['today_rows'] == 1
     assert '型 不明' in js._fmt_bowel(got)
+
+
+# --- 日次記録（旧 manual.csv からの読み先差し替え、Issue #137） ---
+
+def _write_daily_summary(root, rows):
+    """rows: dict のリスト。欠けているキーは空欄で埋める
+
+    列は data/daily_summary.csv の実物と揃える
+    （date, updated_at, source, mind_score, body_score, head_score,
+    sleep_score, comment）。
+    """
+    (root / 'data').mkdir(exist_ok=True)
+    cols = ['date', 'updated_at', 'source', 'mind_score', 'body_score',
+            'head_score', 'sleep_score', 'comment']
+    lines = [','.join(cols)]
+    for row in rows:
+        lines.append(','.join(str(row.get(c, '')) for c in cols))
+    (root / 'data' / 'daily_summary.csv').write_text(
+        '\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def test_collect_metrics_reads_daily_summary_mind_body_sleep(data_root):
+    """移行済みの daily_summary.csv に対し、主観 mind/body/sleep が欠測にならない
+
+    #137 の回帰: 差し替え前は data/manual.csv を読んでいたので、パスを
+    daily_summary.csv に変えただけで欠測に戻らないことを固定する。
+    """
+    _write_daily_summary(data_root, [
+        {'date': '2026-08-30', 'source': 'sheet', 'mind_score': 2,
+         'body_score': 3, 'sleep_score': 4},
+        {'date': '2026-09-05', 'source': 'sheet', 'mind_score': 4,
+         'body_score': 5, 'sleep_score': 3},
+    ])
+
+    metrics = {m['label']: m for m in js.collect_metrics(dt.date(2026, 9, 5))}
+
+    assert metrics['主観 mind']['today'] == 4.0
+    assert metrics['主観 body']['today'] == 5.0
+    assert metrics['主観 sleep']['today'] == 3.0
+
+
+def test_collect_metrics_reads_mixed_sheet_and_form_source(data_root):
+    """source 列が sheet/form 混在でも区別なく読める"""
+    _write_daily_summary(data_root, [
+        {'date': '2026-09-04', 'source': 'sheet', 'mind_score': 2,
+         'body_score': 2, 'sleep_score': 2},
+        {'date': '2026-09-05', 'source': 'form', 'mind_score': 5,
+         'body_score': 5, 'head_score': 4, 'sleep_score': 5},
+    ])
+
+    metrics = {m['label']: m for m in js.collect_metrics(dt.date(2026, 9, 5))}
+
+    assert metrics['主観 mind']['today'] == 5.0
+    assert metrics['主観 head']['today'] == 4.0
+
+
+def test_collect_metrics_head_score_all_missing_is_not_an_error(data_root):
+    """head_score が全欠測でも例外を出さず、その指標は欠測として扱う
+
+    manual.csv からの移行分（旧91行）は head_score を持たない。
+    """
+    _write_daily_summary(data_root, [
+        {'date': '2026-09-05', 'source': 'sheet', 'mind_score': 3,
+         'body_score': 3, 'sleep_score': 3},
+    ])
+
+    metrics = {m['label']: m for m in js.collect_metrics(dt.date(2026, 9, 5))}
+
+    assert metrics['主観 head']['today'] is None
+    assert metrics['主観 head']['recent'] is None
+
+
+def test_collect_comment_reads_daily_summary(data_root):
+    _write_daily_summary(data_root, [
+        {'date': '2026-09-05', 'source': 'form', 'mind_score': 3,
+         'comment': 'うつで11時起床'},
+    ])
+
+    assert js.collect_comment(dt.date(2026, 9, 5)) == 'うつで11時起床'
+
+
+def test_state_series_head_all_missing_does_not_raise(data_root):
+    """_state_series が head_score 全欠測でも例外を出さない（ストリーク判定側）"""
+    _write_daily_summary(data_root, [
+        {'date': '2026-09-05', 'source': 'sheet', 'mind_score': 1,
+         'body_score': 1, 'sleep_score': 1},
+    ])
+
+    series = js._state_series(dt.date(2026, 9, 5))
+
+    assert 'head' not in series
+    assert series['mind'].loc[pd.Timestamp('2026-09-05')] == 1

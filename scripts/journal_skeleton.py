@@ -70,7 +70,7 @@ DAILY_SOURCES = [
     ('breathing_rate', 'data/wearable/breathing_rate.csv', 'date'),
     ('activity', 'data/wearable/activity.csv', 'date'),
     ('temperature_skin', 'data/wearable/temperature_skin.csv', 'date'),
-    ('manual', 'data/manual.csv', 'date'),
+    ('daily_summary', 'data/daily_summary.csv', 'date'),
 ]
 
 # 疎なソース。測る日と測らない日があるのが常態なので、当日の不在を欠測として
@@ -160,7 +160,7 @@ def collect_metrics(target: dt.date) -> list[dict]:
     rhr = _read('data/wearable/heart_rate.csv', 'date')
     br = _read('data/wearable/breathing_rate.csv', 'date')
     act = _read('data/wearable/activity.csv', 'date')
-    man = _read('data/manual.csv', 'date')
+    man = _read('data/daily_summary.csv', 'date')
     # body レポートと同じ healthplanet_innerscan.csv を使う。体組成は3経路
     # （Fitbit / HealthPlanet / Google Health）あるが統合しない方針なので、
     # レポートと違う経路を読むと骨組みとレポートで数字が食い違う
@@ -193,6 +193,7 @@ def collect_metrics(target: dt.date) -> list[dict]:
         ('体脂肪率', body, lambda d: d['body_fat_rate'], '%', 1),
         ('主観 mind', man, lambda d: d['mind_score'], '', 1),
         ('主観 body', man, lambda d: d['body_score'], '', 1),
+        ('主観 head', man, lambda d: d['head_score'], '', 1),
         ('主観 sleep', man, lambda d: d['sleep_score'], '', 1),
     ]
 
@@ -281,7 +282,7 @@ def collect_bowel(target: dt.date) -> dict | None:
 
 
 def collect_comment(target: dt.date) -> str | None:
-    man = _read('data/manual.csv', 'date')
+    man = _read('data/daily_summary.csv', 'date')
     if man.empty or 'comment' not in man.columns:
         return None
     row = man[man['_date'] == pd.Timestamp(target)]
@@ -337,7 +338,7 @@ def render_skeleton(target: dt.date) -> str:
         lines.append(f'**排便**: {_fmt_bowel(bowel)}')
         lines.append('')
     if comment:
-        lines.append(f'**コメント（手動記録）**: {comment}')
+        lines.append(f'**コメント（日次記録）**: {comment}')
         lines.append('')
     lines.append(f"**欠測**: {'、'.join(missing) if missing else 'なし'}")
     last_seen = collect_last_seen(target)
@@ -500,8 +501,9 @@ STREAK_MAX_GAP = 2
 #   睡眠時間      daily-review スキルの観点「7-8時間が理想」
 #   睡眠効率      同「85%以上が目標」
 #   睡眠負債      config/targets.yaml（target 0 / direction zero）
-#   主観スコア    config/manual_metrics_def.yaml の unit "1-5"（下限=1。床に
-#                 張り付いている状態を出す。「2以下」のような中間の線は引かない）
+#   主観スコア    config/daily_summary_def.yaml の score.low〜high "1-5"
+#                 （下限=1。床に張り付いている状態を出す。「2以下」のような
+#                 中間の線は引かない）
 #   陽性感情      daily-review スキルの観点「陽性がN日途切れているは書く価値がある」
 #
 # 新しい条件を出したくなったら、先に宣言元（targets.yaml / スキルの観点）へ
@@ -516,6 +518,7 @@ STREAK_SPECS = [
     ('睡眠負債 > 0h', 'sleep_debt', lambda v: v > 0, True),
     ('主観 mind が下限(1)', 'mind', lambda v: v <= 1, True),
     ('主観 body が下限(1)', 'body', lambda v: v <= 1, True),
+    ('主観 head が下限(1)', 'head', lambda v: v <= 1, True),
     ('主観 sleep が下限(1)', 'sleep_score', lambda v: v <= 1, True),
     ('陽性感情なし', 'positive', lambda v: v < 1, False),
 ]
@@ -538,7 +541,7 @@ PIPELINE_SOURCES = [
     ('Fitbit sleep', 'data/wearable/sleep.csv', 'dateOfSleep', 1, 'active', ''),
     ('Fitbit HRV', 'data/wearable/hrv.csv', 'date', 1, 'active', ''),
     ('Fitbit activity', 'data/wearable/activity.csv', 'date', 1, 'active', ''),
-    ('手動記録', 'data/manual.csv', 'date', 2, 'active', ''),
+    ('日次記録', 'data/daily_summary.csv', 'date', 2, 'active', ''),
     ('体組成', 'data/healthplanet_innerscan.csv', 'date', 3, 'active',
      '測らない日があるのが常態'),
     ('気分記録', 'data/emotion.csv', 'date', 3, 'active', '断続で運用が成立している'),
@@ -620,9 +623,10 @@ def _state_series(target: dt.date) -> dict:
     add('sleep_hours', sleep, 'minutesAsleep', 1 / 60)
     add('sleep_efficiency', sleep, 'efficiency')
 
-    man = _read('data/manual.csv', 'date')
+    man = _read('data/daily_summary.csv', 'date')
     add('mind', man, 'mind_score')
     add('body', man, 'body_score')
+    add('head', man, 'head_score')
     add('sleep_score', man, 'sleep_score')
 
     add('sleep_debt', _sleep_debt_series(lo, ts), 'debt')
