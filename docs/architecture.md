@@ -4,7 +4,6 @@
 
 - `scripts/` - 実行スクリプト
 - `src/lib/` - APIクライアントライブラリ
-  - `fitbit_api.py` - Fitbit API
   - `healthplanet_official.py` - HealthPlanet公式OAuth API（体重・体脂肪率のみ）
   - `healthplanet_unofficial.py` - HealthPlanet非公式API（全項目取得可）
   - `toggl/` - Toggl Track（`client.py` API クライアント、`store.py` CSV 読み書き、`render.py` markdown 出力）

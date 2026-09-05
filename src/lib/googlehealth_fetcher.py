@@ -3,11 +3,7 @@
 """
 Google Health データ取得・保存処理
 
-fitbit_fetcher と同じ CSV（data/fitbit/*.csv）を同じスキーマで更新する。
-Fitbit Web API 廃止（2026年9月）後は fitbit_fetcher を削除し、こちらに一本化する。
-
-fitbit_fetcher に相乗りさせず別モジュールにしているのは、移行完了時に
-fitbit_fetcher をファイルごと削除できるようにするため。
+Fitbit Web API 廃止に伴い、data/fitbit/*.csv を更新する唯一の経路になっている。
 """
 
 import datetime as dt

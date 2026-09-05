@@ -1,7 +1,7 @@
 #!/bin/bash
 # 日次のデータ取得をまとめて実行する。判断は一切せず、副作用だけを起こす。
 #
-# 途中で失敗しても後続を止めない（Fitbit が落ちても体組成・家計簿は取りに行く）。
+# 途中で失敗しても後続を止めない（Google Health が落ちても体組成・家計簿は取りに行く）。
 # ただし黙って成功扱いにはせず、失敗したステップ名を最後にまとめて出し、
 # 非ゼロで終了する。cron から回す場合もログに残る。
 #
@@ -50,8 +50,6 @@ step() {
 echo "=== Daily Routine (--days $DAYS) ==="
 echo "Started at $(date)"
 
-step "Fitbit"        uv run python scripts/fetch_fitbit.py --all --days "$DAYS"
-# Fitbit Web API 廃止に向けた移行中で、同じ data/fitbit/*.csv を両方が更新する（Issue #49）
 step "Google Health" uv run python scripts/fetch_googlehealth.py --days "$DAYS" --non-interactive
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14

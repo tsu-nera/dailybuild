@@ -397,6 +397,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     # hr_zone_meta を取得（_prepare_aerobic_data 実行後にセットされる）
     hr_zone_meta = getattr(_prepare_aerobic_data, 'hr_zone_meta', None)
     zone2_meta = getattr(_prepare_aerobic_data, 'zone2_meta', None)
+    vo2max_final = getattr(_prepare_aerobic_data, 'vo2max_final', None)
 
     # コンテキスト構築
     context = {
@@ -417,6 +418,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
         'recovery_data': recovery_data,
         'hr_zone_meta': hr_zone_meta,
         'zone2_meta': zone2_meta,
+        'vo2max_final': vo2max_final,
         'detail_data': {
             'trend_image': 'img/trend.png',
             'daily_table': body.format_daily_table(
@@ -489,11 +491,17 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
         )
         zone2_by_date = {d['date']: d['zone2_min'] for d in z2_daily}
 
-    # VO2 Max データ
-    df_vo2max = None
+    # VO2 Max データ（計測終了。最終行のみ参照する）
+    vo2max_final = None
     if CARDIO_SCORE_CSV.exists():
         df_vo2max = pd.read_csv(CARDIO_SCORE_CSV)
-        df_vo2max['date'] = pd.to_datetime(df_vo2max['date'])
+        if len(df_vo2max) > 0:
+            last_row = df_vo2max.iloc[-1]
+            vo2max_final = {
+                # 凍結アーカイブの最終計測日なので年まで出す（date_format は月日だけ）
+                'date': pd.to_datetime(last_row['date']).strftime('%Y-%m-%d'),
+                'vo2_max': last_row['vo2_max'],
+            }
 
     # 日別データの準備
     aerobic_data = []
@@ -534,16 +542,6 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
         # Zone2（LT1アンカー）分
         row['zone2_min'] = zone2_by_date.get(date)
 
-        # VO2 Maxデータ
-        if df_vo2max is not None:
-            vo2max_day = df_vo2max[df_vo2max['date'] == date]
-            if len(vo2max_day) > 0:
-                row['vo2max'] = vo2max_day['vo2_max'].iloc[0]
-            else:
-                row['vo2max'] = None
-        else:
-            row['vo2max'] = None
-
         aerobic_data.append(row)
 
     # meta を返すためにグローバル変数に格納（コンテキストで参照）
@@ -561,6 +559,7 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
         'window_days': window_days,
     }
     _prepare_aerobic_data.zone2_meta = zone2_meta
+    _prepare_aerobic_data.vo2max_final = vo2max_final
 
     return aerobic_data
 

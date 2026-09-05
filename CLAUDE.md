@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ライフログデータ収集プロジェクト。Fitbit睡眠データとHealthPlanet体組成計データをAPIから取得してCSVに保存する。
+ライフログデータ収集プロジェクト。Google HealthとHealthPlanet体組成計データをAPIから取得してCSVに保存する。
 
 ### リポジトリ構成
 
@@ -120,7 +120,6 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 
 ```bash
 # プロジェクトルートから実行（uv run なら .venv の有効化不要）
-uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/toggl.py fetch        # Toggl Trackタイムエントリ取得
 uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（差分取得）
@@ -213,7 +212,6 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 ## Configuration
 
 認証情報は`config/`ディレクトリにJSONファイルとして配置:
-- `fitbit_creds.json` / `fitbit_token.json` - Fitbit API
 - `healthplanet_creds.json` - HealthPlanet API（login_id, password必須）
 - `toggl_creds.json` - Toggl Track API（api_token必須）
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
