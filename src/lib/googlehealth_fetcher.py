@@ -3,7 +3,7 @@
 """
 Google Health データ取得・保存処理
 
-Fitbit Web API 廃止に伴い、data/fitbit/*.csv を更新する唯一の経路になっている。
+Fitbit Web API 廃止に伴い、data/wearable/*.csv を更新する唯一の経路になっている。
 """
 
 import datetime as dt
@@ -16,7 +16,7 @@ from .utils import csv_utils
 from .utils.private_data import ensure_dir
 
 BASE_DIR = Path(__file__).parent.parent.parent
-DATA_DIR = BASE_DIR / 'data' / 'fitbit'
+DATA_DIR = BASE_DIR / 'data' / 'wearable'
 GOOGLEHEALTH_DIR = BASE_DIR / 'data' / 'googlehealth'
 
 # この日付より前は Google 側が値を再計算しており、Fitbit 由来の既存 CSV と一致しない
@@ -131,7 +131,7 @@ ENDPOINTS = {
         'default_days': 7,
     },
     # Fitbit 由来ではない（2025 以降は HealthPlanet アプリが Health Connect に
-    # 書いたもの）。既存の data/fitbit/body_weight.csv とはスキーマを揃えられない
+    # 書いたもの）。既存の data/wearable/body_weight.csv とはスキーマを揃えられない
     # ため（bmi が返らない、logId 空間が別物）別ファイルにする。
     # 体組成の計測は数日〜週おきで疎なので、短い窓では0件が正常状態（allow_empty）
     'weight': {

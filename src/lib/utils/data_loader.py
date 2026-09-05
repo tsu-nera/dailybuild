@@ -49,7 +49,7 @@ def load_csv_with_baseline_window(
     --------
     >>> # 2025年12月のレポートを生成する場合（HRVは60日のベースラインが必要）
     >>> df = load_csv_with_baseline_window(
-    ...     csv_path=Path('data/fitbit/hrv.csv'),
+    ...     csv_path=Path('data/wearable/hrv.csv'),
     ...     target_start_date=pd.Timestamp('2025-12-01'),
     ...     target_end_date=pd.Timestamp('2025-12-31'),
     ...     baseline_window=60

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Google Health daily-* 型 -> data/fitbit/*.csv
+Google Health daily-* 型 -> data/wearable/*.csv
 
 googlehealth_client.py から分割（Issue #78。ファイルサイズ hook の 500行上限対応）。
 `_get`/`_post` 等の共通プリミティブはテストが `googlehealth_client.<name>` を
@@ -26,7 +26,7 @@ MIN_PLAUSIBLE_CALORIES_OUT = 1200
 
 
 # =============================================================================
-# HRV -> data/fitbit/hrv.csv
+# HRV -> data/wearable/hrv.csv
 # =============================================================================
 
 def fetch_hrv(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -44,7 +44,7 @@ def fetch_hrv(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
 
 
 # =============================================================================
-# 呼吸数 -> data/fitbit/breathing_rate.csv
+# 呼吸数 -> data/wearable/breathing_rate.csv
 # =============================================================================
 
 def fetch_breathing_rate(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -57,7 +57,7 @@ def fetch_breathing_rate(creds, start_date: dt.date, end_date: dt.date) -> list[
 
 
 # =============================================================================
-# 皮膚温 -> data/fitbit/temperature_skin.csv
+# 皮膚温 -> data/wearable/temperature_skin.csv
 # =============================================================================
 
 def fetch_temperature_skin(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -87,7 +87,7 @@ def fetch_temperature_skin(creds, start_date: dt.date, end_date: dt.date) -> lis
 
 
 # =============================================================================
-# 安静時心拍数 -> data/fitbit/heart_rate.csv（Issue #78）
+# 安静時心拍数 -> data/wearable/heart_rate.csv（Issue #78）
 # =============================================================================
 
 def fetch_heart_rate(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -100,7 +100,7 @@ def fetch_heart_rate(creds, start_date: dt.date, end_date: dt.date) -> list[dict
     com.google.android.apps.fitness、calculationMethod 無し）。
 
     実測（2026-01〜08、264日）:
-    - 264/264 日に FITBIT 点が存在し、その値は既存 data/fitbit/heart_rate.csv
+    - 264/264 日に FITBIT 点が存在し、その値は既存 data/wearable/heart_rate.csv
       と完全一致する（lag 0）
     - HEALTH_CONNECT 点は系統的に約5bpm 低い
     - 従来の「月ごとの一致率が非単調」は算出方法の切り替えではなく、
@@ -141,7 +141,7 @@ def fetch_heart_rate(creds, start_date: dt.date, end_date: dt.date) -> list[dict
 
 
 # =============================================================================
-# SpO2（血中酸素飽和度） -> data/fitbit/spo2.csv（Issue #78）
+# SpO2（血中酸素飽和度） -> data/wearable/spo2.csv（Issue #78）
 # =============================================================================
 
 def fetch_spo2(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -249,7 +249,7 @@ def fetch_spo2(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
 
 
 # =============================================================================
-# 活動量 -> data/fitbit/activity.csv
+# 活動量 -> data/wearable/activity.csv
 # =============================================================================
 
 def fetch_activity(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -323,7 +323,7 @@ def fetch_activity(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
 
 
 # =============================================================================
-# アクティブゾーン分 -> data/fitbit/active_zone_minutes.csv
+# アクティブゾーン分 -> data/wearable/active_zone_minutes.csv
 # =============================================================================
 
 def fetch_active_zone_minutes(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -354,7 +354,7 @@ def fetch_active_zone_minutes(creds, start_date: dt.date, end_date: dt.date) -> 
 
 
 # =============================================================================
-# 深部体温 -> data/fitbit/temperature_core.csv
+# 深部体温 -> data/wearable/temperature_core.csv
 # =============================================================================
 
 def _civil_time_str(civil: dict) -> str:

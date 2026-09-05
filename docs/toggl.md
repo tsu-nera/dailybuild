@@ -13,7 +13,7 @@ Toggl 側で削除されたエントリは CSV に残り続ける（マージは
 stop を呼ばない。計測結果は CSV には直接書かず、次回の fetch で入る
 （`store.build_dataframe` は duration が負の行を除外する）。
 
-`scripts/toggl.py push` は Fitbit 睡眠（昼寝含む）と Google Health の運動セッション
+`scripts/toggl.py push` は Google Health 睡眠（昼寝含む）と Google Health の運動セッション
 （サイクリング・筋トレ・瞑想）を Toggl のタイムエントリとして書き込む。書き込みも
 `/me` 系と同じ 30req/h 枠を消費する前提で `--max-writes`（既定10）で抑え、超過分は捨てずに次回へ繰り越す。冪等性は
 `data/toggl/pushed.csv` の台帳を主に、直前 fetch の `time_entries.csv` を
@@ -75,7 +75,7 @@ import して使う）。push とレポート（body / mind / circadian）が同
 穴が埋まる。
 
 `exercise` は `dailyRollUp` 非対応で `list` のページングだけ（全履歴242ページ）。
-既存の `data/fitbit/activity_logs.csv` とはスキーマを揃えていない別ファイルで、
+既存の `data/wearable/activity_logs.csv` とはスキーマを揃えていない別ファイルで、
 **統合しない**（Issue #96 で決定。id 空間・`activeZoneMinutes` の構造・距離の
 単位系がいずれも別物）。`activity_logs.csv` は Fitbit Web API 廃止後のアーカイブ
 として凍結し、レポート3経路（body / mind / circadian）は `exercise.csv` だけを

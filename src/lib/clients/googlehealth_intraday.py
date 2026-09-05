@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Google Health intraday 型 -> data/fitbit/*_intraday.csv（Issue #76）
+Google Health intraday 型 -> data/wearable/*_intraday.csv（Issue #76）
 
 googlehealth_client.py から分割（ファイルサイズ hook の 500行上限対応）。
 daily-* 型と違い intraday は `list` の `filter` クエリで期間を絞る
@@ -34,7 +34,7 @@ def _civil_minute_key(civil: dict) -> str:
 
 
 # =============================================================================
-# 心拍数（分刻み） -> data/fitbit/heart_rate_intraday.csv
+# 心拍数（分刻み） -> data/wearable/heart_rate_intraday.csv
 # =============================================================================
 
 def fetch_heart_rate_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -80,7 +80,7 @@ def fetch_heart_rate_intraday(creds, start_date: dt.date, end_date: dt.date) -> 
 
 
 # =============================================================================
-# 歩数（分刻み） -> data/fitbit/steps_intraday.csv
+# 歩数（分刻み） -> data/wearable/steps_intraday.csv
 # =============================================================================
 
 # 実測（JST 2026-09-01）: steps の dataPoints には同じ歩数が4系統から届く。
@@ -168,7 +168,7 @@ def fetch_steps_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[
 
 
 # =============================================================================
-# SpO2（分刻み） -> data/fitbit/spo2_intraday.csv
+# SpO2（分刻み） -> data/wearable/spo2_intraday.csv
 # =============================================================================
 
 def fetch_spo2_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -205,7 +205,7 @@ def fetch_spo2_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[d
 
 
 # =============================================================================
-# HRV（分刻み） -> data/fitbit/hrv_intraday.csv
+# HRV（分刻み） -> data/wearable/hrv_intraday.csv
 # =============================================================================
 
 def fetch_hrv_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
@@ -244,7 +244,7 @@ def fetch_hrv_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[di
 
 
 # =============================================================================
-# 呼吸数（睡眠、日次） -> data/fitbit/br_intraday.csv
+# 呼吸数（睡眠、日次） -> data/wearable/br_intraday.csv
 # =============================================================================
 
 def fetch_br_intraday(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:

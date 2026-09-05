@@ -202,7 +202,7 @@ def test_未マウントの環境ではpublic側への書き込みがエラー�
     repo = tmp_path / 'dailybuild'
     (repo / 'data').mkdir(parents=True)
     monkeypatch.setattr(private_data, 'REPO_ROOT', repo)
-    monkeypatch.setattr(ghf, 'DATA_DIR', repo / 'data' / 'fitbit')
+    monkeypatch.setattr(ghf, 'DATA_DIR', repo / 'data' / 'wearable')
 
     fake_rows([{'date': '2026-08-01', 'daily_rmssd': 30.1, 'deep_rmssd': 28.0}])
 

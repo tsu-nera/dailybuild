@@ -18,7 +18,7 @@ import pytest
 from lib.clients import googlehealth_client as gh
 
 BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / 'data' / 'fitbit'
+DATA_DIR = BASE_DIR / 'data' / 'wearable'
 
 # 2026-06 より前は Google 側が値を再計算しており一致しない（Issue #49 / #50）
 COMPARE_FROM = dt.date(2026, 6, 1)
@@ -241,7 +241,7 @@ def test_sleep_matches_existing_csv_within_tolerance(creds):
 # weight / body_fat: HealthPlanet 実測との突き合わせ（Issue #94）
 #
 # #77 本文の「2026-06-01 以降で検証する」はこの系統では成立しない。比較対象の
-# 既存 data/fitbit/body_weight.csv は 2024-04-23 で終わっており、2026-06 以降に
+# 既存 data/wearable/body_weight.csv は 2024-04-23 で終わっており、2026-06 以降に
 # 比較対象が無いため、HealthPlanet 実測（data/healthplanet_innerscan.csv）と
 # 突き合わせる。
 # =============================================================================
@@ -302,7 +302,7 @@ def test_body_fat_matches_healthplanet_innerscan(creds):
 # nutrition / nutrition_logs（Issue #95）
 #
 # nutrition-log には日次サマリのデータ型が存在しないため、nutrition.csv は
-# 食事ログの合算で作っている。既存 data/fitbit/nutrition.csv は2026-03以降
+# 食事ログの合算で作っている。既存 data/wearable/nutrition.csv は2026-03以降
 # ほぼ全行が Fitbit 経路の未記録日ダミー行（全項目0）で、Google 側に実データが
 # ある日と衝突する（実例: 2026-02-26 は Google 1542 kcal に対し CSV は 0）。
 # そのため既存 CSV 側が全項目0の行は比較対象から外す。

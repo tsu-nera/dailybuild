@@ -30,13 +30,13 @@ from lib.utils.private_data import ensure_dir
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
-SLEEP_MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
-ACTIVITY_MASTER_CSV = BASE_DIR / 'data/fitbit/activity.csv'
-HRV_MASTER_CSV = BASE_DIR / 'data/fitbit/hrv.csv'
-HEART_RATE_MASTER_CSV = BASE_DIR / 'data/fitbit/heart_rate.csv'
-HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/fitbit/heart_rate_intraday.csv'
-NUTRITION_MASTER_CSV = BASE_DIR / 'data/fitbit/nutrition.csv'
-CARDIO_SCORE_CSV = BASE_DIR / 'data/fitbit/cardio_score.csv'
+SLEEP_MASTER_CSV = BASE_DIR / 'data/wearable/sleep.csv'
+ACTIVITY_MASTER_CSV = BASE_DIR / 'data/wearable/activity.csv'
+HRV_MASTER_CSV = BASE_DIR / 'data/wearable/hrv.csv'
+HEART_RATE_MASTER_CSV = BASE_DIR / 'data/wearable/heart_rate.csv'
+HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/wearable/heart_rate_intraday.csv'
+NUTRITION_MASTER_CSV = BASE_DIR / 'data/wearable/nutrition.csv'
+CARDIO_SCORE_CSV = BASE_DIR / 'data/wearable/cardio_score.csv'
 
 
 def plot_main_chart(df, save_path):

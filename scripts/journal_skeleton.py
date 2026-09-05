@@ -64,12 +64,12 @@ WEEKLY_MARKER = '<!-- weekly:start -->'
 
 # 毎日あるはずのソース。当日の行が無ければ欠測として出す。(ラベル, パス, 日付列)
 DAILY_SOURCES = [
-    ('sleep', 'data/fitbit/sleep.csv', 'dateOfSleep'),
-    ('hrv', 'data/fitbit/hrv.csv', 'date'),
-    ('rhr', 'data/fitbit/heart_rate.csv', 'date'),
-    ('breathing_rate', 'data/fitbit/breathing_rate.csv', 'date'),
-    ('activity', 'data/fitbit/activity.csv', 'date'),
-    ('temperature_skin', 'data/fitbit/temperature_skin.csv', 'date'),
+    ('sleep', 'data/wearable/sleep.csv', 'dateOfSleep'),
+    ('hrv', 'data/wearable/hrv.csv', 'date'),
+    ('rhr', 'data/wearable/heart_rate.csv', 'date'),
+    ('breathing_rate', 'data/wearable/breathing_rate.csv', 'date'),
+    ('activity', 'data/wearable/activity.csv', 'date'),
+    ('temperature_skin', 'data/wearable/temperature_skin.csv', 'date'),
     ('manual', 'data/manual.csv', 'date'),
 ]
 
@@ -78,7 +78,7 @@ DAILY_SOURCES = [
 # 警告は読み飛ばされる。代わりに最終記録からの経過日数を出し、判断は読み手に渡す。
 # (ラベル, パス, 日付列, 表示名)
 SPARSE_SOURCES = [
-    ('temperature_core', 'data/fitbit/temperature_core.csv', 'date_time', '深部体温'),
+    ('temperature_core', 'data/wearable/temperature_core.csv', 'date_time', '深部体温'),
     ('body_composition', 'data/healthplanet_innerscan.csv', 'date', '体組成'),
     # 排便は DAILY_SOURCES に入れない。記録の無い日が「未記録」なのか
     # 「出なかった」なのか原理的に判別できないため、当日の不在を欠測として
@@ -107,7 +107,7 @@ def _sleep_timing(lo, hi):
     「埋まらなくなった列」になっている（移行前は非ゼロ）。0 をそのまま
     載せると起床後臥床が常にゼロだったことになり、起床困難の記録が消える。
     """
-    df = _read('data/fitbit/sleep_levels.csv', 'dateOfSleep')
+    df = _read('data/wearable/sleep_levels.csv', 'dateOfSleep')
     if df.empty:
         return {}
     df = df[(df['_date'] >= lo) & (df['_date'] <= hi)]
@@ -123,7 +123,7 @@ def _sleep_debt_series(lo, hi):
     recency_linear）を片方だけ変えると、同じ日について2つの負債が出て
     どちらが正か分からなくなる。
     """
-    df = _read('data/fitbit/sleep.csv', 'dateOfSleep')
+    df = _read('data/wearable/sleep.csv', 'dateOfSleep')
     if df.empty:
         return pd.DataFrame()
     calc = sleep_lib.build_debt_calculator(df)
@@ -153,13 +153,13 @@ def collect_metrics(target: dt.date) -> list[dict]:
     recent = (ts - pd.Timedelta(days=6), ts)
     prior = (ts - pd.Timedelta(days=13), ts - pd.Timedelta(days=7))
 
-    sleep = _main_sleep(_read('data/fitbit/sleep.csv', 'dateOfSleep'))
+    sleep = _main_sleep(_read('data/wearable/sleep.csv', 'dateOfSleep'))
     if not sleep.empty:
         sleep = sleep.groupby('_date').first().reset_index()
-    hrv = _read('data/fitbit/hrv.csv', 'date')
-    rhr = _read('data/fitbit/heart_rate.csv', 'date')
-    br = _read('data/fitbit/breathing_rate.csv', 'date')
-    act = _read('data/fitbit/activity.csv', 'date')
+    hrv = _read('data/wearable/hrv.csv', 'date')
+    rhr = _read('data/wearable/heart_rate.csv', 'date')
+    br = _read('data/wearable/breathing_rate.csv', 'date')
+    act = _read('data/wearable/activity.csv', 'date')
     man = _read('data/manual.csv', 'date')
     # body レポートと同じ healthplanet_innerscan.csv を使う。体組成は3経路
     # （Fitbit / HealthPlanet / Google Health）あるが統合しない方針なので、
@@ -535,9 +535,9 @@ STREAK_SPECS = [
 # 停止したものを毎日表に出しても、読み手にできることが何も無い。停止した事実と
 # 理由は memory と CLAUDE.md が持つ。
 PIPELINE_SOURCES = [
-    ('Fitbit sleep', 'data/fitbit/sleep.csv', 'dateOfSleep', 1, 'active', ''),
-    ('Fitbit HRV', 'data/fitbit/hrv.csv', 'date', 1, 'active', ''),
-    ('Fitbit activity', 'data/fitbit/activity.csv', 'date', 1, 'active', ''),
+    ('Fitbit sleep', 'data/wearable/sleep.csv', 'dateOfSleep', 1, 'active', ''),
+    ('Fitbit HRV', 'data/wearable/hrv.csv', 'date', 1, 'active', ''),
+    ('Fitbit activity', 'data/wearable/activity.csv', 'date', 1, 'active', ''),
     ('手動記録', 'data/manual.csv', 'date', 2, 'active', ''),
     ('体組成', 'data/healthplanet_innerscan.csv', 'date', 3, 'active',
      '測らない日があるのが常態'),
@@ -614,7 +614,7 @@ def _state_series(target: dt.date) -> dict:
         if len(series):
             out[key] = series[~series.index.duplicated(keep='first')].sort_index()
 
-    sleep = _main_sleep(_read('data/fitbit/sleep.csv', 'dateOfSleep'))
+    sleep = _main_sleep(_read('data/wearable/sleep.csv', 'dateOfSleep'))
     if not sleep.empty:
         sleep = sleep.groupby('_date').first().reset_index()
     add('sleep_hours', sleep, 'minutesAsleep', 1 / 60)

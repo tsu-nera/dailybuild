@@ -199,7 +199,7 @@ def fetch_caffeine(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
 
 
 # =============================================================================
-# 栄養（食事ログ） -> data/fitbit/nutrition_logs.csv, data/fitbit/nutrition.csv
+# 栄養（食事ログ） -> data/wearable/nutrition_logs.csv, data/wearable/nutrition.csv
 # =============================================================================
 
 NUTRITION_LOG_COLUMNS = [
@@ -481,7 +481,7 @@ def fetch_weight(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
     HealthPlanet アプリ（jp.healthplanet.healthplanetapp）が Health Connect に書いたもの。
     HealthPlanet 非公式APIが落ちたときの予備経路になる。
 
-    既存の data/fitbit/body_weight.csv とは同一スキーマにできない: bmi が返らない
+    既存の data/wearable/body_weight.csv とは同一スキーマにできない: bmi が返らない
     （Google は身長を持たない）のと、logId 空間が別物（Fitbit は epoch-ms、Google は
     19桁の dataPoint ID）のため、data/googlehealth/weight.csv に別ファイルとして持つ。
     """
@@ -502,7 +502,7 @@ def fetch_body_fat(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
     Fitbit 由来ではない。weight と同じく 2025 以降は HealthPlanet アプリが Health
     Connect に書いたもので、HealthPlanet 非公式APIが落ちたときの予備経路になる。
 
-    既存の data/fitbit/body_fat.csv とは同一スキーマにできない（logId 空間が別物）ため、
+    既存の data/wearable/body_fat.csv とは同一スキーマにできない（logId 空間が別物）ため、
     data/googlehealth/body_fat.csv に別ファイルとして持つ。
     """
     return _fetch_body_measures(

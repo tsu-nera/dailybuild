@@ -380,7 +380,7 @@ def calc_evening_gl_from_logs(logs_csv_path, method='simple'):
 
     Examples
     --------
-    >>> df_evening = calc_evening_gl_from_logs('data/fitbit/nutrition_logs.csv')
+    >>> df_evening = calc_evening_gl_from_logs('data/wearable/nutrition_logs.csv')
     >>> print(df_evening[['date', 'evening_gl', 'evening_gl_category']])
     """
     import os
@@ -470,8 +470,8 @@ def add_evening_gl_to_nutrition(df_nutrition, logs_csv_path, method='simple'):
 
     Examples
     --------
-    >>> df = pd.read_csv('data/fitbit/nutrition.csv')
-    >>> df = add_evening_gl_to_nutrition(df, 'data/fitbit/nutrition_logs.csv')
+    >>> df = pd.read_csv('data/wearable/nutrition.csv')
+    >>> df = add_evening_gl_to_nutrition(df, 'data/wearable/nutrition_logs.csv')
     >>> print(df[['date', 'predicted_gl', 'evening_gl']])
     """
     # 夜の食事のGLを計算

@@ -6,7 +6,7 @@ birth_date: 1986-10-25        # age はシステム日付から都度算出（�
 hr_zones:
   max_hr_override:            # ランプテスト等の実測最大HR。設定時はTanaka推定より優先（空/null=Tanaka）
   resting_hr:
-    source: heart_rate_csv    # data/fitbit/heart_rate.csv の resting_heart_rate 列
+    source: heart_rate_csv    # data/wearable/heart_rate.csv の resting_heart_rate 列
     window_days: 30           # レポート終了日基準の直近N日中央値で固定
     fallback: 48              # 窓内にデータが無い場合の代替
   method: hrr                 # hrr(カルボーネン%HRR) | lthr | pmax（将来拡張）

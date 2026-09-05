@@ -26,8 +26,8 @@ from lib.utils.private_data import ensure_dir
 
 # データファイルパス
 BASE_DIR = project_root
-MASTER_CSV = BASE_DIR / 'data/fitbit/sleep.csv'
-LEVELS_CSV = BASE_DIR / 'data/fitbit/sleep_levels.csv'
+MASTER_CSV = BASE_DIR / 'data/wearable/sleep.csv'
+LEVELS_CSV = BASE_DIR / 'data/wearable/sleep_levels.csv'
 
 
 def calc_weekday_stats(df):

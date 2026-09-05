@@ -1,8 +1,8 @@
-# Fitbit睡眠等をTogglタイムエントリとして投入する際のソース別マッピング。
+# Google Health睡眠等をTogglタイムエントリとして投入する際のソース別マッピング。
 # scripts/toggl.py push が読む（src/lib/toggl/push.py, sources.py）。
 
 sources:
-  fitbit_sleep:
+  googlehealth_sleep:
     enabled: true
     project: 睡眠
     description: "睡眠"

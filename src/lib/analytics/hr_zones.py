@@ -334,8 +334,8 @@ if __name__ == '__main__':
     print(f"Repo root: {repo_root}")
 
     # データロード
-    hr_intraday_path = repo_root / 'data' / 'fitbit' / 'heart_rate_intraday.csv'
-    hr_daily_path = repo_root / 'data' / 'fitbit' / 'heart_rate.csv'
+    hr_intraday_path = repo_root / 'data' / 'wearable' / 'heart_rate_intraday.csv'
+    hr_daily_path = repo_root / 'data' / 'wearable' / 'heart_rate.csv'
 
     df_hr_intraday = pd.read_csv(hr_intraday_path, index_col='datetime', parse_dates=True)
     df_hr_daily = pd.read_csv(hr_daily_path)

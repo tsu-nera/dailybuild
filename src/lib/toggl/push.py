@@ -1,8 +1,8 @@
 """
-Fitbit睡眠等をTogglタイムエントリとして書き込む push の共通ロジック
+Google Health睡眠等をTogglタイムエントリとして書き込む push の共通ロジック
 
 ソース側（sources.py）は Interval のリストを返すだけで、Toggl への書き込み・
-冪等性判定・レート制御はここに集約する（将来 fitbit_activity 等を足しても
+冪等性判定・レート制御はここに集約する（将来 googlehealth_activity 等を足しても
 この層は変えなくてよい）。
 
 冪等性は台帳（data/toggl/pushed.csv）を主に、直前 fetch の time_entries.csv を
@@ -49,7 +49,7 @@ DEFAULT_MAX_WRITES = 10
 
 @dataclasses.dataclass(frozen=True)
 class Interval:
-    source: str        # 例: "fitbit_sleep"
+    source: str        # 例: "googlehealth_sleep"
     source_id: str     # ソース内で一意なID（Fitbitならlog Id）
     start: dt.datetime  # tz-aware
     stop: dt.datetime   # tz-aware
