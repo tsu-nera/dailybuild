@@ -6,9 +6,15 @@ Google Health API からデータを取得して CSV に保存する
 Fitbit Web API 廃止（2026年9月）への移行用。対応済みエンドポイントのみ扱う。
 
 使い方:
+    uv run python scripts/fetch_googlehealth.py
     uv run python scripts/fetch_googlehealth.py --days 7
     uv run python scripts/fetch_googlehealth.py --start-date 2026-06-01
     uv run python scripts/fetch_googlehealth.py --endpoint hrv --days 30
+
+--days を省略すると、エンドポイントごとの既定窓（lib.googlehealth_fetcher.ENDPOINTS
+の default_days）が使われる。かつては一律7日固定だったが、rollup系/daily list系は
+窓を広げてもコストがほぼ変わらないため、部分日の取り直しを保証できるよう
+エンドポイント種別ごとに引き上げた（Issue #70/#125。詳細は docs/googlehealth.md）。
 
 初回はブラウザが開いて認可を求められる。以降は config/googlehealth_token.json を使う。
 """
@@ -26,7 +32,8 @@ from lib.clients import googlehealth_client  # noqa: E402
 
 def main():
     parser = argparse.ArgumentParser(description='Google Health データ取得')
-    parser.add_argument('--days', type=int, default=7, help='取得日数（デフォルト: 7）')
+    parser.add_argument('--days', type=int, default=None,
+                        help='取得日数（未指定時はエンドポイントごとの既定）')
     parser.add_argument('--start-date', type=str, help='開始日 YYYY-MM-DD（指定時は --days を無視）')
     parser.add_argument('--end-date', type=str, help='終了日 YYYY-MM-DD（未指定時は今日）')
     parser.add_argument('--endpoint', type=str, choices=googlehealth_fetcher.list_endpoints(),

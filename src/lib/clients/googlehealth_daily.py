@@ -17,6 +17,13 @@ from . import googlehealth_client as api
 from . import googlehealth_sleep as sleep_mod
 from .googlehealth_client import _daily_rows, _num, _rollup_by_date, _to_date
 
+# 完全に安静に過ごした日でも基礎代謝（BMR）が丸1日分積み上がるため、
+# 1日分の caloriesOut が生理的にこれを下回ることは無い（Issue #125）。
+# 部分日（today）を除いて閾値を割った場合は、--days の窓が狭くて
+# 取り直されていない部分日である可能性を警告する（データは書き換えない、
+# 警告のみ）。
+MIN_PLAUSIBLE_CALORIES_OUT = 1200
+
 
 # =============================================================================
 # HRV -> data/wearable/hrv.csv
@@ -300,6 +307,18 @@ def fetch_activity(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
             'fairlyActiveMinutes': levels.get('MODERATE'),
             'veryActiveMinutes': levels.get('VIGOROUS'),
         })
+
+    today = dt.date.today().isoformat()
+    for row in rows:
+        if row['date'] == today:
+            # 当日は部分日で、caloriesOut が低いのは正常（窓が広がれば
+            # 後日ここが上書きされる）。警告しない
+            continue
+        calories_out = row['caloriesOut']
+        if calories_out is not None and calories_out < MIN_PLAUSIBLE_CALORIES_OUT:
+            print(f"  ⚠️ activity: {row['date']} の caloriesOut が {calories_out}kcal と"
+                  '低すぎる（部分日が取り直されていない可能性）')
+
     return rows
 
 
