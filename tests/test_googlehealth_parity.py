@@ -160,6 +160,78 @@ def _load_main_sleep_csv() -> dict[str, dict]:
         return {r['dateOfSleep']: r for r in csv.DictReader(f) if r.get('isMainSleep') == 'True'}
 
 
+def test_heart_rate_matches_existing_csv(creds):
+    compared, mismatches = _compare(creds, 'heart_rate', ['resting_heart_rate'])
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_spo2_matches_existing_csv(creds):
+    compared, mismatches = _compare(
+        creds, 'spo2', ['avg_spo2', 'min_spo2', 'max_spo2'], tolerance=0.051,
+    )
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+# =============================================================================
+# lag(-1/0/+1) の恒久検証（Issue #78 AC 5）。
+#
+# 2026-06-01以降で daily 型を突き合わせ、最も一致件数の多い lag が 0 で
+# あることを確認する。spo2 は Google の日付ラベルが1日ずれる型だが、
+# fetch_spo2 が睡眠セッションの引き当てで解決済みの日付を返すため、ここでは
+# lag 0 になるはずである（解決前の生の Google 日付ではなく、fetcher の
+# 出力を検証している点に注意）。
+#
+# activity は対象外: #70 の部分日破損により値そのものが一致しないため、
+# 日付ズレの有無を検出する目的のこのテストには使えない（PR 本文に記載）。
+# =============================================================================
+
+def _lag_match_counts(rows: list[dict], old: dict[str, dict], columns: list[str],
+                      tolerance: float = 0.001) -> dict[int, int]:
+    """各 lag（rowの日付をずらした先）で CSV と一致する件数を数える"""
+    counts = {-1: 0, 0: 0, 1: 0}
+    for row in rows:
+        row_date = dt.date.fromisoformat(row['date'])
+        for lag in counts:
+            shifted = (row_date + dt.timedelta(days=lag)).isoformat()
+            ref = old.get(shifted)
+            if ref is None:
+                continue
+            ok = True
+            for col in columns:
+                got, want = row.get(col), ref.get(col)
+                if want in (None, '') or got is None or abs(float(got) - float(want)) > tolerance:
+                    ok = False
+                    break
+            if ok:
+                counts[lag] += 1
+    return counts
+
+
+def test_no_date_lag_in_daily_types(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    specs = [
+        ('hrv', ['daily_rmssd', 'deep_rmssd'], 0.001),
+        ('breathing_rate', ['breathing_rate'], 0.001),
+        ('temperature_skin', ['nightly_relative'], 0.051),
+        ('active_zone_minutes',
+         ['activeZoneMinutes', 'fatBurnActiveZoneMinutes',
+          'cardioActiveZoneMinutes', 'peakActiveZoneMinutes'], 0.001),
+        ('heart_rate', ['resting_heart_rate'], 0.001),
+        ('spo2', ['avg_spo2', 'min_spo2', 'max_spo2'], 0.051),
+    ]
+    failures = []
+    for endpoint, columns, tolerance in specs:
+        rows = gh.FETCHERS[endpoint](creds, COMPARE_FROM, end)
+        old = _load_csv(endpoint)
+        counts = _lag_match_counts(rows, old, columns, tolerance)
+        best_lag = max(counts, key=lambda lag: counts[lag])
+        if best_lag != 0:
+            failures.append(f'{endpoint}: 最多一致 lag={best_lag:+d} ({counts})')
+    assert not failures, '日付ズレを検出: ' + '; '.join(failures)
+
+
 def test_sleep_matches_existing_csv_within_tolerance(creds):
     end = dt.date.today() - dt.timedelta(days=1)
     sleep_rows, _ = gh.fetch_sleep_all(creds, COMPARE_FROM, end)
