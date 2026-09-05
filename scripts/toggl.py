@@ -105,7 +105,8 @@ def run_fetch(args, out: IO[str]) -> None:
     start, end = resolve_period(args, out)
     print(f"Togglタイムエントリ取得: {start} ～ {end}", file=out)
 
-    entries = toggl_client.fetch_time_entries(creds['api_token'], start, end)
+    tz = toggl_push.load_timezone()
+    entries = toggl_client.fetch_time_entries(creds['api_token'], start, end, tz)
     projects = toggl_client.fetch_projects(creds['api_token'])
 
     # 取得できた時点で窓を記録する。0件でも「その期間は取りに行った」は事実で、

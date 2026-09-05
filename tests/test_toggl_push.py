@@ -148,6 +148,69 @@ def test_fetch_window_end_day_is_inclusive():
     assert skipped == 0
 
 
+def test_confirm_deleted_false_prevents_repush():
+    """confirm_deleted が False（＝Toggl にまだ実体がある）を返すなら再投入しない
+
+    取得窓のずれ（Issue #127）で「取得していないだけ」を「削除された」と誤判定
+    しても、この確認で最後にブロックできることの回帰テスト
+    """
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+    ledger = _ledger_df([{
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
+    }])
+    entries = _entries_df([
+        {'id': '111', 'start': '2026-08-19 08:00:00'},
+        {'id': '222', 'start': '2026-08-22 08:00:00'},
+    ])
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)),
+        fetched_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=JST),
+        confirm_deleted=lambda entry_id: False)
+    assert pending == []
+    assert skipped == 1
+
+
+def test_confirm_deleted_true_still_repushes():
+    """confirm_deleted が True（＝実際に削除済みと確認できた）なら従来どおり再投入する"""
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+    ledger = _ledger_df([{
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
+    }])
+    entries = _entries_df([
+        {'id': '111', 'start': '2026-08-19 08:00:00'},
+        {'id': '222', 'start': '2026-08-22 08:00:00'},
+    ])
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)),
+        fetched_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=JST),
+        confirm_deleted=lambda entry_id: True)
+    assert pending == intervals
+    assert skipped == 0
+
+
+def test_confirm_deleted_none_keeps_old_behavior():
+    """confirm_deleted=None（既定）は確認せず、これまで通り再投入する"""
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+    ledger = _ledger_df([{
+        'source': 'googlehealth_sleep', 'source_id': '100', 'toggl_entry_id': '999',
+        'start': '2026-08-20T22:00:00+09:00', 'pushed_at': '2026-08-21T07:00:00+09:00',
+    }])
+    entries = _entries_df([
+        {'id': '111', 'start': '2026-08-19 08:00:00'},
+        {'id': '222', 'start': '2026-08-22 08:00:00'},
+    ])
+    pending, skipped = select_pending(
+        intervals, ledger, entries, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 19), dt.date(2026, 8, 22)),
+        fetched_at=dt.datetime(2026, 8, 23, 8, 0, tzinfo=JST))
+    assert pending == intervals
+    assert skipped == 0
+
+
 def test_max_writes_carries_over_excess():
     intervals = [
         _interval('1', '2026-08-18T22:00:00', '2026-08-19T06:00:00'),

@@ -25,7 +25,7 @@ fetch と push を同じ --days N で回すと投入したエントリが翌日�
 import dataclasses
 import datetime as dt
 from pathlib import Path
-from typing import IO
+from typing import Callable, IO
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -132,6 +132,7 @@ def select_pending(
     check_deleted: bool = True,
     fetch_window: tuple[dt.date, dt.date] | None = None,
     fetched_at: dt.datetime | None = None,
+    confirm_deleted: Callable[[str], bool] | None = None,
 ) -> tuple[list[Interval], int]:
     """投入対象の Interval と skip 件数を返す
 
@@ -152,6 +153,14 @@ def select_pending(
         CSV の start の min/max で代用してはいけない（モジュール docstring 参照）
     fetched_at : datetime | None
         直近 fetch を実行した時刻。これより後に投入したエントリは削除判定から外す
+    confirm_deleted : Callable[[str], bool] | None
+        「CSV に居ない」の先に Toggl API へ直接聞き、削除済みかを確認する関数
+        （引数は toggl_entry_id、削除済みなら True）。取得窓のずれ（Issue #127）で
+        「取得していないだけ」を「削除された」と誤判定すると再投入で重複が増えるため、
+        最後の一段として実体確認を挟む多層防御。None（既定）なら確認せず、
+        これまで通り CSV に無ければ削除されたものとして扱う（純粋関数を保つため
+        select_pending 自身は API を呼ばない。呼び出し側が push_intervals で
+        api_token を閉じ込めた関数を組み立てて渡す）
 
     Returns
     -------
@@ -201,6 +210,13 @@ def select_pending(
         if row_start.tzinfo is not None:
             row_start = row_start.tz_localize(None)
         if not (coverage[0] <= row_start < coverage[1]):
+            skipped += 1
+            continue
+
+        # 最後の一段: CSV に居ない＝削除された、と決め打つ前に Toggl 本体へ確認する。
+        # 取得窓がずれていて実際には取得し損ねているだけなら、ここで実体が見つかり
+        # 再投入を回避できる（confirm_deleted は「削除済みなら True」を返す）
+        if confirm_deleted is not None and not confirm_deleted(toggl_entry_id):
             skipped += 1
             continue
 
@@ -267,9 +283,25 @@ def push_intervals(
     dict
         {'pending': int, 'skipped': int, 'pushed': int, 'carried_over': int}
     """
+    confirm_deleted = None
+    if not dry_run and api_token is not None:
+        # dry_run では API を叩かない。api_token が無い（テスト等）場合も同様
+        from lib.toggl import client as toggl_client
+
+        def confirm_deleted(toggl_entry_id: str) -> bool:
+            entry = toggl_client.fetch_time_entry(api_token, toggl_entry_id)
+            if entry is not None:
+                print(
+                    f'⚠️ 台帳のエントリ {toggl_entry_id} は CSV に無いが Toggl には存在する。'
+                    '再投入を見送る（取得窓のずれの可能性）',
+                    file=out,
+                )
+                return False
+            return True
+
     pending, skipped = select_pending(intervals, ledger_df, entries_df,
                                      check_deleted=check_deleted, fetch_window=fetch_window,
-                                     fetched_at=fetched_at)
+                                     fetched_at=fetched_at, confirm_deleted=confirm_deleted)
     pending = sorted(pending, key=lambda i: i.start)
 
     to_push = pending[:max_writes]
