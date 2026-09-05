@@ -498,7 +498,8 @@ def _prepare_aerobic_data(start_date, end_date, activity_stats, ref_date=None):
         if len(df_vo2max) > 0:
             last_row = df_vo2max.iloc[-1]
             vo2max_final = {
-                'date': pd.to_datetime(last_row['date']),
+                # 凍結アーカイブの最終計測日なので年まで出す（date_format は月日だけ）
+                'date': pd.to_datetime(last_row['date']).strftime('%Y-%m-%d'),
                 'vo2_max': last_row['vo2_max'],
             }
 
