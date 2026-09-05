@@ -1,0 +1,51 @@
+# 日次記録（Google Form）の定義
+#
+# フォームは scripts/daily_summary.py setup-form がこの定義から生成する。
+# data/manual.csv（Google Sheets 手動入力）の一次入力5列をこのフォームへ
+# 移す（Issue #33 / #135）。移行元との対応は
+# mind/body/sleep/comment = mind_score/body_score/sleep_score/comment。
+
+# setup-form が書き戻す。空なら未作成
+form_id:
+form_title: 日次記録
+
+# グリッド item 自体のタイトル（行ごとの questionId には無関係。画面の
+# 見出しとしてのみ使う）
+grid_title: 今日はどうだった？
+
+# 質問タイトル。回答は questionId で引くので、ここを変えたら
+# setup-form --update でフォーム側も合わせること。
+# mind/body/sleep はグリッド（1つの questionGroupItem）の行になる
+questions:
+  mind:    気分
+  body:    身体の軽さ
+  sleep:   昨夜の眠り
+  comment: 今日あったこと
+
+# グリッドの行タイトル（questions のキー）の並び順。
+# **この並びが questionId の対応付けそのもの（出現順=FIFO）。並び替えたり
+# 削除したりすると既存回答の questionId が別の行に付け替わる（詳細は
+# docs/forms.md）。行を足すのは末尾に追加するだけでよい**
+grid_rows: [mind, body, sleep]
+
+# グリッドの行ごとの必須/任意。grid_rows と同じキーで指定する。
+# 全行必須にすると毎回すべて答える必要が生じ、記録コストが上がるため
+# mind だけ必須にしてある
+grid_required:
+  mind: true
+  body: false
+  sleep: false
+
+# グリッドの列（1〜5）。全行共通で、向きは全行「高=良好」（グリッドの列見出しが
+# 行共通のため構造的に強制される）。だから body の設問文は「身体の重さ」でなく
+# 「身体の軽さ」にしてある（高=良好に揃える必要があるため）。
+# manual.csv の mind_score / body_score / sleep_score と同じ向き
+score:
+  low: 1
+  high: 5
+  low_label: 悪い
+  high_label: 良い
+
+# date は回答日（設問はすべて「今日」の状態を尋ねる）。「昨夜の眠り」だけは
+# 例外で、その日の朝までに終わった睡眠を指す。data/wearable/sleep.csv の
+# dateOfSleep（起床日）と同じ向き（前夜からの睡眠をその「起床日」に帰属させる）
