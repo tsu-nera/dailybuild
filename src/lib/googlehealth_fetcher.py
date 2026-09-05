@@ -127,6 +127,22 @@ ENDPOINTS = {
         'columns': googlehealth_api.BODY_FAT_COLUMNS,
         'allow_empty': True,
     },
+    # nutrition-log は個別食事ログしか持たない（日次サマリのデータ型は存在しない）。
+    # nutrition.csv はログの合算で作る。water は取得元のデータ型が無いので常に空欄。
+    # 食事記録は現在ほぼ行われておらず、短い窓では0件が正常状態なので allow_empty
+    # にする（0件をエラーにすると daily-routine.sh が常時失敗する）
+    'nutrition': {
+        'description': '栄養（日次サマリ）',
+        'date_column': 'date',
+        'allow_empty': True,
+    },
+    'nutrition_logs': {
+        'description': '栄養（個別食事ログ）',
+        'date_column': 'logDate',
+        'merge_key': 'logId',
+        'columns': googlehealth_api.NUTRITION_LOG_COLUMNS,
+        'allow_empty': True,
+    },
 }
 
 

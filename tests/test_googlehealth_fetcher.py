@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from lib import googlehealth_fetcher as ghf
-from lib.clients import googlehealth_api
+from lib.clients import googlehealth_api, googlehealth_sessions
 from lib.utils import private_data
 
 
@@ -1039,6 +1039,207 @@ def test_weight_allow_empty_does_not_error(weight_dir, monkeypatch):
     assert result['records'] == 0
     assert 'error' not in result
     assert not weight_dir.exists()
+
+
+# =============================================================================
+# nutrition / nutrition_logs: nutrition-log の個別食事ログとその合算（Issue #95）
+# =============================================================================
+
+def _nutrition_log_point(point_id: str, year: int, month: int, day: int,
+                         food_name: str | None = 'ご飯(一膳)',
+                         meal_type: str | None = 'DINNER',
+                         amount: float = 3.0, unit_id: str = '304',
+                         kcal: float = 705, protein_g: float = 10.0,
+                         fat_g: float = 1.2, carbs_g: float = 150.0,
+                         fiber_g: float = 0.3, sodium_g: float = 0.001,
+                         food_id: str = '781681941') -> dict:
+    """nutrition-log の dataPoint 1件相当。food_name=None なら
+    foodDisplayName の無い点（カフェイン等、nutrition 系では捨てる対象）を模す"""
+    nutrition = {
+        'interval': {
+            'startTime': f'{year}-{month:02d}-{day:02d}T12:00:00Z',
+            'startUtcOffset': '32400s',
+            'civilStartTime': {'date': {'year': year, 'month': month, 'day': day}},
+        },
+    }
+    if food_name is not None:
+        nutrition['foodDisplayName'] = food_name
+        nutrition['food'] = f'users/me/dataTypes/food/dataPoints/{food_id}'
+        if meal_type is not None:
+            nutrition['mealType'] = meal_type
+        nutrition['serving'] = {
+            'amount': amount,
+            'foodMeasurementUnit': f'users/me/dataTypes/food-measurement-unit/dataPoints/{unit_id}',
+        }
+        nutrition['energy'] = {'kcal': kcal}
+        nutrition['totalFat'] = {'grams': fat_g}
+        nutrition['totalCarbohydrate'] = {'grams': carbs_g}
+        nutrition['nutrients'] = [
+            {'nutrient': 'PROTEIN', 'quantity': {'grams': protein_g}},
+            {'nutrient': 'DIETARY_FIBER', 'quantity': {'grams': fiber_g}},
+            {'nutrient': 'SODIUM', 'quantity': {'grams': sodium_g}},
+        ]
+    else:
+        nutrition['nutrients'] = [{'nutrient': 'CAFFEINE', 'quantity': {'grams': 0.05}}]
+
+    return {
+        'name': f'users/me/dataTypes/nutrition-log/dataPoints/{point_id}',
+        'dataSource': {
+            'recordingMethod': 'UNKNOWN', 'device': {},
+            'application': {'packageName': None}, 'platform': 'FITBIT_WEB_API',
+        },
+        'nutritionLog': nutrition,
+    }
+
+
+@pytest.fixture
+def fake_nutrition_pages(monkeypatch):
+    """googlehealth_api._get を差し替える。nutrition-log のページングと
+    food-measurement-unit の単体照会（既定 'グラム'）の両方をこの1つで賄う
+
+    fake_get_pages は path を見ずに単純に順送りするため、ページ取得の
+    合間に挟まる unit 単体照会（別の path）と共存できない。
+    """
+    # モジュールレベルのキャッシュを汚すと他ファイル（test_googlehealth_parity.py）の
+    # 実 API 呼び出しがこのフェイクの値を読んでしまうため、退避して確実に戻す
+    saved_cache = dict(googlehealth_sessions._UNIT_NAME_CACHE)
+    googlehealth_sessions._UNIT_NAME_CACHE.clear()
+
+    def install(pages):
+        it = iter(pages)
+
+        def fake(creds, path, params=None):
+            if 'food-measurement-unit' in path:
+                return {'foodMeasurementUnit': {'displayName': 'グラム'}}
+            return next(it)
+
+        monkeypatch.setattr(googlehealth_api, '_get', fake)
+
+    yield install
+
+    googlehealth_sessions._UNIT_NAME_CACHE.clear()
+    googlehealth_sessions._UNIT_NAME_CACHE.update(saved_cache)
+
+
+def test_fetch_nutrition_logs_excludes_points_without_food_display_name(fake_nutrition_pages):
+    """foodDisplayName が無い点（カフェイン等）は食事ログとして拾われないこと"""
+    fake_nutrition_pages([{'dataPoints': [
+        _nutrition_log_point('caffeine-1', 2026, 8, 26, food_name=None),
+        _nutrition_log_point('meal-1', 2026, 8, 26),
+    ]}])
+
+    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert [r['logId'] for r in rows] == ['meal-1']
+
+
+def test_fetch_nutrition_logs_converts_meal_type_to_id(fake_nutrition_pages):
+    """DINNER -> 5 のように mealType を数値へ変換すること"""
+    fake_nutrition_pages([{'dataPoints': [
+        _nutrition_log_point('meal-1', 2026, 8, 26, meal_type='DINNER'),
+    ]}])
+
+    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['mealTypeId'] == 5
+
+
+def test_fetch_nutrition_logs_unknown_meal_type_becomes_empty_with_warning(
+    fake_nutrition_pages, capsys,
+):
+    """未知の mealType は mealTypeId を空にし、警告を出すこと"""
+    fake_nutrition_pages([{'dataPoints': [
+        _nutrition_log_point('meal-1', 2026, 8, 26, meal_type='SNACK'),
+    ]}])
+
+    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['mealTypeId'] is None
+    assert '未知の mealType' in capsys.readouterr().out
+
+
+def test_fetch_nutrition_logs_sodium_grams_to_mg(fake_nutrition_pages):
+    """sodium が grams -> mg（×1000）に変換されること"""
+    fake_nutrition_pages([{'dataPoints': [
+        _nutrition_log_point('meal-1', 2026, 8, 26, sodium_g=0.2249),
+    ]}])
+
+    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['sodium'] == pytest.approx(224.9)
+
+
+def test_fetch_nutrition_logs_amount_rounds_float_noise(fake_nutrition_pages):
+    """serving.amount の float 誤差（1.2000000476837158）が丸められること"""
+    fake_nutrition_pages([{'dataPoints': [
+        _nutrition_log_point('meal-1', 2026, 8, 26, amount=1.2000000476837158),
+    ]}])
+
+    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['amount'] == 1.2
+
+
+def test_fetch_nutrition_water_is_always_empty_not_zero(fake_nutrition_pages):
+    """water は取得元のデータ型が無いので常に空欄（None）で、0 になっていないこと
+
+    回帰防止: 0 を入れると「水を摂っていない」という嘘になる
+    """
+    fake_nutrition_pages([{'dataPoints': [
+        _nutrition_log_point('meal-1', 2026, 8, 26),
+    ]}])
+
+    rows = googlehealth_api.fetch_nutrition(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+
+    assert rows[0]['water'] is None
+
+
+def test_fetch_nutrition_skips_days_with_no_logs(fake_nutrition_pages):
+    """食事ログが1件も無い日の行は作られないこと（Fitbit の全項目0行とは違う挙動）"""
+    fake_nutrition_pages([{'dataPoints': [
+        _nutrition_log_point('meal-1', 2026, 8, 26),
+    ]}])
+
+    rows = googlehealth_api.fetch_nutrition(None, dt.date(2026, 8, 20), dt.date(2026, 8, 27))
+
+    assert [r['date'] for r in rows] == ['2026-08-26']
+
+
+@pytest.fixture
+def nutrition_logs_dir(tmp_path, monkeypatch):
+    """ENDPOINTS['nutrition_logs']['output'] を tmp_path 配下に差し替える（caffeine_dir と同じ理由）"""
+    out = tmp_path / 'nutrition_logs.csv'
+    monkeypatch.setitem(ghf.ENDPOINTS['nutrition_logs'], 'output', out)
+    return out
+
+
+def test_nutrition_logs_merge_key_idempotent_across_two_saves(nutrition_logs_dir, monkeypatch):
+    """logId を2回保存しても行数が増えないこと（19桁の整数、dtype=str 必須）"""
+    row = {
+        'logId': '37999834944', 'logDate': '2026-08-19', 'foodId': '781681941',
+        'foodName': 'ご飯(一膳)', 'mealTypeId': 5, 'amount': 3.0, 'unitId': '304',
+        'unitName': '食分', 'calories': 705, 'protein': 10.0, 'fat': 1.2,
+        'carbs': 150.0, 'fiber': 0.3, 'sodium': 1.0,
+    }
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'nutrition_logs', lambda creds, s, e: [row])
+
+    ghf.fetch_endpoint(None, 'nutrition_logs', days=3)
+    result = ghf.fetch_endpoint(None, 'nutrition_logs', days=3)
+
+    assert result['records'] == 1
+    saved = pd.read_csv(nutrition_logs_dir, dtype={'logId': str})
+    assert len(saved) == 1
+    assert saved.loc[0, 'logId'] == '37999834944'
+
+
+def test_nutrition_allow_empty_does_not_error(data_dir, monkeypatch):
+    """食事記録が無い期間は0件が正常。エラーにしないこと"""
+    monkeypatch.setitem(googlehealth_api.FETCHERS, 'nutrition', lambda creds, s, e: [])
+
+    result = ghf.fetch_endpoint(None, 'nutrition', days=3)
+
+    assert result['records'] == 0
+    assert 'error' not in result
 
 
 # =============================================================================

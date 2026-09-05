@@ -309,3 +309,93 @@ def test_body_fat_matches_healthplanet_innerscan(creds):
 
     assert compared > 0, '比較対象が1件も無い'
     assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+# =============================================================================
+# nutrition / nutrition_logs（Issue #95）
+#
+# nutrition-log には日次サマリのデータ型が存在しないため、nutrition.csv は
+# 食事ログの合算で作っている。既存 data/fitbit/nutrition.csv は2026-03以降
+# ほぼ全行が Fitbit 経路の未記録日ダミー行（全項目0）で、Google 側に実データが
+# ある日と衝突する（実例: 2026-02-26 は Google 1542 kcal に対し CSV は 0）。
+# そのため既存 CSV 側が全項目0の行は比較対象から外す。
+#
+# nutrition_logs.csv は既存 CSV が2026-02-01で終わっているため、実データの
+# ある 2025-12-12〜2026-02-01 で logId をキーに突き合わせる。
+# protein/fat/carbs/fiber/sodium は既存 CSV では空だが Google 側では埋まる
+# （情報が増える方向で不一致ではない）ため比較しない。
+# =============================================================================
+
+def _is_all_zero_nutrition_row(ref: dict) -> bool:
+    """Fitbit 経路が未記録日に書いた「全項目0の行」か
+
+    calories/carbs/fat/fiber/protein/sodium がすべて0（水は対象外）。
+    実データではない可能性が高いため parity の比較対象から外す。
+    """
+    cols = ('calories', 'carbs', 'fat', 'fiber', 'protein', 'sodium')
+    try:
+        return all(float(ref.get(c) or 0) == 0 for c in cols)
+    except (TypeError, ValueError):
+        return False
+
+
+def test_nutrition_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    rows = gh.fetch_nutrition(creds, COMPARE_FROM, end)
+    assert rows, 'nutrition: Google から1件も取得できていない'
+
+    old = _load_csv('nutrition')
+    columns = ['calories', 'carbs', 'fat', 'fiber', 'protein', 'sodium']
+    compared = 0
+    mismatches = []
+    for row in rows:
+        ref = old.get(row['date'])
+        if ref is None or _is_all_zero_nutrition_row(ref):
+            continue
+        for col in columns:
+            got, want = row.get(col), ref.get(col)
+            if want in (None, '') or got is None:
+                continue
+            compared += 1
+            if abs(float(got) - float(want)) > 0.01:
+                mismatches.append(f"{row['date']} {col}: Google={got} CSV={want}")
+
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+NUTRITION_LOGS_COMPARE_FROM = dt.date(2025, 12, 12)
+NUTRITION_LOGS_COMPARE_TO = dt.date(2026, 2, 1)
+
+
+def test_nutrition_logs_matches_existing_csv(creds):
+    """既存 nutrition_logs.csv は2026-02-01が最終行のため、実データのある
+    2025-12-12〜2026-02-01 の期間に限って logId で突き合わせる"""
+    rows = gh.fetch_nutrition_logs(creds, NUTRITION_LOGS_COMPARE_FROM, NUTRITION_LOGS_COMPARE_TO)
+    assert rows, 'nutrition_logs: Google から1件も取得できていない'
+
+    old = _load_csv('nutrition_logs', key='logId')
+    # protein/fat/carbs/fiber/sodium は既存CSVでは空だがGoogle側では埋まる
+    # （情報が増える方向なので不一致ではない）。比較しない
+    columns = ['logDate', 'foodId', 'foodName', 'mealTypeId', 'amount', 'unitId',
+              'unitName', 'calories']
+    compared = 0
+    mismatches = []
+    for row in rows:
+        ref = old.get(row['logId'])
+        if ref is None:
+            continue
+        for col in columns:
+            got, want = row.get(col), ref.get(col)
+            if want in (None, '') or got is None:
+                continue
+            compared += 1
+            try:
+                if abs(float(got) - float(want)) > 0.01:
+                    mismatches.append(f"{row['logId']} {col}: Google={got} CSV={want}")
+            except (TypeError, ValueError):
+                if str(got) != str(want):
+                    mismatches.append(f"{row['logId']} {col}: Google={got} CSV={want}")
+
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'

@@ -56,7 +56,7 @@ uv sync
 型チェッカーは入れていない。品質チェックはテストのみで、これが正典コマンド:
 
 ```bash
-uv run pytest tests -q   # 234件・約87秒
+uv run pytest tests -q   # 245件・約105秒
 ```
 
 このリポジトリの失敗は**例外を出さず正常終了する**。壊れた値が CSV に書かれた
@@ -156,7 +156,7 @@ stdout）。
 | 読むタイミング | ドキュメント |
 |---|---|
 | `scripts/toggl.py` の push / start / stop を変更するとき | [docs/toggl.md](docs/toggl.md) — 冪等性判定の条件を外すと Toggl に二重投入する |
-| `fetch_googlehealth.py` の caffeine / heart_rate / spo2 / weight / body_fat を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く |
+| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
 | `fetch_indoor.py` / Tuya を扱うとき | [docs/indoor.md](docs/indoor.md) — レート制限と7日の遡り限界 |

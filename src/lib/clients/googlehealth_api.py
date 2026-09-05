@@ -323,7 +323,9 @@ def _rollup_by_date(creds: Credentials, data_type: str, payload_key: str,
 from .googlehealth_sleep import _list_sleep_points, fetch_sleep_all  # noqa: E402
 from .googlehealth_sessions import (  # noqa: E402
     EXERCISE_COLUMNS, CAFFEINE_COLUMNS, WEIGHT_COLUMNS, BODY_FAT_COLUMNS,
+    NUTRITION_COLUMNS, NUTRITION_LOG_COLUMNS,
     fetch_exercise, fetch_caffeine, fetch_weight, fetch_body_fat,
+    fetch_nutrition, fetch_nutrition_logs,
 )
 from .googlehealth_daily import (  # noqa: E402
     fetch_hrv, fetch_breathing_rate, fetch_temperature_skin, fetch_heart_rate,
@@ -345,6 +347,8 @@ FETCHERS = {
     'temperature_core': fetch_temperature_core,
     'exercise': fetch_exercise,
     'caffeine': fetch_caffeine,
+    'nutrition': fetch_nutrition,
+    'nutrition_logs': fetch_nutrition_logs,
     'weight': fetch_weight,
     'body_fat': fetch_body_fat,
 }
