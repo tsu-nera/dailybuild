@@ -53,11 +53,27 @@ uv sync
 
 ## テスト方針
 
+判断の根拠は [ADR-002](docs/adr/002-quality-gate-tests-not-types.md)。
+**型チェッカーを入れるか / テストをどこまで書くかを再検討する前に読むこと**
+（同じ検討を2回している）。以下はそこから導かれる運用。
+
 型チェッカーは入れていない。品質チェックはテストのみで、これが正典コマンド:
 
 ```bash
-uv run pytest tests -q   # 247件・約104秒
+uv run pytest tests -q          # 既定
+uv run pytest tests -q -m net   # 外部 API を叩くぶん
 ```
+
+`net` は Google Health の値が既存 Fitbit CSV と一致するかを実 API で見る
+（`test_googlehealth_parity.py`）。既定から外してあるのは、遅いからだけでなく
+**比較の両辺がこちらのコードと無関係に動く**ため。Google は値を再計算し、
+Fitbit は過去を遡って書き換えるので、コードを1行も変えずに赤くなる。回帰ゲートでは
+なく移行期の監視として、`fetch_googlehealth.py` を触るときに回す。
+
+こちらのコードを見る部分（期間フィルタ）はフェイクに移してある
+（`test_googlehealth_date_range.py`、既定・0.2秒）。実 API では Google が返す
+データ次第で境界を1度も踏まないことがあるが、フェイクなら範囲外の点が必ず
+含まれることを保証できる。
 
 このリポジトリの失敗は**例外を出さず正常終了する**。壊れた値が CSV に書かれた
 時点で元に戻せないもの（Tuya のログは7日、Toggl の削除済みエントリは原理的に）も
@@ -87,6 +103,21 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 この区間だけを差し替える。区間外の考察は保持し、**マーカーを持たない既存エントリ
 （移行前に人と agent が書いたもの）には一切触れない**。
 
+同じスクリプトが `reports/journal/STATE.md` も毎日**全上書き**で生成する。
+ジャーナルの4ファイルは書き手と寿命で分かれている:
+
+| ファイル | 書き手 | 更新 | 寿命 |
+|---|---|---|---|
+| `STATE.md` | script | 毎日 | 揮発（全上書き） |
+| `ACTIONS.md` | agent | 発行時に1行 append / 結果が出たら1行 edit | 追記のみ |
+| `YYYY-Wxx.md` | script（骨組み）+ agent（考察） | 毎日追記 | 不変 |
+| `JOURNAL.md` | agent | 毎日1行更新 | 索引 |
+
+ストリーク（連続日数）・鮮度・未解決アクションは STATE.md が毎日計算し直すので、
+**散文に書かない**。以前は週の rollup を agent が毎日書き直しており、事実が
+変わっていないのに表現だけが毎日漂流していた。恒久的に効く知見は
+ジャーナルではなく memory に置く（`~/.claude/projects/*/memory/`。リポジトリ外）。
+
 ```bash
 # プロジェクトルートから実行（uv run なら .venv の有効化不要）
 uv run scripts/fetch_sleep.py        # Fitbit睡眠データ取得
@@ -113,11 +144,6 @@ uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review �
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
 uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-routine.sh が実行）
 uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
-# 室内環境は所要が長い（1日ぶん約11分）ため daily-routine.sh から外してある。
-# 別途1日1回、手動で回す。Tuya のログは最大7日しか遡れないので放置すると穴が空く
-uv run scripts/fetch_indoor.py --update  # 室内環境（CO2/温度/湿度）差分取得
-uv run scripts/fetch_indoor.py --raw     # DPコード一覧（マッピング同定用）
-
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
@@ -156,10 +182,9 @@ stdout）。
 | 読むタイミング | ドキュメント |
 |---|---|
 | `scripts/toggl.py` の push / start / stop を変更するとき | [docs/toggl.md](docs/toggl.md) — 冪等性判定の条件を外すと Toggl に二重投入する |
-| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く |
+| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。`pytest -m net` も回す |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
-| `fetch_indoor.py` / Tuya を扱うとき | [docs/indoor.md](docs/indoor.md) — レート制限と7日の遡り限界 |
 | `emotion.py` / `phq9.py` / `bowel.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
