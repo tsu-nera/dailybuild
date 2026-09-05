@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import pandas as pd
 import yaml
 from lib.bowel import render, store
-from lib.clients import gforms_api
+from lib.clients import gforms_client
 from lib.utils import csv_utils
 from lib.utils.private_data import ensure_dir
 
@@ -56,7 +56,7 @@ def build_items(conf):
     """yaml の定義からフォームの item spec リストを組み立てる"""
     q = conf['questions']
     return [
-        gforms_api.radio_item(q['bristol'], choice_strings(conf), required=True),
+        gforms_client.radio_item(q['bristol'], choice_strings(conf), required=True),
     ]
 
 
@@ -76,7 +76,7 @@ def parse_bristol_value(value) -> int | float:
 
 def build_dataframe(form, responses, conf):
     """回答リストを CSV スキーマの DataFrame にする"""
-    by_title = gforms_api.question_id_by_title(form)
+    by_title = gforms_client.question_id_by_title(form)
     q = conf['questions']
     if q['bristol'] not in by_title:
         raise ValueError(
@@ -85,7 +85,7 @@ def build_dataframe(form, responses, conf):
 
     rows = []
     for res in responses:
-        v = gforms_api.answer_values(res, by_title[q['bristol']])
+        v = gforms_client.answer_values(res, by_title[q['bristol']])
         rows.append({
             'timestamp': res.get('lastSubmittedTime') or res.get('createTime'),
             'bristol': v[0] if v else pd.NA,
@@ -111,27 +111,27 @@ def cmd_setup_form(args):
     conf = load_def()
     items = build_items(conf)
 
-    service = gforms_api.create_service()
+    service = gforms_client.create_service()
 
     if conf.get('form_id'):
         if not args.update:
             print(f"フォームは作成済み: {conf['form_id']}")
             print('選択肢や質問文を yaml に合わせ直すなら --update')
             return
-        existing_form = gforms_api.get_form(service, conf['form_id'])
-        gforms_api.sync_questions(service, conf['form_id'], items,
+        existing_form = gforms_client.get_form(service, conf['form_id'])
+        gforms_client.sync_questions(service, conf['form_id'], items,
                                   existing_form=existing_form)
         print('フォームを yaml に合わせて更新した')
-        form = gforms_api.get_form(service, conf['form_id'])
+        form = gforms_client.get_form(service, conf['form_id'])
     else:
-        form = gforms_api.create_form(service, conf['form_title'],
+        form = gforms_client.create_form(service, conf['form_title'],
                                       document_title=conf['form_title'])
         print(f"フォーム作成: {form['formId']}")
-        gforms_api.sync_questions(service, form['formId'], items)
+        gforms_client.sync_questions(service, form['formId'], items)
         save_form_id(form['formId'])
-        form = gforms_api.get_form(service, form['formId'])
+        form = gforms_client.get_form(service, form['formId'])
 
-    print(f"質問: {list(gforms_api.question_id_by_title(form))}")
+    print(f"質問: {list(gforms_client.question_id_by_title(form))}")
     print(f"回答用URL: {responder_uri(form)}")
     print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
 
@@ -144,11 +144,11 @@ def cmd_fetch(args, out=None):
         raise ValueError(
             f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
 
-    service = gforms_api.create_service(interactive=not args.non_interactive)
-    form = gforms_api.get_form(service, conf['form_id'])
+    service = gforms_client.create_service(interactive=not args.non_interactive)
+    form = gforms_client.get_form(service, conf['form_id'])
 
     print(f"回答取得中: {conf['form_id']}", file=sys.stderr)
-    responses = gforms_api.list_responses(service, conf['form_id'])
+    responses = gforms_client.list_responses(service, conf['form_id'])
     print(f"取得: {len(responses)}件", file=sys.stderr)
 
     df = build_dataframe(form, responses, conf)

@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from lib import googlehealth_fetcher as ghf
-from lib.clients import googlehealth_api, googlehealth_sessions
+from lib.clients import googlehealth_client, googlehealth_sessions
 from lib.utils import private_data
 
 
@@ -24,7 +24,7 @@ def fake_rows(monkeypatch):
     """FETCHERS['hrv'] を差し替えて任意の行を返させる"""
     def install(rows):
         monkeypatch.setitem(
-            googlehealth_api.FETCHERS, 'hrv', lambda creds, s, e: rows
+            googlehealth_client.FETCHERS, 'hrv', lambda creds, s, e: rows
         )
     return install
 
@@ -144,10 +144,10 @@ def test_未マウントの環境ではpublic側への書き込みがエラー�
 
 def test_num_coerces_string_values():
     """Google が数値を文字列で返すケースを float に正規化すること"""
-    assert googlehealth_api._num('36.5') == 36.5
-    assert googlehealth_api._num(36.5) == 36.5
-    assert googlehealth_api._num(None) is None
-    assert googlehealth_api._num('') is None
+    assert googlehealth_client._num('36.5') == 36.5
+    assert googlehealth_client._num(36.5) == 36.5
+    assert googlehealth_client._num(None) is None
+    assert googlehealth_client._num('') is None
 
 
 # =============================================================================
@@ -183,7 +183,7 @@ def fake_sleep(monkeypatch):
     """FETCHERS['sleep'] を差し替えて (sleep_rows, level_rows) を返させる"""
     def install(sleep_rows, level_rows=None):
         monkeypatch.setitem(
-            googlehealth_api.FETCHERS, 'sleep',
+            googlehealth_client.FETCHERS, 'sleep',
             lambda creds, s, e: (sleep_rows, level_rows or []),
         )
     return install
@@ -318,7 +318,7 @@ def _raw_point(point_id: str, start: str, end: str, minutes_in_sleep_period: int
 def fake_points(monkeypatch):
     """_list_sleep_points を差し替えて任意の生 dataPoint 群を返させる"""
     def install(points):
-        monkeypatch.setattr(googlehealth_api, '_list_sleep_points', lambda creds, s, e: points)
+        monkeypatch.setattr(googlehealth_client, '_list_sleep_points', lambda creds, s, e: points)
     return install
 
 
@@ -330,7 +330,7 @@ def test_overlapping_session_only_the_longer_one_survives(fake_points):
     ]
     fake_points(points)
 
-    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+    sleep_rows, _ = googlehealth_client.fetch_sleep_all(
         None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
     )
 
@@ -347,7 +347,7 @@ def test_overlap_winner_decided_by_length_not_mainsleep(fake_points):
     ]
     fake_points(points)
 
-    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+    sleep_rows, _ = googlehealth_client.fetch_sleep_all(
         None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
     )
 
@@ -363,7 +363,7 @@ def test_non_overlapping_sessions_both_kept(fake_points):
     ]
     fake_points(points)
 
-    sleep_rows, _ = googlehealth_api.fetch_sleep_all(
+    sleep_rows, _ = googlehealth_client.fetch_sleep_all(
         None, dt.date(2026, 8, 19), dt.date(2026, 8, 20)
     )
 
@@ -379,7 +379,7 @@ def test_dropped_overlap_count_is_logged(fake_points, capsys):
     ]
     fake_points(points)
 
-    googlehealth_api.fetch_sleep_all(None, dt.date(2026, 8, 19), dt.date(2026, 8, 20))
+    googlehealth_client.fetch_sleep_all(None, dt.date(2026, 8, 19), dt.date(2026, 8, 20))
 
     captured = capsys.readouterr()
     assert '1件' in captured.out
@@ -399,7 +399,7 @@ def _rollup_point(year, month, day, **payload):
 
 @pytest.fixture
 def fake_post(monkeypatch):
-    """googlehealth_api._post を差し替えて呼び出しを記録しつつ任意の応答を返す"""
+    """googlehealth_client._post を差し替えて呼び出しを記録しつつ任意の応答を返す"""
     def install(responder):
         calls = []
 
@@ -407,7 +407,7 @@ def fake_post(monkeypatch):
             calls.append((path, body))
             return responder(path, body)
 
-        monkeypatch.setattr(googlehealth_api, '_post', fake)
+        monkeypatch.setattr(googlehealth_client, '_post', fake)
         return calls
     return install
 
@@ -415,7 +415,7 @@ def fake_post(monkeypatch):
 def test_daily_rollup_splits_by_type_max_duration_total_calories(fake_post):
     """total-calories は14日上限。40日分の要求は3チャンクに分割されること"""
     calls = fake_post(lambda path, body: {'rollupDataPoints': []})
-    googlehealth_api._daily_rollup(
+    googlehealth_client._daily_rollup(
         None, 'total-calories', dt.date(2026, 1, 1), dt.date(2026, 2, 9)  # 40日
     )
     assert len(calls) == 3
@@ -431,7 +431,7 @@ def test_daily_rollup_splits_by_type_max_duration_total_calories(fake_post):
 def test_daily_rollup_splits_by_type_max_duration_steps(fake_post):
     """steps は90日上限。100日分の要求は2チャンクに分割されること"""
     calls = fake_post(lambda path, body: {'rollupDataPoints': []})
-    googlehealth_api._daily_rollup(
+    googlehealth_client._daily_rollup(
         None, 'steps', dt.date(2026, 1, 1), dt.date(2026, 4, 10)  # 100日
     )
     assert len(calls) == 2
@@ -449,7 +449,7 @@ def test_active_zone_minutes_sums_zones(fake_post):
             'sumInFatBurnHeartZone': '20', 'sumInCardioHeartZone': '15', 'sumInPeakHeartZone': '9',
         }),
     ]})
-    rows = googlehealth_api.fetch_active_zone_minutes(None, dt.date(2026, 8, 11), dt.date(2026, 8, 11))
+    rows = googlehealth_client.fetch_active_zone_minutes(None, dt.date(2026, 8, 11), dt.date(2026, 8, 11))
     assert rows == [{
         'date': '2026-08-11',
         'activeZoneMinutes': 44.0,
@@ -481,7 +481,7 @@ def _fake_activity_responder(path, body):
 def test_activity_activity_calories_and_sedentary_minutes_are_none_with_warning(fake_post, capsys):
     fake_post(_fake_activity_responder)
 
-    rows = googlehealth_api.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
+    rows = googlehealth_client.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
 
     assert len(rows) == 1
     row = rows[0]
@@ -495,13 +495,13 @@ def test_activity_activity_calories_and_sedentary_minutes_are_none_with_warning(
 
 def test_activity_distance_converted_mm_to_km(fake_post):
     fake_post(_fake_activity_responder)
-    rows = googlehealth_api.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
+    rows = googlehealth_client.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
     assert rows[0]['distance'] == 2.0  # 2,000,000mm = 2km
 
 
 def test_activity_active_minutes_levels_mapped(fake_post):
     fake_post(_fake_activity_responder)
-    rows = googlehealth_api.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
+    rows = googlehealth_client.fetch_activity(None, dt.date(2026, 8, 15), dt.date(2026, 8, 15))
     row = rows[0]
     assert row['lightlyActiveMinutes'] == 50.0
     assert row['fairlyActiveMinutes'] == 10.0
@@ -545,14 +545,14 @@ def _temp_point(point_id, year, month, day, hours=None, minutes=None, seconds=No
 
 @pytest.fixture
 def fake_get_pages(monkeypatch):
-    """googlehealth_api._get を差し替えて、ページを順番に返す"""
+    """googlehealth_client._get を差し替えて、ページを順番に返す"""
     def install(pages):
         it = iter(pages)
 
         def fake(creds, path, params=None):
             return next(it)
 
-        monkeypatch.setattr(googlehealth_api, '_get', fake)
+        monkeypatch.setattr(googlehealth_client, '_get', fake)
     return install
 
 
@@ -561,7 +561,7 @@ def test_temperature_core_uses_civil_time(fake_get_pages):
     fake_get_pages([
         {'dataPoints': [_temp_point('1', 2026, 8, 23, hours=5, minutes=49, seconds=21, temp=36.1)]},
     ])
-    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    rows = googlehealth_client.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
     assert rows == [{'date_time': '2026-08-23 05:49:21', 'temperature': 36.1}]
 
 
@@ -570,7 +570,7 @@ def test_temperature_core_missing_time_defaults_to_zero(fake_get_pages):
     fake_get_pages([
         {'dataPoints': [_temp_point('2', 2026, 8, 24, temp=36.0)]},  # time 省略
     ])
-    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    rows = googlehealth_client.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
     assert rows == [{'date_time': '2026-08-24 00:00:00', 'temperature': 36.0}]
 
 
@@ -581,7 +581,7 @@ def test_temperature_core_filters_by_date_range(fake_get_pages):
             _temp_point('b', 2026, 8, 20, hours=6, temp=36.3),  # 範囲内
         ]},
     ])
-    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    rows = googlehealth_client.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
     assert [r['date_time'][:10] for r in rows] == ['2026-08-20']
 
 
@@ -596,7 +596,7 @@ def test_temperature_core_stops_paging_when_page_older_than_start(fake_get_pages
         {'dataPoints': [_temp_point('2', 2026, 7, 1, hours=6, temp=35.9)],
          'nextPageToken': 'tok2'},
     ])
-    rows = googlehealth_api.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
+    rows = googlehealth_client.fetch_temperature_core(None, dt.date(2026, 8, 20), dt.date(2026, 8, 25))
     assert [r['date_time'][:10] for r in rows] == ['2026-08-24']
 
 
@@ -611,7 +611,7 @@ def fake_activity_rows(monkeypatch):
     """FETCHERS['activity'] を差し替えて任意の行を返させる"""
     def install(rows):
         monkeypatch.setitem(
-            googlehealth_api.FETCHERS, 'activity', lambda creds, s, e: rows
+            googlehealth_client.FETCHERS, 'activity', lambda creds, s, e: rows
         )
     return install
 
@@ -746,7 +746,7 @@ def test_fetch_caffeine_keeps_only_caffeine_nutrient(fake_get_pages):
         _nutrition_point('caffeine-1', '2026-08-26T23:12:03.787Z', caffeine_grams=0.0475),
     ]}])
 
-    rows = googlehealth_api.fetch_caffeine(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_caffeine(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert [r['id'] for r in rows] == ['caffeine-1']
 
@@ -757,7 +757,7 @@ def test_fetch_caffeine_converts_grams_to_mg(fake_get_pages):
         _nutrition_point('caffeine-1', '2026-08-26T23:12:03.787Z', caffeine_grams=0.0475),
     ]}])
 
-    rows = googlehealth_api.fetch_caffeine(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_caffeine(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['caffeine_mg'] == 47.5
     assert rows[0]['date'] == '2026-08-27'  # startTime(UTC) + offset(+9h) でローカル日付
@@ -783,7 +783,7 @@ def test_fetch_caffeine_paging_stops_by_all_datapoints_not_only_caffeine(fake_ge
 
     # フィクスチャは2ページしか用意していないため、打ち切らず3ページ目を
     # 要求すると StopIteration で失敗する
-    rows = googlehealth_api.fetch_caffeine(None, dt.date(2026, 8, 20), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_caffeine(None, dt.date(2026, 8, 20), dt.date(2026, 8, 27))
 
     assert [r['id'] for r in rows] == ['caffeine-1']
 
@@ -796,7 +796,7 @@ def test_caffeine_merge_key_idempotent_across_two_saves(caffeine_dir, monkeypatc
         'package_name': 'com.AWSoft.CaffeineClock', 'platform': 'HEALTH_CONNECT',
         'recording_method': 'UNKNOWN',
     }
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'caffeine', lambda creds, s, e: [row])
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'caffeine', lambda creds, s, e: [row])
 
     ghf.fetch_endpoint(None, 'caffeine', days=3)
     result = ghf.fetch_endpoint(None, 'caffeine', days=3)
@@ -809,7 +809,7 @@ def test_caffeine_merge_key_idempotent_across_two_saves(caffeine_dir, monkeypatc
 
 def test_caffeine_allow_empty_does_not_error(caffeine_dir, monkeypatch):
     """0件は正常でありうるためエラーにせず、CSV も作らないこと"""
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'caffeine', lambda creds, s, e: [])
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'caffeine', lambda creds, s, e: [])
 
     result = ghf.fetch_endpoint(None, 'caffeine', days=3)
 
@@ -851,7 +851,7 @@ def test_heart_rate_prefers_fitbit_over_health_connect(fake_get_pages):
         _hr_point('hc', 2026, 8, 20, 49, 'HEALTH_CONNECT'),
         _hr_point('fb', 2026, 8, 20, 56, 'FITBIT', calculation_method='WITH_SLEEP'),
     ]}])
-    rows = googlehealth_api.fetch_heart_rate(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
+    rows = googlehealth_client.fetch_heart_rate(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
     assert rows == [{'date': '2026-08-20', 'resting_heart_rate': 56.0}]
 
 
@@ -860,7 +860,7 @@ def test_heart_rate_skips_day_with_health_connect_only(fake_get_pages, capsys):
     fake_get_pages([{'dataPoints': [
         _hr_point('hc', 2026, 8, 21, 49, 'HEALTH_CONNECT'),
     ]}])
-    rows = googlehealth_api.fetch_heart_rate(None, dt.date(2026, 8, 21), dt.date(2026, 8, 21))
+    rows = googlehealth_client.fetch_heart_rate(None, dt.date(2026, 8, 21), dt.date(2026, 8, 21))
     assert rows == []
     captured = capsys.readouterr()
     assert '1件' in captured.out
@@ -872,7 +872,7 @@ def test_heart_rate_prefers_with_sleep_among_multiple_fitbit_points(fake_get_pag
         _hr_point('fb1', 2026, 8, 22, 55, 'FITBIT'),
         _hr_point('fb2', 2026, 8, 22, 57, 'FITBIT', calculation_method='WITH_SLEEP'),
     ]}])
-    rows = googlehealth_api.fetch_heart_rate(None, dt.date(2026, 8, 22), dt.date(2026, 8, 22))
+    rows = googlehealth_client.fetch_heart_rate(None, dt.date(2026, 8, 22), dt.date(2026, 8, 22))
     assert rows == [{'date': '2026-08-22', 'resting_heart_rate': 57.0}]
 
 
@@ -884,7 +884,7 @@ def test_daily_rows_without_pick_is_unchanged(fake_get_pages):
             'averageHeartRateVariabilityMilliseconds': '30.0',
         }},
     ]}])
-    rows = googlehealth_api.fetch_hrv(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
+    rows = googlehealth_client.fetch_hrv(None, dt.date(2026, 8, 20), dt.date(2026, 8, 20))
     assert rows == [{'date': '2026-08-20', 'daily_rmssd': 30.0, 'deep_rmssd': None}]
 
 
@@ -921,7 +921,7 @@ def test_spo2_resolves_date_via_overlapping_sleep_session_after_midnight_start(
         _raw_point('s1', '2026-08-19T00:05:00Z', '2026-08-19T07:00:00Z', 415, main_sleep=True),
     ])
 
-    rows = googlehealth_api.fetch_spo2(None, dt.date(2026, 8, 18), dt.date(2026, 8, 19))
+    rows = googlehealth_client.fetch_spo2(None, dt.date(2026, 8, 18), dt.date(2026, 8, 19))
 
     assert rows == [{'date': '2026-08-19', 'avg_spo2': 97.5, 'min_spo2': 95.0, 'max_spo2': 99.0}]
 
@@ -931,7 +931,7 @@ def test_spo2_point_without_overlapping_session_is_skipped(fake_get_pages, fake_
     fake_get_pages([{'dataPoints': [_spo2_point('p1', 2026, 8, 20)]}])
     fake_points([])
 
-    rows = googlehealth_api.fetch_spo2(None, dt.date(2026, 8, 20), dt.date(2026, 8, 21))
+    rows = googlehealth_client.fetch_spo2(None, dt.date(2026, 8, 20), dt.date(2026, 8, 21))
 
     assert rows == []
     captured = capsys.readouterr()
@@ -965,7 +965,7 @@ def test_spo2_filters_out_of_range_resolved_dates(fake_get_pages, monkeypatch):
 
     monkeypatch.setattr(gh_sleep, 'fetch_sleep_all', fake_fetch_sleep_all)
 
-    rows = googlehealth_api.fetch_spo2(None, dt.date(2026, 8, 15), dt.date(2026, 8, 25))
+    rows = googlehealth_client.fetch_spo2(None, dt.date(2026, 8, 15), dt.date(2026, 8, 25))
 
     assert [r['date'] for r in rows] == ['2026-08-21']
 
@@ -987,7 +987,7 @@ def test_spo2_sleep_window_starts_one_day_before_start_date(fake_get_pages, monk
         return [], []
 
     monkeypatch.setattr(gh_sleep, 'fetch_sleep_all', fake_fetch_sleep_all)
-    googlehealth_api.fetch_spo2(None, dt.date(2026, 9, 3), dt.date(2026, 9, 5))
+    googlehealth_client.fetch_spo2(None, dt.date(2026, 9, 3), dt.date(2026, 9, 5))
 
     assert called['start'] == dt.date(2026, 9, 2), '睡眠の取得が start_date から始まっている'
     assert called['end'] == dt.date(2026, 9, 5)
@@ -1022,7 +1022,7 @@ def test_spo2_resolution_is_independent_of_window_length(fake_get_pages, monkeyp
     resolved = []
     for start in (dt.date(2026, 9, 3), dt.date(2026, 8, 1)):
         fake_get_pages([{'dataPoints': [_spo2_point('p1', 2026, 9, 2, avg=96.5)]}])
-        rows = googlehealth_api.fetch_spo2(None, start, dt.date(2026, 9, 5))
+        rows = googlehealth_client.fetch_spo2(None, start, dt.date(2026, 9, 5))
         resolved.append([r['date'] for r in rows])
 
     # 09-02 に解決するので、start=09-03 の窓では範囲外として落ちる（09-03 を捏造しない）
@@ -1062,7 +1062,7 @@ def test_fetch_weight_converts_grams_to_kg(fake_get_pages):
         _body_measure_point('weight-1', 'weight', 'weightGrams', 61300),
     ]}])
 
-    rows = googlehealth_api.fetch_weight(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_weight(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['weight_kg'] == 61.3
 
@@ -1078,7 +1078,7 @@ def test_fetch_weight_uses_local_time_not_utc_date(fake_get_pages):
                             physical_time='2026-08-26T20:37:32Z', utc_offset='32400s'),
     ]}])
 
-    rows = googlehealth_api.fetch_weight(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_weight(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['time'] == '2026-08-27 05:37:32'
     assert rows[0]['date'] == '2026-08-27'
@@ -1089,7 +1089,7 @@ def test_fetch_body_fat_keeps_percentage_as_is(fake_get_pages):
         _body_measure_point('bodyfat-1', 'body-fat', 'percentage', 18.3),
     ]}])
 
-    rows = googlehealth_api.fetch_body_fat(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_body_fat(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['body_fat_rate'] == 18.3
     assert rows[0]['date'] == '2026-08-27'
@@ -1111,7 +1111,7 @@ def test_weight_merge_key_idempotent_across_two_saves(weight_dir, monkeypatch):
         'package_name': 'jp.healthplanet.healthplanetapp', 'platform': 'HEALTH_CONNECT',
         'recording_method': 'UNKNOWN',
     }
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'weight', lambda creds, s, e: [row])
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'weight', lambda creds, s, e: [row])
 
     ghf.fetch_endpoint(None, 'weight', days=3)
     result = ghf.fetch_endpoint(None, 'weight', days=3)
@@ -1124,7 +1124,7 @@ def test_weight_merge_key_idempotent_across_two_saves(weight_dir, monkeypatch):
 
 def test_weight_allow_empty_does_not_error(weight_dir, monkeypatch):
     """計測が疎なため0件は正常。エラーにせず CSV も作らないこと"""
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'weight', lambda creds, s, e: [])
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'weight', lambda creds, s, e: [])
 
     result = ghf.fetch_endpoint(None, 'weight', days=3)
 
@@ -1186,7 +1186,7 @@ def _nutrition_log_point(point_id: str, year: int, month: int, day: int,
 
 @pytest.fixture
 def fake_nutrition_pages(monkeypatch):
-    """googlehealth_api._get を差し替える。nutrition-log のページングと
+    """googlehealth_client._get を差し替える。nutrition-log のページングと
     food-measurement-unit の単体照会（既定 'グラム'）の両方をこの1つで賄う
 
     fake_get_pages は path を見ずに単純に順送りするため、ページ取得の
@@ -1205,7 +1205,7 @@ def fake_nutrition_pages(monkeypatch):
                 return {'foodMeasurementUnit': {'displayName': 'グラム'}}
             return next(it)
 
-        monkeypatch.setattr(googlehealth_api, '_get', fake)
+        monkeypatch.setattr(googlehealth_client, '_get', fake)
 
     yield install
 
@@ -1220,7 +1220,7 @@ def test_fetch_nutrition_logs_excludes_points_without_food_display_name(fake_nut
         _nutrition_log_point('meal-1', 2026, 8, 26),
     ]}])
 
-    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert [r['logId'] for r in rows] == ['meal-1']
 
@@ -1231,7 +1231,7 @@ def test_fetch_nutrition_logs_converts_meal_type_to_id(fake_nutrition_pages):
         _nutrition_log_point('meal-1', 2026, 8, 26, meal_type='DINNER'),
     ]}])
 
-    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['mealTypeId'] == 5
 
@@ -1244,7 +1244,7 @@ def test_fetch_nutrition_logs_unknown_meal_type_becomes_empty_with_warning(
         _nutrition_log_point('meal-1', 2026, 8, 26, meal_type='SNACK'),
     ]}])
 
-    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['mealTypeId'] is None
     assert '未知の mealType' in capsys.readouterr().out
@@ -1256,7 +1256,7 @@ def test_fetch_nutrition_logs_sodium_grams_to_mg(fake_nutrition_pages):
         _nutrition_log_point('meal-1', 2026, 8, 26, sodium_g=0.2249),
     ]}])
 
-    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['sodium'] == pytest.approx(224.9)
 
@@ -1267,7 +1267,7 @@ def test_fetch_nutrition_logs_amount_rounds_float_noise(fake_nutrition_pages):
         _nutrition_log_point('meal-1', 2026, 8, 26, amount=1.2000000476837158),
     ]}])
 
-    rows = googlehealth_api.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_nutrition_logs(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['amount'] == 1.2
 
@@ -1281,7 +1281,7 @@ def test_fetch_nutrition_water_is_always_empty_not_zero(fake_nutrition_pages):
         _nutrition_log_point('meal-1', 2026, 8, 26),
     ]}])
 
-    rows = googlehealth_api.fetch_nutrition(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_nutrition(None, dt.date(2026, 8, 26), dt.date(2026, 8, 27))
 
     assert rows[0]['water'] is None
 
@@ -1292,7 +1292,7 @@ def test_fetch_nutrition_skips_days_with_no_logs(fake_nutrition_pages):
         _nutrition_log_point('meal-1', 2026, 8, 26),
     ]}])
 
-    rows = googlehealth_api.fetch_nutrition(None, dt.date(2026, 8, 20), dt.date(2026, 8, 27))
+    rows = googlehealth_client.fetch_nutrition(None, dt.date(2026, 8, 20), dt.date(2026, 8, 27))
 
     assert [r['date'] for r in rows] == ['2026-08-26']
 
@@ -1313,7 +1313,7 @@ def test_nutrition_logs_merge_key_idempotent_across_two_saves(nutrition_logs_dir
         'unitName': '食分', 'calories': 705, 'protein': 10.0, 'fat': 1.2,
         'carbs': 150.0, 'fiber': 0.3, 'sodium': 1.0,
     }
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'nutrition_logs', lambda creds, s, e: [row])
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'nutrition_logs', lambda creds, s, e: [row])
 
     ghf.fetch_endpoint(None, 'nutrition_logs', days=3)
     result = ghf.fetch_endpoint(None, 'nutrition_logs', days=3)
@@ -1326,7 +1326,7 @@ def test_nutrition_logs_merge_key_idempotent_across_two_saves(nutrition_logs_dir
 
 def test_nutrition_allow_empty_does_not_error(data_dir, monkeypatch):
     """食事記録が無い期間は0件が正常。エラーにしないこと"""
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'nutrition', lambda creds, s, e: [])
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'nutrition', lambda creds, s, e: [])
 
     result = ghf.fetch_endpoint(None, 'nutrition', days=3)
 
@@ -1345,7 +1345,7 @@ def test_temperature_core_allow_empty_does_not_error(data_dir, monkeypatch):
     非ゼロ終了し「Google Health の取得に失敗」と毎日出ていた。実際は
     測っていないだけで、故障ではない。
     """
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'temperature_core',
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'temperature_core',
                         lambda creds, s, e: [])
 
     result = ghf.fetch_endpoint(None, 'temperature_core', days=3)
@@ -1357,7 +1357,7 @@ def test_temperature_core_allow_empty_does_not_error(data_dir, monkeypatch):
 
 def test_period_replace_without_allow_empty_still_errors(data_dir, monkeypatch):
     """period_replace でも allow_empty が無ければ0件はエラーのままであること"""
-    monkeypatch.setitem(googlehealth_api.FETCHERS, 'sleep', lambda creds, s, e: ([], []))
+    monkeypatch.setitem(googlehealth_client.FETCHERS, 'sleep', lambda creds, s, e: ([], []))
 
     result = ghf.fetch_endpoint(None, 'sleep', days=3)
 

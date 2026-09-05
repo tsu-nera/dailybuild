@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .clients import googlehealth_api
+from .clients import googlehealth_client
 from .utils import csv_utils
 from .utils.private_data import ensure_dir
 
@@ -70,7 +70,7 @@ ENDPOINTS = {
         'date_column': 'date',
     },
     # 実測時刻の行と日次固定00:00:00の行が混在するため、キーマージではなく
-    # sleep と同じ期間置換にする（src/lib/clients/googlehealth_api.py の
+    # sleep と同じ期間置換にする（src/lib/clients/googlehealth_client.py の
     # fetch_temperature_core docstring 参照）
     # 体温計で測って Google Health に手で記録するもので、自動計測ではない。
     # 測り忘れる日があるのが常態（通算31件、月0〜12件）なので0件をエラーにしない。
@@ -91,7 +91,7 @@ ENDPOINTS = {
         'date_column': 'start',
         'merge_key': 'id',
         'output': GOOGLEHEALTH_DIR / 'exercise.csv',
-        'columns': googlehealth_api.EXERCISE_COLUMNS,
+        'columns': googlehealth_client.EXERCISE_COLUMNS,
     },
     # カフェインを飲まなかった/記録していない期間は0件が正常状態（allow_empty）。
     # 他のエンドポイントと違い、0件をエラーにしない（Issue #90）
@@ -100,7 +100,7 @@ ENDPOINTS = {
         'date_column': 'time',
         'merge_key': 'id',
         'output': GOOGLEHEALTH_DIR / 'caffeine.csv',
-        'columns': googlehealth_api.CAFFEINE_COLUMNS,
+        'columns': googlehealth_client.CAFFEINE_COLUMNS,
         'allow_empty': True,
     },
     # Fitbit 由来ではない（2025 以降は HealthPlanet アプリが Health Connect に
@@ -112,7 +112,7 @@ ENDPOINTS = {
         'date_column': 'time',
         'merge_key': 'id',
         'output': GOOGLEHEALTH_DIR / 'weight.csv',
-        'columns': googlehealth_api.WEIGHT_COLUMNS,
+        'columns': googlehealth_client.WEIGHT_COLUMNS,
         'allow_empty': True,
     },
     'body_fat': {
@@ -120,7 +120,7 @@ ENDPOINTS = {
         'date_column': 'time',
         'merge_key': 'id',
         'output': GOOGLEHEALTH_DIR / 'body_fat.csv',
-        'columns': googlehealth_api.BODY_FAT_COLUMNS,
+        'columns': googlehealth_client.BODY_FAT_COLUMNS,
         'allow_empty': True,
     },
     # nutrition-log は個別食事ログしか持たない（日次サマリのデータ型は存在しない）。
@@ -136,7 +136,7 @@ ENDPOINTS = {
         'description': '栄養（個別食事ログ）',
         'date_column': 'logDate',
         'merge_key': 'logId',
-        'columns': googlehealth_api.NUTRITION_LOG_COLUMNS,
+        'columns': googlehealth_client.NUTRITION_LOG_COLUMNS,
         'allow_empty': True,
     },
     # intraday 5種（Issue #76）。merge_key は付けない（= 日付インデックスの
@@ -187,7 +187,7 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
     指定エンドポイントを Google Health API から取得して CSV に保存する
 
     Args:
-        creds: googlehealth_api.authorize() の戻り値
+        creds: googlehealth_client.authorize() の戻り値
         endpoint: ENDPOINTS のキー
         days: 取得日数（start_date 未指定時のみ有効）
         overwrite: True なら既存 CSV を置き換える。False ならマージ
@@ -220,8 +220,8 @@ def fetch_endpoint(creds, endpoint: str, days: int = None, overwrite: bool = Fal
     print(f"{config['description']}を取得中... ({start_date} ~ {end_date})")
 
     try:
-        result = googlehealth_api.FETCHERS[endpoint](creds, start_date, end_date)
-    except googlehealth_api.GoogleHealthError as e:
+        result = googlehealth_client.FETCHERS[endpoint](creds, start_date, end_date)
+    except googlehealth_client.GoogleHealthError as e:
         print(f'  エラー: {e}')
         return {'records': 0, 'path': None, 'error': str(e)}
 

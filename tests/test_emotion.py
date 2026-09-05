@@ -16,7 +16,7 @@ import pytest
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR / 'src'))
 
-from lib.clients import gforms_api
+from lib.clients import gforms_client
 from lib.emotion import render, store
 
 
@@ -225,7 +225,7 @@ def test_update_vocab_history_records_labels_without_revision(tmp_path):
     assert df.iloc[0]['labels'] == '楽しい・うれしい'
 
 
-# --- gforms_api.sync_questions ---
+# --- gforms_client.sync_questions ---
 
 def test_sync_questions_matches_by_kind_not_index():
     existing_form = {
@@ -250,9 +250,9 @@ def test_sync_questions_matches_by_kind_not_index():
     }
 
     items = [
-        gforms_api.scale_item('いまの気分', 1, 5, '悪い', '良い'),
-        gforms_api.checkbox_item('いまの気持ち', ['a', 'b']),
-        gforms_api.text_item('何があった？'),
+        gforms_client.scale_item('いまの気分', 1, 5, '悪い', '良い'),
+        gforms_client.checkbox_item('いまの気持ち', ['a', 'b']),
+        gforms_client.text_item('何があった？'),
     ]
 
     service = MagicMock()
@@ -269,7 +269,7 @@ def test_sync_questions_matches_by_kind_not_index():
 
     service.forms.return_value.batchUpdate.side_effect = fake_batch_update
 
-    gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+    gforms_client.sync_questions(service, 'form1', items, existing_form=existing_form)
 
     body = captured['body']
     requests = body['requests']
@@ -311,10 +311,10 @@ def test_sync_questions_raises_on_unmatched_existing_item():
             },
         ],
     }
-    items = [gforms_api.text_item('何があった？')]
+    items = [gforms_client.text_item('何があった？')]
     service = MagicMock()
-    with pytest.raises(gforms_api.GoogleFormsError):
-        gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+    with pytest.raises(gforms_client.GoogleFormsError):
+        gforms_client.sync_questions(service, 'form1', items, existing_form=existing_form)
 
 
 def _existing_grid_form(row_ids):
@@ -351,7 +351,7 @@ def _run_sync(items, existing_form):
         return m
 
     service.forms.return_value.batchUpdate.side_effect = fake_batch_update
-    gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+    gforms_client.sync_questions(service, 'form1', items, existing_form=existing_form)
     return captured['body']['requests']
 
 
@@ -364,7 +364,7 @@ def test_sync_questions_grid_row_order_change_is_detected():
     """
     existing_form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
     # 行順を入れ替えた spec: 頭の冴え / 身体の軽さ / いまの気分
-    reordered = gforms_api.grid_item(
+    reordered = gforms_client.grid_item(
         'いまの状態', ['頭の冴え', '身体の軽さ', 'いまの気分'], 1, 5, '悪い', '良い')
 
     requests = _run_sync([reordered], existing_form)
@@ -388,7 +388,7 @@ def test_sync_questions_grid_add_row_preserves_existing_row_ids():
     保持されていれば yaml の grid_rows に行を足すだけで済む。
     """
     existing_form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
-    extended = gforms_api.grid_item(
+    extended = gforms_client.grid_item(
         'いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え', '快'], 1, 5, '悪い', '良い')
 
     requests = _run_sync([extended], existing_form)
@@ -408,17 +408,17 @@ def test_sync_questions_grid_add_row_preserves_existing_row_ids():
 def test_question_id_by_title_reads_grid_rows():
     """question_id_by_title がグリッドの行名 -> questionId を引けること"""
     form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
-    by_title = gforms_api.question_id_by_title(form)
+    by_title = gforms_client.question_id_by_title(form)
     assert by_title['いまの気分'] == 'q_score'
     assert by_title['身体の軽さ'] == 'q_body'
     assert by_title['頭の冴え'] == 'q_head'
 
 
-# --- gforms_api.grid_item: 行ごとの required ---
+# --- gforms_client.grid_item: 行ごとの required ---
 
 def test_grid_item_required_per_row():
     """required にリストを渡すと行ごとに反映される（いまの気分だけ必須の運用）"""
-    item = gforms_api.grid_item(
+    item = gforms_client.grid_item(
         'いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え'], 1, 5, '悪い', '良い',
         required=[True, False, False])
     questions = item['questionGroupItem']['questions']
@@ -432,7 +432,7 @@ def test_grid_item_required_per_row():
 
 def test_grid_item_required_bool_broadcasts_to_all_rows():
     """required に bool を渡す従来どおりの呼び方は全行に同じ値が当たる"""
-    item = gforms_api.grid_item(
+    item = gforms_client.grid_item(
         'いまの状態', ['a', 'b', 'c'], 1, 5, '悪い', '良い', required=False)
     questions = item['questionGroupItem']['questions']
     assert [q['required'] for q in questions] == [False, False, False]
@@ -440,7 +440,7 @@ def test_grid_item_required_bool_broadcasts_to_all_rows():
 
 def test_grid_item_required_list_length_mismatch_raises():
     with pytest.raises(ValueError):
-        gforms_api.grid_item(
+        gforms_client.grid_item(
             'いまの状態', ['a', 'b', 'c'], 1, 5, '悪い', '良い',
             required=[True, False])
 
@@ -512,10 +512,10 @@ def _existing_scale_form():
 
 def _migration_items():
     return [
-        gforms_api.grid_item('いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え'],
+        gforms_client.grid_item('いまの状態', ['いまの気分', '身体の軽さ', '頭の冴え'],
                              1, 5, '悪い', '良い'),
-        gforms_api.checkbox_item('いまの気持ち', ['落ち着いている'], required=True),
-        gforms_api.text_item('何があった？'),
+        gforms_client.checkbox_item('いまの気持ち', ['落ち着いている'], required=True),
+        gforms_client.text_item('何があった？'),
     ]
 
 
@@ -525,8 +525,8 @@ def test_sync_questions_scale_to_grid_migration_blocked_without_flag():
     GoogleFormsError で止まる。ガードが生きていることの固定"""
     existing_form = _existing_scale_form()
     service = MagicMock()
-    with pytest.raises(gforms_api.GoogleFormsError) as exc_info:
-        gforms_api.sync_questions(service, 'form1', _migration_items(),
+    with pytest.raises(gforms_client.GoogleFormsError) as exc_info:
+        gforms_client.sync_questions(service, 'form1', _migration_items(),
                                   existing_form=existing_form)
     assert 'いまの気分' in str(exc_info.value)
     assert 'scaleQuestion' in str(exc_info.value)
@@ -575,7 +575,7 @@ def _run_sync_with_flag(items, existing_form, allow_kind_replace=False):
         return m
 
     service.forms.return_value.batchUpdate.side_effect = fake_batch_update
-    gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form,
+    gforms_client.sync_questions(service, 'form1', items, existing_form=existing_form,
                               allow_kind_replace=allow_kind_replace)
     return captured['body']['requests']
 
@@ -628,7 +628,7 @@ def test_sync_questions_multiple_leftovers_delete_in_descending_index_order():
             },
         ],
     }
-    items = [gforms_api.text_item('何があった？')]
+    items = [gforms_client.text_item('何があった？')]
     requests = _run_sync_with_flag(items, existing_form, allow_kind_replace=True)
     deletes = [r['deleteItem'] for r in requests if 'deleteItem' in r]
     indices = [d['location']['index'] for d in deletes]
@@ -673,7 +673,7 @@ def test_preview_kind_mismatch_lists_leftover_before_sync():
     """setup-form --allow-kind-replace が実行前に削除対象を列挙できるよう、
     leftover の事前確認ができること"""
     existing_form = _existing_scale_form()
-    leftover = gforms_api.preview_kind_mismatch(_migration_items(), existing_form)
+    leftover = gforms_client.preview_kind_mismatch(_migration_items(), existing_form)
     assert [i['title'] for i in leftover] == ['いまの気分']
 
 
@@ -692,10 +692,10 @@ def test_sync_questions_raises_on_unmatched_existing_item_default_flag():
             },
         ],
     }
-    items = [gforms_api.text_item('何があった？')]
+    items = [gforms_client.text_item('何があった？')]
     service = MagicMock()
-    with pytest.raises(gforms_api.GoogleFormsError):
-        gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+    with pytest.raises(gforms_client.GoogleFormsError):
+        gforms_client.sync_questions(service, 'form1', items, existing_form=existing_form)
 
 
 # --- has_unfetched_responses / cmd_setup_form の削除前ガード -------------
@@ -743,14 +743,14 @@ def test_setup_form_aborts_and_skips_delete_when_unfetched_response_exists(
 
     existing_form = _existing_scale_form()
     service = MagicMock()
-    monkeypatch.setattr(gforms_api, 'create_service', lambda: service)
-    monkeypatch.setattr(gforms_api, 'get_form', lambda svc, fid: existing_form)
+    monkeypatch.setattr(gforms_client, 'create_service', lambda: service)
+    monkeypatch.setattr(gforms_client, 'get_form', lambda svc, fid: existing_form)
     monkeypatch.setattr(
-        gforms_api, 'list_responses',
+        gforms_client, 'list_responses',
         lambda svc, fid: [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}])  # 15:05 JST
 
     sync_called = MagicMock()
-    monkeypatch.setattr(gforms_api, 'sync_questions', sync_called)
+    monkeypatch.setattr(gforms_client, 'sync_questions', sync_called)
 
     args = argparse.Namespace(update=True, allow_kind_replace=True)
     with pytest.raises(SystemExit):
@@ -773,14 +773,14 @@ def test_setup_form_proceeds_when_no_unfetched_response(tmp_path, monkeypatch):
     existing_form = {**_existing_scale_form(), 'formId': 'form1',
                      'responderUri': 'https://example.invalid/viewform'}
     service = MagicMock()
-    monkeypatch.setattr(gforms_api, 'create_service', lambda: service)
-    monkeypatch.setattr(gforms_api, 'get_form', lambda svc, fid: existing_form)
+    monkeypatch.setattr(gforms_client, 'create_service', lambda: service)
+    monkeypatch.setattr(gforms_client, 'get_form', lambda svc, fid: existing_form)
     monkeypatch.setattr(
-        gforms_api, 'list_responses',
+        gforms_client, 'list_responses',
         lambda svc, fid: [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}])  # 15:05 JST
 
     sync_called = MagicMock(return_value={'replies': []})
-    monkeypatch.setattr(gforms_api, 'sync_questions', sync_called)
+    monkeypatch.setattr(gforms_client, 'sync_questions', sync_called)
 
     args = argparse.Namespace(update=True, allow_kind_replace=True)
     emotion.cmd_setup_form(args)

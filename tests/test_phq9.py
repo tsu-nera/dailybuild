@@ -15,7 +15,7 @@ import pytest
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR / 'src'))
 
-from lib.clients import gforms_api
+from lib.clients import gforms_client
 
 
 def _load_script():
@@ -176,7 +176,7 @@ def test_build_dataframe_raises_on_missing_question_in_form():
         phq9.build_dataframe(broken_form, [], CONF)
 
 
-# --- gforms_api.sync_questions: 同型9問が出現順で対応付けられること ---
+# --- gforms_client.sync_questions: 同型9問が出現順で対応付けられること ---
 
 def test_sync_questions_matches_nine_radio_questions_by_order():
     """PHQ-9 は9問すべて同型（ラジオ）。sync_questions はタイトルを見ず
@@ -197,7 +197,7 @@ def test_sync_questions_matches_nine_radio_questions_by_order():
     existing_form = {'items': existing_items}
 
     choices = ['選択肢A', '選択肢B', '選択肢C', '選択肢D']
-    items = [gforms_api.radio_item(f'新設問{i}', choices) for i in range(1, 10)]
+    items = [gforms_client.radio_item(f'新設問{i}', choices) for i in range(1, 10)]
 
     from unittest.mock import MagicMock
     service = MagicMock()
@@ -211,7 +211,7 @@ def test_sync_questions_matches_nine_radio_questions_by_order():
 
     service.forms.return_value.batchUpdate.side_effect = fake_batch_update
 
-    gforms_api.sync_questions(service, 'form1', items, existing_form=existing_form)
+    gforms_client.sync_questions(service, 'form1', items, existing_form=existing_form)
 
     updates = [r['updateItem'] for r in captured['body']['requests'] if 'updateItem' in r]
     assert len(updates) == 9

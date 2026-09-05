@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-from lib.clients import googlehealth_api as gh
+from lib.clients import googlehealth_client as gh
 from lib.clients import googlehealth_intraday as intraday
 
 START = dt.date(2026, 8, 30)

@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
 import yaml
-from lib.clients import gforms_api
+from lib.clients import gforms_client
 from lib.utils import csv_utils
 from lib.utils.private_data import ensure_dir, require_private_path
 
@@ -76,12 +76,12 @@ def build_items(conf):
     """
     q = conf['questions']
     choices = [c['label'] for c in conf['choices']]
-    items = [gforms_api.radio_item(q[key], choices, required=True)
+    items = [gforms_client.radio_item(q[key], choices, required=True)
              for key in QUESTION_KEYS]
 
     if impairment_enabled(conf):
         imp = conf['impairment']
-        items.append(gforms_api.radio_item(imp['question'], imp['choices'],
+        items.append(gforms_client.radio_item(imp['question'], imp['choices'],
                                            required=False))
     return items
 
@@ -90,27 +90,27 @@ def cmd_setup_form(args):
     conf = load_def()
     items = build_items(conf)
 
-    service = gforms_api.create_service()
+    service = gforms_client.create_service()
 
     if conf.get('form_id'):
         if not args.update:
             print(f"フォームは作成済み: {conf['form_id']}")
             print('選択肢や質問文を yaml に合わせ直すなら --update')
             return
-        existing_form = gforms_api.get_form(service, conf['form_id'])
-        gforms_api.sync_questions(service, conf['form_id'], items,
+        existing_form = gforms_client.get_form(service, conf['form_id'])
+        gforms_client.sync_questions(service, conf['form_id'], items,
                                   existing_form=existing_form)
         print('フォームを yaml に合わせて更新した')
-        form = gforms_api.get_form(service, conf['form_id'])
+        form = gforms_client.get_form(service, conf['form_id'])
     else:
-        form = gforms_api.create_form(service, conf['form_title'],
+        form = gforms_client.create_form(service, conf['form_title'],
                                       document_title=conf['form_title'])
         print(f"フォーム作成: {form['formId']}")
-        gforms_api.sync_questions(service, form['formId'], items)
+        gforms_client.sync_questions(service, form['formId'], items)
         save_form_id(form['formId'])
-        form = gforms_api.get_form(service, form['formId'])
+        form = gforms_client.get_form(service, form['formId'])
 
-    print(f"質問: {list(gforms_api.question_id_by_title(form))}")
+    print(f"質問: {list(gforms_client.question_id_by_title(form))}")
     print(f"回答用URL: {responder_uri(form)}")
     print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
 
@@ -120,8 +120,8 @@ def cmd_url(args):
     conf = load_def()
     if not conf.get('form_id'):
         raise SystemExit(f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
-    service = gforms_api.create_service(interactive=not args.non_interactive)
-    form = gforms_api.get_form(service, conf['form_id'])
+    service = gforms_client.create_service(interactive=not args.non_interactive)
+    form = gforms_client.get_form(service, conf['form_id'])
     print(responder_uri(form))
 
 
@@ -133,7 +133,7 @@ def build_dataframe(form, responses, conf):
     と同じ原則）。機能障害の設問（採点対象外）は impairment 列に生の
     ラベルで残す。
     """
-    by_title = gforms_api.question_id_by_title(form)
+    by_title = gforms_client.question_id_by_title(form)
     q = conf['questions']
     has_impairment = impairment_enabled(conf)
     imp_title = conf['impairment']['question'] if has_impairment else None
@@ -155,7 +155,7 @@ def build_dataframe(form, responses, conf):
         row = {'timestamp': res.get('lastSubmittedTime') or res.get('createTime')}
         item_scores = []
         for key in QUESTION_KEYS:
-            vals = gforms_api.answer_values(res, by_title[q[key]])
+            vals = gforms_client.answer_values(res, by_title[q[key]])
             label = vals[0] if vals else None
             score = score_by_label.get(label) if label is not None else None
             if label is not None and score is None:
@@ -167,7 +167,7 @@ def build_dataframe(form, responses, conf):
                         if all(s is not None for s in item_scores) else pd.NA)
 
         if has_impairment:
-            imp_vals = gforms_api.answer_values(res, by_title[imp_title])
+            imp_vals = gforms_client.answer_values(res, by_title[imp_title])
             row['impairment'] = imp_vals[0] if imp_vals else pd.NA
 
         rows.append(row)
@@ -199,11 +199,11 @@ def cmd_fetch(args):
         raise ValueError(
             f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
 
-    service = gforms_api.create_service(interactive=not args.non_interactive)
-    form = gforms_api.get_form(service, conf['form_id'])
+    service = gforms_client.create_service(interactive=not args.non_interactive)
+    form = gforms_client.get_form(service, conf['form_id'])
 
     print(f"回答取得中: {conf['form_id']}", file=sys.stderr)
-    responses = gforms_api.list_responses(service, conf['form_id'])
+    responses = gforms_client.list_responses(service, conf['form_id'])
     print(f"取得: {len(responses)}件", file=sys.stderr)
 
     # 週1回の質問紙なので大半の日は0件が正常。0件をエラーにしない

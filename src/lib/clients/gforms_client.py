@@ -38,7 +38,7 @@ class GoogleFormsError(RuntimeError):
 
 
 def authorize(interactive: bool = True) -> Credentials:
-    """認証済み Credentials を返す（googlehealth_api.authorize と同じ流儀）"""
+    """認証済み Credentials を返す（googlehealth_client.authorize と同じ流儀）"""
     creds = None
     if TOKEN_FILE.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)

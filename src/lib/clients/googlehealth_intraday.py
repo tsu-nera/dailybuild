@@ -3,9 +3,9 @@
 """
 Google Health intraday 型 -> data/fitbit/*_intraday.csv（Issue #76）
 
-googlehealth_api.py から分割（ファイルサイズ hook の 500行上限対応）。
+googlehealth_client.py から分割（ファイルサイズ hook の 500行上限対応）。
 daily-* 型と違い intraday は `list` の `filter` クエリで期間を絞る
-（`googlehealth_api.list_filtered_points` 参照）。`_get` はそちら経由で
+（`googlehealth_client.list_filtered_points` 参照）。`_get` はそちら経由で
 呼ばれるため、ここで直接 monkeypatch する必要はない。
 
 civilTime の扱いは googlehealth_daily.py と共通（`_civil_time_str` を
@@ -14,9 +14,9 @@ civilTime の扱いは googlehealth_daily.py と共通（`_civil_time_str` を
 
 import datetime as dt
 
-from . import googlehealth_api as api
+from . import googlehealth_client as api
 from . import googlehealth_daily as daily
-from .googlehealth_api import _num
+from .googlehealth_client import _num
 
 
 def _civil_minute_key(civil: dict) -> str:

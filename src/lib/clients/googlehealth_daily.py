@@ -3,9 +3,9 @@
 """
 Google Health daily-* 型 -> data/fitbit/*.csv
 
-googlehealth_api.py から分割（Issue #78。ファイルサイズ hook の 500行上限対応）。
-`_get`/`_post` 等の共通プリミティブはテストが `googlehealth_api.<name>` を
-直接 monkeypatch する前提だが、それらは core（googlehealth_api.py）に定義が
+googlehealth_client.py から分割（Issue #78。ファイルサイズ hook の 500行上限対応）。
+`_get`/`_post` 等の共通プリミティブはテストが `googlehealth_client.<name>` を
+直接 monkeypatch する前提だが、それらは core（googlehealth_client.py）に定義が
 残っているため、ここで static import した `_daily_rows` 等の呼び出し経路
 自体はテストの monkeypatch に影響されない（関数の定義場所が呼び出し先の
 名前解決を決めるため、呼び出し元がどのモジュールかは関係ない）。
@@ -13,9 +13,9 @@ googlehealth_api.py から分割（Issue #78。ファイルサイズ hook の 50
 
 import datetime as dt
 
-from . import googlehealth_api as api
+from . import googlehealth_client as api
 from . import googlehealth_sleep as sleep_mod
-from .googlehealth_api import _daily_rows, _num, _rollup_by_date, _to_date
+from .googlehealth_client import _daily_rows, _num, _rollup_by_date, _to_date
 
 
 # =============================================================================
