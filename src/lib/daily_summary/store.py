@@ -16,9 +16,9 @@ BASE_DIR = Path(__file__).resolve().parents[3]
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
 CSV_FILE = require_private_path(BASE_DIR / 'data' / 'daily_summary.csv')
 
-COLUMNS = ['date', 'answered_at', 'source', 'mind_score', 'body_score',
-          'sleep_score', 'comment']
-SCORE_COLUMNS = ['mind_score', 'body_score', 'sleep_score']
+COLUMNS = ['date', 'updated_at', 'source', 'mind_score', 'body_score',
+          'head_score', 'sleep_score', 'comment']
+SCORE_COLUMNS = ['mind_score', 'body_score', 'head_score', 'sleep_score']
 
 
 def load_entries() -> pd.DataFrame:

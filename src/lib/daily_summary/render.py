@@ -18,7 +18,7 @@ def _day_label(d) -> str:
 
 
 def render_scores(df: pd.DataFrame) -> str:
-    """日付 × mind/body/sleep のスコア表。欠測は '-'"""
+    """日付 × mind/body/head/sleep のスコア表。欠測は '-'"""
     if df.empty:
         return '（この期間に記録がありません）'
 
@@ -29,6 +29,7 @@ def render_scores(df: pd.DataFrame) -> str:
         '日': [_day_label(d) for d in df['date']],
         '気分': [fmt(v) for v in df['mind_score']],
         '身体': [fmt(v) for v in df['body_score']],
+        '頭': [fmt(v) for v in df['head_score']],
         '睡眠': [fmt(v) for v in df['sleep_score']],
         '出所': list(df['source']),
     })
