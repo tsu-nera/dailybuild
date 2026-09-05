@@ -14,7 +14,9 @@ import pytest
 from lib.toggl.push import (
     Interval, build_payload, is_entries_csv_stale, push_intervals, select_pending,
 )
+from lib.toggl import client as toggl_client
 from lib.toggl import sources as toggl_sources
+from lib.toggl import store as toggl_store
 from lib import exercise_source
 
 JST = ZoneInfo('Asia/Tokyo')
@@ -473,3 +475,128 @@ def test_build_payload_truncates_subsecond():
     assert payload['start'] == '2026-08-25T19:09:17+09:00'
     assert payload['stop'] == '2026-08-25T19:21:01+09:00'
     assert payload['duration'] == 704
+
+
+# --- push が作成分を time_entries.csv に書く（Issue #130） ---
+
+def _patch_push_targets(monkeypatch, tmp_path):
+    """push_intervals の実書き込み経路を監視できるよう台帳・CSVをtmpに逃す"""
+    ledger_path = tmp_path / 'pushed.csv'
+    csv_path = tmp_path / 'time_entries.csv'
+    monkeypatch.setattr('lib.toggl.push.LEDGER_FILE', ledger_path)
+    monkeypatch.setattr(toggl_store, 'CSV_FILE', csv_path)
+    return ledger_path, csv_path
+
+
+def _fake_created_entry(entry_id: int, start_iso: str, stop_iso: str, project_id: int) -> dict:
+    return {
+        'id': entry_id,
+        'workspace_id': 1,
+        'project_id': project_id,
+        'start': start_iso,
+        'stop': stop_iso,
+        'duration': 3600,
+        'description': '睡眠',
+        'tags': ['auto'],
+    }
+
+
+def test_push_writes_created_entries_to_csv(tmp_path, monkeypatch):
+    ledger_path, csv_path = _patch_push_targets(monkeypatch, tmp_path)
+
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+
+    monkeypatch.setattr(toggl_client, 'fetch_me', lambda token: {'default_workspace_id': 1})
+    monkeypatch.setattr(toggl_client, 'fetch_projects', lambda token, ws: {222: 'Sleep'})
+    monkeypatch.setattr(
+        toggl_client, 'create_time_entry',
+        lambda token, ws, payload: _fake_created_entry(
+            999, '2026-08-20T22:00:00+09:00', '2026-08-21T06:00:00+09:00', 222),
+    )
+
+    result = push_intervals(
+        intervals=intervals, ledger_df=_ledger_df([]), entries_df=None,
+        max_writes=10, dry_run=False, api_token='dummy-token',
+        out=__import__('io').StringIO(),
+    )
+
+    assert result['pushed'] == 1
+    assert ledger_path.exists()
+    assert csv_path.exists()
+    df_csv = pd.read_csv(csv_path)
+    assert df_csv['id'].astype(str).tolist() == ['999']
+    assert df_csv['start'].tolist() == ['2026-08-20 22:00:00']
+
+
+def test_push_dry_run_does_not_write_csv(tmp_path, monkeypatch):
+    _ledger_path, csv_path = _patch_push_targets(monkeypatch, tmp_path)
+
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+
+    # dry_run では API を呼ばないはず。呼ばれたら失敗させて検出する
+    monkeypatch.setattr(toggl_client, 'fetch_me',
+                         lambda token: (_ for _ in ()).throw(AssertionError('called in dry_run')))
+    monkeypatch.setattr(toggl_client, 'create_time_entry',
+                         lambda token, ws, payload: (_ for _ in ()).throw(
+                             AssertionError('called in dry_run')))
+
+    result = push_intervals(
+        intervals=intervals, ledger_df=_ledger_df([]), entries_df=None,
+        max_writes=10, dry_run=True, api_token=None,
+        out=__import__('io').StringIO(),
+    )
+
+    assert result['pushed'] == 0
+    assert not csv_path.exists()
+
+
+def test_push_created_entry_reappears_as_pending_after_deletion_detected(tmp_path, monkeypatch):
+    """1(pushがCSVへ書く)を入れたあとも、削除検出(select_pending)が生きていること
+
+    push で書いた行が、次の fetch で API レスポンスに無くなり
+    store.drop_stale_rows_in_window で消えたあと、select_pending が
+    再び pending を返すことを確認する。
+    """
+    _ledger_path, csv_path = _patch_push_targets(monkeypatch, tmp_path)
+
+    intervals = [_interval('100', '2026-08-20T22:00:00', '2026-08-21T06:00:00')]
+
+    monkeypatch.setattr(toggl_client, 'fetch_me', lambda token: {'default_workspace_id': 1})
+    monkeypatch.setattr(toggl_client, 'fetch_projects', lambda token, ws: {222: 'Sleep'})
+    monkeypatch.setattr(
+        toggl_client, 'create_time_entry',
+        lambda token, ws, payload: _fake_created_entry(
+            999, '2026-08-20T22:00:00+09:00', '2026-08-21T06:00:00+09:00', 222),
+    )
+
+    push_intervals(
+        intervals=intervals, ledger_df=_ledger_df([]), entries_df=None,
+        max_writes=10, dry_run=False, api_token='dummy-token',
+        out=__import__('io').StringIO(),
+    )
+    ledger_df = pd.read_csv(csv_path.parent / 'pushed.csv',
+                            dtype={'source_id': str, 'toggl_entry_id': str})
+
+    # 次の fetch がこの窓を取り直したが、Toggl 側で手動削除されていた
+    # （API レスポンスに id=999 が無い）
+    df_new = pd.DataFrame(columns=toggl_store.CSV_COLUMNS)
+    df_new.loc[0] = {
+        'id': 1, 'start': '2026-08-19 08:00:00', 'stop': '2026-08-19 09:00:00',
+        'duration_sec': 3600, 'description': 'unrelated', 'project_id': None,
+        'project_name': '', 'workspace_id': 1, 'tags': '',
+    }
+    removed = toggl_store.drop_stale_rows_in_window(
+        df_new, window=(dt.date(2026, 8, 20), dt.date(2026, 8, 21)))
+    assert removed == 1
+
+    entries_df = pd.read_csv(csv_path, usecols=['id', 'start'], dtype={'id': str}, parse_dates=['start'])
+    # pushed_at には push_intervals 実行時刻(実時間)が記録されるので、
+    # fetched_at はそれより確実に後にする
+    fetched_at = dt.datetime.now(JST) + dt.timedelta(days=1)
+    pending, skipped = select_pending(
+        intervals, ledger_df, entries_df, check_deleted=True,
+        fetch_window=(dt.date(2026, 8, 20), dt.date(2026, 8, 21)),
+        fetched_at=fetched_at,
+    )
+    assert pending == intervals
+    assert skipped == 0
