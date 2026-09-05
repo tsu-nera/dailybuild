@@ -425,3 +425,35 @@ def test_replace_csv_period_no_warning_when_all_dates_covered(tmp_path: Path, ca
 
     captured = capsys.readouterr()
     assert '既存行を残した' not in captured.out
+
+
+def test_replace_csv_period_preserves_row_order_of_untouched_dates(tmp_path: Path):
+    """同着キーが多くても、置換対象外の行の順序が保たれること
+
+    pandas 既定の quicksort は不安定で、1日あたり約80行が同じ dateOfSleep を持つ
+    sleep_levels.csv では7日窓の置換のたびに全期間の行順が組み替わり、内容が
+    同一でも git が毎日10MBを丸ごと積んでいた
+    """
+    csv_path = tmp_path / "sleep_levels.csv"
+    # seq がその日の中での元の並びを識別する
+    old_rows = [
+        {"dateOfSleep": f"2026-01-{day:02d}", "seq": seq, "level": "deep"}
+        for day in range(1, 31)
+        for seq in range(80)
+    ]
+    df_old = pd.DataFrame(old_rows)
+    df_old.to_csv(csv_path, index=False)
+
+    # 直近1日だけを取り直して置換する（日次取得の縮小版）
+    df_new = pd.DataFrame([
+        {"dateOfSleep": "2026-01-30", "seq": seq, "level": "light"} for seq in range(80)
+    ])
+
+    df_merged = replace_csv_period(
+        df_new, csv_path, "dateOfSleep", "2026-01-30", "2026-01-30",
+        sort_by=["dateOfSleep"],
+    )
+
+    untouched_before = df_old[df_old["dateOfSleep"] != "2026-01-30"].reset_index(drop=True)
+    untouched_after = df_merged[df_merged["dateOfSleep"] != "2026-01-30"].reset_index(drop=True)
+    pd.testing.assert_frame_equal(untouched_before, untouched_after)
