@@ -351,6 +351,104 @@ def test_nutrition_matches_existing_csv(creds):
     assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
 
 
+# =============================================================================
+# intraday 5種（Issue #76）
+#
+# 既存の _compare は日付キー前提（1日1行）だが intraday は1分ごとに複数行
+# あるため、datetime キーで突き合わせる専用ヘルパーを使う。共通するキーだけを
+# 比較し、片側にしか無いキーは比較対象外にする（Google と既存CSVの点集合が
+# 完全に一致するとは限らないため。特に spo2/hrv は intraday の元となる
+# データ自体がどちらかにしか無い点を持ちうる）。
+# =============================================================================
+
+def _compare_intraday(rows: list[dict], old: dict[str, dict], key: str,
+                      columns: list[str], tolerance: float = 0.001):
+    """intraday の行リストと既存CSVを datetime（または date）キーで突き合わせる"""
+    mismatches = []
+    compared = 0
+    for row in rows:
+        ref = old.get(row[key])
+        if ref is None:
+            continue
+        for col in columns:
+            got, want = row.get(col), ref.get(col)
+            if want in (None, '') or got is None:
+                continue
+            compared += 1
+            if abs(float(got) - float(want)) > tolerance:
+                mismatches.append(f"{row[key]} {col}: Google={got} CSV={want}")
+    return compared, mismatches
+
+
+def test_steps_intraday_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['steps_intraday'](creds, start, end)
+    assert rows, 'steps_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('steps_intraday', key='datetime')
+    compared, mismatches = _compare_intraday(rows, old, 'datetime', ['steps'])
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_spo2_intraday_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['spo2_intraday'](creds, start, end)
+    assert rows, 'spo2_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('spo2_intraday', key='datetime')
+    compared, mismatches = _compare_intraday(rows, old, 'datetime', ['spo2'], tolerance=0.051)
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_hrv_intraday_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['hrv_intraday'](creds, start, end)
+    assert rows, 'hrv_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('hrv_intraday', key='datetime')
+    compared, mismatches = _compare_intraday(rows, old, 'datetime', ['rmssd'])
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_br_intraday_matches_existing_csv(creds):
+    end = dt.date.today() - dt.timedelta(days=1)
+    start = max(end - dt.timedelta(days=1), COMPARE_FROM)
+    rows = gh.FETCHERS['br_intraday'](creds, start, end)
+    assert rows, 'br_intraday: Google から1件も取得できていない'
+
+    old = _load_csv('br_intraday', key='date')
+    columns = ['br_full_sleep', 'br_deep', 'br_light', 'br_rem']
+    compared, mismatches = _compare_intraday(rows, old, 'date', columns, tolerance=0.051)
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
+def test_heart_rate_intraday_matches_existing_csv(creds):
+    """1日分は約8分かかるため、直近1時間だけの窓で比較する"""
+    now = dt.datetime.now()
+    end_date = now.date()
+    start_date = (now - dt.timedelta(hours=1)).date()
+    if start_date < COMPARE_FROM:
+        pytest.skip('COMPARE_FROM より前になる時間帯')
+
+    rows = gh.FETCHERS['heart_rate_intraday'](creds, start_date, end_date)
+    assert rows, 'heart_rate_intraday: Google から1件も取得できていない'
+
+    one_hour_ago = (now - dt.timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+    rows = [r for r in rows if r['datetime'] >= one_hour_ago]
+
+    old = _load_csv('heart_rate_intraday', key='datetime')
+    compared, mismatches = _compare_intraday(rows, old, 'datetime', ['heart_rate'])
+    assert compared > 0, '比較対象が1件も無い'
+    assert not mismatches, f'{len(mismatches)}件の不一致: {mismatches[:5]}'
+
+
 NUTRITION_LOGS_COMPARE_FROM = dt.date(2025, 12, 12)
 NUTRITION_LOGS_COMPARE_TO = dt.date(2026, 2, 1)
 

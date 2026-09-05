@@ -182,7 +182,7 @@ stdout）。
 | 読むタイミング | ドキュメント |
 |---|---|
 | `scripts/toggl.py` の push / start / stop を変更するとき | [docs/toggl.md](docs/toggl.md) — 冪等性判定の条件を外すと Toggl に二重投入する |
-| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。`pytest -m net` も回す |
+| `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。intraday の steps は4系統同居で素の合算は3.6倍。`pytest -m net` も回す |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
 | `emotion.py` / `phq9.py` / `bowel.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
