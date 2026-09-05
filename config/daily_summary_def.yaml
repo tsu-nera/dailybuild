@@ -19,14 +19,15 @@ grid_title: 今日はどうだった？
 questions:
   mind:    気分
   body:    身体の軽さ
+  head:    頭の軽さ
   sleep:   昨夜の眠り
-  comment: 今日あったこと
+  comment: コメント
 
 # グリッドの行タイトル（questions のキー）の並び順。
 # **この並びが questionId の対応付けそのもの（出現順=FIFO）。並び替えたり
 # 削除したりすると既存回答の questionId が別の行に付け替わる（詳細は
 # docs/forms.md）。行を足すのは末尾に追加するだけでよい**
-grid_rows: [mind, body, sleep]
+grid_rows: [mind, body, head, sleep]
 
 # グリッドの行ごとの必須/任意。grid_rows と同じキーで指定する。
 # 全行必須にすると毎回すべて答える必要が生じ、記録コストが上がるため
@@ -34,6 +35,7 @@ grid_rows: [mind, body, sleep]
 grid_required:
   mind: true
   body: false
+  head: false
   sleep: false
 
 # グリッドの列（1〜5）。全行共通で、向きは全行「高=良好」（グリッドの列見出しが
