@@ -228,7 +228,7 @@ questionId は一度削除すると復元できないため、`--allow-kind-repl
 - レポート・可視化への反映、`mind_score` との統合はスコープ外（Issue #100）。
   データが数点しか無いうちは意味がない
 
-## 日次記録
+## 日次記録（朝・夜）
 
 `data/manual.csv`（Google Sheets 手動入力）の一次入力5列（`mind_score` /
 `body_score` / `sleep_score` / `comment`、`head_score` は新規）を Google Form
@@ -237,17 +237,30 @@ questionId は一度削除すると復元できないため、`--allow-kind-repl
 `manual.csv` にアーカイブとして凍結してある。主キーは `date`（回答日）で、
 気分記録の `timestamp` とは構成概念が違うため統合していない（背景は #33）。
 
+Issue #157 で朝・夜の2フォームに分割し、旧スクリプト名（一日のまとめの意）を
+`daily_morning` へ改名した（実体が朝の記録だったため）。1ファイルにマージ
+しない・`scripts/daily.py` を朝夜で2本に割らない理由は Issue 本文を参照。
+
+- **朝は暦日のまま、夜は 5:00 境界。** 朝の date を暦日にするのは
+  `data/wearable/sleep.csv` の `dateOfSleep`（起床日）と向きを揃えるため
+  （2026年の主睡眠266件中、05:00 より前の起床が22日/8.3%あり、境界を当てると
+  そこがずれる）。夜は逆に 5:00 境界（00:00-04:59 の回答は前日）で、夜更かしの
+  チェックアウトが翌日に付かないようにする。実装は
+  `src/lib/daily/store.py` の `response_date(ts, day_start_hour)`（朝は
+  `day_start_hour=0` で補正なし、夜は `5`）
+- **満足感・達成感（夜）を `data/activity.csv` の楽しさ／重要さと混ぜない。**
+  前者は1日1点の粗い常時チャネル（Beck の Mastery/Pleasure）、後者は
+  1時間枠ごとの手書きスパースな高解像度チャネルで母集団が違う
 - **グリッド行の中間挿入で questionId の FIFO 付け替えが実際に起きた**
-  （2026-09-05）。気分記録・PHQ-9 と同じ「同型が並ぶ item は出現順対応」の
-  制約が `mind/body/head/sleep` の4行グリッドにもそのまま効く。このときは
-  回答が0件だったため実害は無かったが、以後 `grid_rows` の並びは変えず、
-  行を足すなら必ず**末尾に追加**する
+  （2026-09-05、朝フォーム）。気分記録・PHQ-9 と同じ「同型が並ぶ item は
+  出現順対応」の制約がグリッドにもそのまま効く。以後 `grid_rows` の並びは
+  変えず、行を足すなら必ず**末尾に追加**する
 - **グリッド行構成（版）の記録位置が気分記録と違う。** 気分記録・PHQ-9 の
   版記録は `setup-form` 側（`update_vocab_history` 呼び出し）にあるが、
-  日次記録は `cmd_fetch`（`scripts/daily_summary.py`）の中で
-  `_grid_row_titles(form)` を取って記録している。フォーム定義を触るときは
-  この違いを踏まえて版履歴（`data/daily_summary_grid_history.csv`）の
-  更新箇所を探すこと
+  日次記録は `cmd_fetch`（`scripts/daily.py`）の中で `_grid_row_titles(form)`
+  を取って記録している。フォーム定義を触るときはこの違いを踏まえて版履歴
+  （`data/daily_morning_grid_history.csv` / `data/daily_evening_grid_history.csv`）
+  の更新箇所を探すこと
 - **訂正は同じ日に再送信する。** 同一 `date` の複数回答は `updated_at`
   （API の `lastSubmittedTime`）の大小で最後を採る。**API の返却順は
   時刻順とは限らない**（実測で逆順が返ったことがある）ため、
@@ -256,9 +269,23 @@ questionId は一度削除すると復元できないため、`--allow-kind-repl
   `drop_duplicates(keep='last')` している）
 - **`fetch` のマージは行ごと置換。** セル単位マージ
   （`preserve_existing_on_nan=True`）にすると、`comment` を空で送った回答が
-  来たときに旧行の `comment` が残り、`source=form` の行なのに `comment` だけ
-  `sheet` 由来という壊れた行ができる。気分記録・排便記録・PHQ-9 とは逆に、
-  ここは既定の行ごと置換（`preserve_existing_on_nan=False`）のまま使う
-- `source` 列で `sheet`（移行分）/ `form`（Form 回答分）を明示的に持つ。
+  来たときに旧行の `comment` が残り、朝なら `source=form` の行なのに
+  `comment` だけ `sheet` 由来という壊れた行ができる。気分記録・排便記録・
+  PHQ-9 とは逆に、ここは既定の行ごと置換（`preserve_existing_on_nan=False`）
+  のまま使う
+- 朝は `source` 列で `sheet`（移行分）/ `form`（Form 回答分）を明示的に持つ。
   移行分は `updated_at` が空、`head_score` が全欠測（`manual.csv` に頭の記録
-  が無かったため）になる
+  が無かったため）になる。**夜に `source` 列は無い**（sheet 由来の履歴が
+  存在しないため）
+- 夜フォームの `form_id` は merge 後に対話で `evening setup-form` を実行して
+  埋める。空のうちは `scripts/daily.py evening fetch` は「未作成のため
+  スキップ」と stderr に出して正常終了する（`daily-routine.sh` を毎日
+  赤くしないため）
+- **Drive フォルダへの移動は `setup-form` の新規作成時のみ。** `forms.create`
+  は親を指定できずマイドライブ直下に作るため、作成後に
+  `src/lib/clients/gdrive_client.py` で `config/personal.yaml` の
+  `gdrive.folder_id` 配下へ移動する。`gforms_client.SCOPES` に drive
+  スコープは足さない（`config/gforms_token.json` は emotion/bowel/phq9 の
+  非対話 fetch と共用しており、スコープを増やすと再認可が要って壊れる）ため、
+  `gdrive_client.py` は独自トークン（`config/gdrive_token.json`、スコープ
+  `drive.file` のみ）を持つ

@@ -262,10 +262,10 @@ def test_bowel_unparseable_type_is_not_dropped_silently(data_root):
 
 # --- 日次記録（旧 manual.csv からの読み先差し替え、Issue #137） ---
 
-def _write_daily_summary(root, rows):
+def _write_daily_morning(root, rows):
     """rows: dict のリスト。欠けているキーは空欄で埋める
 
-    列は data/daily_summary.csv の実物と揃える
+    列は data/daily_morning.csv の実物と揃える
     （date, updated_at, source, mind_score, body_score, head_score,
     sleep_score, comment）。
     """
@@ -275,17 +275,32 @@ def _write_daily_summary(root, rows):
     lines = [','.join(cols)]
     for row in rows:
         lines.append(','.join(str(row.get(c, '')) for c in cols))
-    (root / 'data' / 'daily_summary.csv').write_text(
+    (root / 'data' / 'daily_morning.csv').write_text(
         '\n'.join(lines) + '\n', encoding='utf-8')
 
 
-def test_collect_metrics_reads_daily_summary_mind_body_sleep(data_root):
-    """移行済みの daily_summary.csv に対し、主観 mind/body/sleep が欠測にならない
+def _write_daily_evening(root, rows):
+    """rows: dict のリスト。欠けているキーは空欄で埋める
+
+    列は data/daily_evening.csv の実物と揃える（source が無い点が朝と違う）。
+    """
+    (root / 'data').mkdir(exist_ok=True)
+    cols = ['date', 'updated_at', 'mind_score', 'body_score', 'head_score',
+            'satisfaction', 'achievement', 'comment']
+    lines = [','.join(cols)]
+    for row in rows:
+        lines.append(','.join(str(row.get(c, '')) for c in cols))
+    (root / 'data' / 'daily_evening.csv').write_text(
+        '\n'.join(lines) + '\n', encoding='utf-8')
+
+
+def test_collect_metrics_reads_daily_morning_mind_body_sleep(data_root):
+    """移行済みの daily_morning.csv に対し、主観 mind/body/sleep が欠測にならない
 
     #137 の回帰: 差し替え前は data/manual.csv を読んでいたので、パスを
-    daily_summary.csv に変えただけで欠測に戻らないことを固定する。
+    daily_morning.csv に変えただけで欠測に戻らないことを固定する。
     """
-    _write_daily_summary(data_root, [
+    _write_daily_morning(data_root, [
         {'date': '2026-08-30', 'source': 'sheet', 'mind_score': 2,
          'body_score': 3, 'sleep_score': 4},
         {'date': '2026-09-05', 'source': 'sheet', 'mind_score': 4,
@@ -301,7 +316,7 @@ def test_collect_metrics_reads_daily_summary_mind_body_sleep(data_root):
 
 def test_collect_metrics_reads_mixed_sheet_and_form_source(data_root):
     """source 列が sheet/form 混在でも区別なく読める"""
-    _write_daily_summary(data_root, [
+    _write_daily_morning(data_root, [
         {'date': '2026-09-04', 'source': 'sheet', 'mind_score': 2,
          'body_score': 2, 'sleep_score': 2},
         {'date': '2026-09-05', 'source': 'form', 'mind_score': 5,
@@ -319,7 +334,7 @@ def test_collect_metrics_head_score_all_missing_is_not_an_error(data_root):
 
     manual.csv からの移行分（旧91行）は head_score を持たない。
     """
-    _write_daily_summary(data_root, [
+    _write_daily_morning(data_root, [
         {'date': '2026-09-05', 'source': 'sheet', 'mind_score': 3,
          'body_score': 3, 'sleep_score': 3},
     ])
@@ -330,8 +345,8 @@ def test_collect_metrics_head_score_all_missing_is_not_an_error(data_root):
     assert metrics['主観 head']['recent'] is None
 
 
-def test_collect_comment_reads_daily_summary(data_root):
-    _write_daily_summary(data_root, [
+def test_collect_comment_reads_daily_morning(data_root):
+    _write_daily_morning(data_root, [
         {'date': '2026-09-05', 'source': 'form', 'mind_score': 3,
          'comment': 'うつで11時起床'},
     ])
@@ -341,7 +356,7 @@ def test_collect_comment_reads_daily_summary(data_root):
 
 def test_state_series_head_all_missing_does_not_raise(data_root):
     """_state_series が head_score 全欠測でも例外を出さない（ストリーク判定側）"""
-    _write_daily_summary(data_root, [
+    _write_daily_morning(data_root, [
         {'date': '2026-09-05', 'source': 'sheet', 'mind_score': 1,
          'body_score': 1, 'sleep_score': 1},
     ])
@@ -416,12 +431,18 @@ def _seed_metrics_sources(root):
     _write_innerscan(root, [
         ('2026-09-01', 60.0, 16.0), ('2026-09-03', 61.0, 16.5),
     ])
-    _write_daily_summary(root, [
+    _write_daily_morning(root, [
         {'date': '2026-09-01', 'source': 'sheet', 'mind_score': 3,
          'body_score': 3, 'sleep_score': 3},
         # 2026-09-02 は主観の記録なし（欠測のまま）
         {'date': '2026-09-03', 'source': 'sheet', 'mind_score': 4,
          'body_score': 4, 'head_score': 4, 'sleep_score': 4},
+    ])
+    # 夜は 2026-09-02 だけ記録がある（朝は 09-02 が欠測なので、夜だけの日になる。
+    # 09-01/09-03 は朝だけの日）
+    _write_daily_evening(root, [
+        {'date': '2026-09-02', 'mind_score': 5, 'body_score': 5,
+         'head_score': 5, 'satisfaction': 4, 'achievement': 3},
     ])
 
 
@@ -497,3 +518,50 @@ def test_metrics_frame_matches_collect_metrics_today(metrics_root):
     assert today['body_score'] == metrics['主観 body']['today']
     assert today['head_score'] == metrics['主観 head']['today']
     assert today['sleep_score'] == metrics['主観 sleep']['today']
+
+
+# --- 夜の主観5指標（Issue #157: metrics_daily.csv / STATE.md への追加） ---
+
+def test_metrics_daily_csv_gains_five_evening_columns(metrics_root):
+    _seed_metrics_sources(metrics_root)
+    js.write_metrics_csv()
+
+    df = pd.read_csv(js.METRICS_FILE, index_col='date')
+    for col in ('mind_pm', 'body_pm', 'head_pm', 'satisfaction', 'achievement'):
+        assert col in df.columns
+
+
+def test_metrics_daily_csv_one_sided_day_is_empty_not_zero(metrics_root):
+    """朝だけ・夜だけ記録した日で、他方の列は 0 でなく空のまま"""
+    _seed_metrics_sources(metrics_root)
+    js.write_metrics_csv()
+
+    df = pd.read_csv(js.METRICS_FILE, index_col='date')
+    # 2026-09-02 は夜だけ記録がある -> 朝の mind_score は空
+    assert pd.isna(df.loc['2026-09-02', 'mind_score'])
+    assert df.loc['2026-09-02', 'mind_pm'] == 5
+    # 2026-09-03 は朝だけ記録がある -> 夜の mind_pm は空
+    assert df.loc['2026-09-03', 'mind_score'] == 4
+    assert pd.isna(df.loc['2026-09-03', 'mind_pm'])
+    assert 'mind_pm_mean' not in df.columns
+
+
+def test_metrics_daily_csv_still_readable_with_date_index_and_corr(metrics_root):
+    """5列追加後も pd.read_csv(index_col='date').corr() が例外なく動く（回帰）"""
+    _seed_metrics_sources(metrics_root)
+    js.write_metrics_csv()
+
+    df = pd.read_csv(js.METRICS_FILE, index_col='date')
+    corr = df.corr(numeric_only=True)
+    assert 'satisfaction' in corr.columns
+
+
+def test_collect_metrics_includes_evening_five_specs(metrics_root):
+    """collect_metrics()（STATE.md の現在値表）にも夜の5指標が増える（意図した仕様）"""
+    _seed_metrics_sources(metrics_root)
+
+    metrics = {m['label']: m for m in js.collect_metrics(dt.date(2026, 9, 2))}
+
+    assert metrics['主観 mind(夜)']['today'] == 5.0
+    assert metrics['満足感']['today'] == 4.0
+    assert metrics['達成感']['today'] == 3.0

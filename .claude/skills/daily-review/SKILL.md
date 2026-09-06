@@ -104,7 +104,7 @@ uv run python scripts/generate_mind_report_daily.py --days 14 --no-charts
 読み込む（`--no-fetch` の場合も含む）:
 
 ```bash
-uv run scripts/daily_summary.py show --days 7
+uv run scripts/daily.py morning show --days 7
 uv run scripts/emotion.py show --days 7
 ```
 
@@ -184,7 +184,7 @@ uv run python scripts/show_targets.py --interval weekly
 - 未達の目標があれば「今日のアドバイス」に残り日数で達成可能なアクションを盛り込む
 
 #### 日次記録（Daily Summary）
-対象は `daily_summary.py show` が出す気分・身体・頭・睡眠の4指標（1-5、高=良好）とコメント。すべて高=良好の向きに揃えてあるので、指標ごとの解釈方針を別途参照する必要はない。
+対象は `daily.py morning show` が出す気分・身体・頭・睡眠の4指標（1-5、高=良好）とコメント。すべて高=良好の向きに揃えてあるので、指標ごとの解釈方針を別途参照する必要はない。
 - 各指標のトレンドを確認する。`head_score`（頭の軽さ）は移行分が全欠測なので、直近の実測値が出てくるまでは他の3指標より短い期間しか評価できない
 - 主観スコアと客観指標（HRV・睡眠等）の一致・乖離を指摘する（例: HRV低下なのに主観スコアが高い）
 - **原則**: HRV/RHRは自律神経回復のみを測る計器。末梢・構造疲労、エネルギー利用能、睡眠*時間*不足は原理的に映らない。乖離時はまず各指標が測る構成概念を切り分け、身体疲労は主観を主計器とする

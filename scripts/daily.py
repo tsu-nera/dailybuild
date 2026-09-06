@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-日次記録（Google Form）
+日次記録（Google Form）— 朝・夜
 
-setup-form でフォームを生成し、fetch で回答を直接取得する。
-data/manual.csv（Google Sheets 手動入力）の一次入力5列をこのフォームへ
-移すための取得系（Issue #33 / #135）。本番フォームの作成・移行の実行は
-このスクリプトの範囲外（#136）。
+`daily.py <slot> <action>` の形（slot: morning/evening、action: fetch/show/
+setup-form。morning のみ migrate-manual も持つ）。朝夜は同じ尺度（1〜5・
+高=良好）を共有する1つの概念の半分ずつなので、スクリプトを2本に割らない
+（割ると片方だけ尺度や向きが動いたときに気づけない）。slot 固有の設定は
+src/lib/daily/store.py の SLOTS が持ち、fetch/show/setup-form の本体は共通。
+
+setup-form で fetch で回答を直接取得する。data/manual.csv（Google Sheets
+手動入力）の一次入力5列を朝フォームへ移すための取得系（Issue #33 / #135）
+だったが、Issue #157 で朝・夜の2フォームに分割した。
 """
 
 import argparse
@@ -19,41 +24,36 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
 import yaml
-from lib.clients import gforms_client
-from lib.daily_summary import render, store
+from lib.clients import gdrive_client, gforms_client
+from lib.daily import render, store
 from lib.utils import csv_utils
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
-DEF_FILE = BASE_DIR / 'config/daily_summary_def.yaml'
 MANUAL_FILE = require_private_path(BASE_DIR / 'data' / 'manual.csv')
-# show 側と同じパスを指すよう store から借りる
-OUT_FILE = store.CSV_FILE
-# グリッド行構成（並び順）の版履歴。仕組みは emotion.py の
-# GRID_HISTORY_FILE と同じ（update_vocab_history をそのまま流用）。
-# Issue #135 の Acceptance Criteria には無い追加（PR 本文に明記）。
-# 直近のグリッド行名変更（気分記録「頭の冴え」→「頭の軽さ」）が、行名の
-# 変更だけで過去データの意味が変わりうることを示したため、同じ事故を
-# ここでも先回りで防ぐ
-GRID_HISTORY_FILE = require_private_path(
-    BASE_DIR / 'data/daily_summary_grid_history.csv')
+
+DEF_FILES = {
+    'morning': BASE_DIR / 'config/daily_morning_def.yaml',
+    'evening': BASE_DIR / 'config/daily_evening_def.yaml',
+}
 
 TZ = 'Asia/Tokyo'
 
 
-def load_def():
-    with open(DEF_FILE) as f:
+def load_def(slot):
+    with open(DEF_FILES[slot]) as f:
         return yaml.safe_load(f)
 
 
-def save_form_id(form_id):
+def save_form_id(slot, form_id):
     """yaml のコメントを壊さないよう form_id の行だけ置換する"""
-    text = DEF_FILE.read_text()
+    def_file = DEF_FILES[slot]
+    text = def_file.read_text()
     new_text, n = re.subn(r'^form_id:.*$', f'form_id: {form_id}', text,
                           count=1, flags=re.MULTILINE)
     if n != 1:
-        raise ValueError(f'form_id の行が見つからない: {DEF_FILE}')
-    DEF_FILE.write_text(new_text)
+        raise ValueError(f'form_id の行が見つからない: {def_file}')
+    def_file.write_text(new_text)
 
 
 def responder_uri(form):
@@ -120,8 +120,36 @@ def update_vocab_history(revision_id, labels, path, now=None) -> bool:
     return True
 
 
+def _move_new_form_to_drive(form_id):
+    """新規作成したフォームを config/personal.yaml の gdrive.folder_id 配下へ移す
+
+    forms.create は親を指定できずマイドライブ直下に作る。移動に失敗しても
+    フォーム自体は作成済みなので form_id は失わせず、warning を出して続行する。
+    """
+    personal_file = BASE_DIR / 'config/personal.yaml'
+    if not personal_file.exists():
+        print(f'警告: {personal_file} が無い。Drive フォルダへの移動をスキップ',
+              file=sys.stderr)
+        return
+    with open(personal_file, encoding='utf-8') as f:
+        personal = yaml.safe_load(f) or {}
+    folder_id = (personal.get('gdrive') or {}).get('folder_id')
+    if not folder_id:
+        print('警告: config/personal.yaml に gdrive.folder_id が無い。'
+              'Drive フォルダへの移動をスキップ', file=sys.stderr)
+        return
+    try:
+        drive_service = gdrive_client.create_service()
+        gdrive_client.move_to_folder(drive_service, form_id, folder_id)
+        print(f'Drive フォルダへ移動した: {folder_id}', file=sys.stderr)
+    except Exception as e:
+        print(f'警告: Drive フォルダへの移動に失敗（フォームは作成済み）: {e}',
+              file=sys.stderr)
+
+
 def cmd_setup_form(args):
-    conf = load_def()
+    slot = args.slot
+    conf = load_def(slot)
     items = build_items(conf)
 
     service = gforms_client.create_service()
@@ -141,7 +169,9 @@ def cmd_setup_form(args):
                                       document_title=conf['form_title'])
         print(f"フォーム作成: {form['formId']}")
         gforms_client.sync_questions(service, form['formId'], items)
-        save_form_id(form['formId'])
+        save_form_id(slot, form['formId'])
+        # 新規作成時のみ Drive フォルダへの移動を試みる。--update では移動しない
+        _move_new_form_to_drive(form['formId'])
         form = gforms_client.get_form(service, form['formId'])
 
     print(f"質問: {list(gforms_client.question_id_by_title(form))}")
@@ -149,12 +179,16 @@ def cmd_setup_form(args):
     print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
 
 
-def build_dataframe(form, responses, conf):
+def build_dataframe(form, responses, conf, slot):
     """回答リストを CSV スキーマの DataFrame にする
 
     同一 date に複数回答があるときは最後（updated_at 昇順）のものだけを
     残す（date が主キーで、CSV に複数行を残さない）。
+
+    date の作り方は slot ごとに違う（store.SLOTS[slot]['day_start_hour']）。
+    朝は暦日のまま、夜は 5:00 境界（store.response_date() を参照）。
     """
+    slot_conf = store.SLOTS[slot]
     by_title = gforms_client.question_id_by_title(form)
     q = conf['questions']
     grid_rows = conf['grid_rows']
@@ -174,23 +208,27 @@ def build_dataframe(form, responses, conf):
         comment = gforms_client.answer_values(res, by_title[q['comment']])
         row = {
             'updated_at': res.get('lastSubmittedTime') or res.get('createTime'),
-            'source': 'form',
             'comment': comment[0] if comment and comment[0] else pd.NA,
         }
+        if slot_conf['has_source']:
+            row['source'] = 'form'
         row.update(grid_values)
         rows.append(row)
 
-    df = pd.DataFrame(rows, columns=['updated_at', 'source'] + grid_rows + ['comment'])
+    base_columns = (['updated_at'] + (['source'] if slot_conf['has_source'] else [])
+                    + grid_rows + ['comment'])
+    df = pd.DataFrame(rows, columns=base_columns)
     if df.empty:
         df = df.assign(date=pd.Series(dtype='object'))
-        df = df.rename(columns={k: f'{k}_score' for k in grid_rows})
-        return df[store.COLUMNS]
+        df = df.rename(columns=slot_conf['grid_column_map'])
+        return df[slot_conf['columns']]
 
     # API は RFC3339 の UTC を返す。他データと揃えて JST の naive にする
     ts = pd.to_datetime(df['updated_at'], format='ISO8601', utc=True)
     df['updated_at'] = ts.dt.tz_convert(TZ).dt.tz_localize(None).dt.floor('s')
-    # date = 回答日（設問は「今日」）。日境界の補正はしない
-    df['date'] = df['updated_at'].dt.date
+    day_start_hour = slot_conf['day_start_hour']
+    df['date'] = df['updated_at'].apply(
+        lambda t: store.response_date(t, day_start_hour))
     for key in grid_rows:
         df[key] = pd.to_numeric(df[key], errors='coerce').astype('Int64')
 
@@ -198,19 +236,29 @@ def build_dataframe(form, responses, conf):
     # date が主キーなので複数行を残さない
     df = df.sort_values('updated_at').drop_duplicates(subset=['date'], keep='last')
 
-    # スコアの列名を store.COLUMNS に合わせる（mind/body/head/sleep -> *_score）
-    df = df.rename(columns={k: f'{k}_score' for k in grid_rows})
-    columns = store.COLUMNS
+    # スコアの列名を CSV 列名に合わせる（grid_rows キー -> CSV 列名。
+    # f'{k}_score' の決め打ちにしない。夜の satisfaction/achievement には
+    # 接尾辞が無いため）
+    df = df.rename(columns=slot_conf['grid_column_map'])
+    columns = slot_conf['columns']
     return df.sort_values('date').reset_index(drop=True)[columns]
 
 
 def cmd_fetch(args, out=None):
     # show --update から呼ぶときは stdout を markdown 専用に保つため stderr を渡す
     out = out or sys.stdout
-    conf = load_def()
+    slot = args.slot
+    conf = load_def(slot)
+    out_file = store.SLOTS[slot]['csv_file']
+    grid_history_file = store.SLOTS[slot]['grid_history_file']
+
     if not conf.get('form_id'):
-        raise ValueError(
-            f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
+        # 夜フォームは merge 後に対話で作成する運用（Issue #157）。form_id が
+        # 空のうちに daily-routine.sh から毎日呼ばれても、失敗し続けて
+        # ステップが赤く出るのを避けるため正常終了する
+        print(f'{slot}: form_id が未設定のためスキップ（{DEF_FILES[slot]}。'
+              'setup-form で作成すること）', file=sys.stderr)
+        return
 
     service = gforms_client.create_service(interactive=not args.non_interactive)
     form = gforms_client.get_form(service, conf['form_id'])
@@ -219,10 +267,10 @@ def cmd_fetch(args, out=None):
     responses = gforms_client.list_responses(service, conf['form_id'])
     print(f"取得: {len(responses)}件", file=sys.stderr)
 
-    df = build_dataframe(form, responses, conf)
+    df = build_dataframe(form, responses, conf, slot)
 
     # 毎回全件を取り直すので、既存行があるのに0件は取得側の故障を疑う
-    if not responses and OUT_FILE.exists() and len(pd.read_csv(OUT_FILE)) > 0:
+    if not responses and out_file.exists() and len(pd.read_csv(out_file)) > 0:
         print('警告: 既存CSVに行があるのに回答が0件。'
               'フォームの差し替えかAPIの異常を疑うこと', file=sys.stderr)
 
@@ -234,11 +282,11 @@ def cmd_fetch(args, out=None):
     if grid_rows_titles is None:
         print('警告: フォームにグリッド質問がない。'
               'グリッド行構成の履歴を更新できない', file=sys.stderr)
-    elif update_vocab_history(revision_id, grid_rows_titles, GRID_HISTORY_FILE):
+    elif update_vocab_history(revision_id, grid_rows_titles, grid_history_file):
         print(f'グリッド行構成の履歴を追記: revision {revision_id} / '
               f'{len(grid_rows_titles)}行', file=sys.stderr)
 
-    ensure_dir(OUT_FILE.parent)
+    ensure_dir(out_file.parent)
     # preserve_existing_on_nan は既定の False のまま使う（行単位の置換）。
     # True（セル単位マージ）にすると、comment を空で送った回答が来たときに
     # 旧行の comment が生き残り、source=form の行なのに comment だけ移行時の
@@ -246,21 +294,24 @@ def cmd_fetch(args, out=None):
     # ある date は行ごと置換されるべき（migrate-manual の冪等性側で
     # source=form の行が上書きされないことは別途保証している）
     df = csv_utils.merge_csv_by_columns(
-        df, OUT_FILE,
+        df, out_file,
         key_columns=['date'],
         parse_dates=['date'],
         sort_by=['date'],
     )
-    df.to_csv(OUT_FILE, index=False)
-    print(f"保存完了: {OUT_FILE} ({len(df)}件)", file=out)
+    df.to_csv(out_file, index=False)
+    print(f"保存完了: {out_file} ({len(df)}件)", file=out)
     print(df.tail(), file=out)
 
 
 def cmd_migrate_manual(args):
-    """manual.csv の一次入力5列を daily_summary.csv へ移行する
+    """manual.csv の一次入力5列を daily_morning.csv へ移行する（morning 限定）
 
     実行は #136 が行うが、コードとガードはここで用意する（本 Issue の範囲）。
     """
+    out_file = store.SLOTS['morning']['csv_file']
+    columns = store.SLOTS['morning']['columns']
+
     manual = pd.read_csv(MANUAL_FILE, usecols=[
         'date', 'mind_score', 'body_score', 'sleep_score', 'comment'])
     total_rows = len(manual)
@@ -272,11 +323,11 @@ def cmd_migrate_manual(args):
     manual = manual[~all_missing]
 
     existing_dates = set()
-    if OUT_FILE.exists():
-        existing = pd.read_csv(OUT_FILE, usecols=['date'])
+    if out_file.exists():
+        existing = pd.read_csv(out_file, usecols=['date'])
         existing_dates = set(existing['date'].astype(str))
 
-    # 冪等性: 既に daily_summary.csv にある date は上書きしない
+    # 冪等性: 既に daily_morning.csv にある date は上書きしない
     # （特に source=form の行を manual.csv の sheet 由来で潰さない）
     to_migrate = manual[~manual['date'].astype(str).isin(existing_dates)].copy()
     skipped_existing = len(manual) - len(to_migrate)
@@ -297,46 +348,43 @@ def cmd_migrate_manual(args):
     to_migrate['updated_at'] = pd.NA  # Sheets は入力時刻を記録していない（復元不能）
     to_migrate['source'] = 'sheet'
     to_migrate['head_score'] = pd.NA  # manual.csv に頭の記録は無い（0で埋めない）
-    to_migrate = to_migrate[store.COLUMNS]
+    to_migrate = to_migrate[columns]
 
-    ensure_dir(OUT_FILE.parent)
-    if OUT_FILE.exists():
-        merged = pd.concat([pd.read_csv(OUT_FILE), to_migrate], ignore_index=True)
+    ensure_dir(out_file.parent)
+    if out_file.exists():
+        merged = pd.concat([pd.read_csv(out_file), to_migrate], ignore_index=True)
     else:
         merged = to_migrate
     merged = merged.sort_values('date').reset_index(drop=True)
-    merged.to_csv(OUT_FILE, index=False)
-    print(f"移行完了: {OUT_FILE} (+{len(to_migrate)}行, 計{len(merged)}行)",
+    merged.to_csv(out_file, index=False)
+    print(f"移行完了: {out_file} (+{len(to_migrate)}行, 計{len(merged)}行)",
           file=sys.stderr)
 
 
 def cmd_show(args):
+    slot = args.slot
     if args.update:
         # 取得ログは stderr に寄せ、stdout は markdown 専用に保つ
-        cmd_fetch(argparse.Namespace(non_interactive=False), out=sys.stderr)
+        cmd_fetch(argparse.Namespace(slot=slot, non_interactive=False), out=sys.stderr)
 
-    if not OUT_FILE.exists():
-        print(f'エラー: {OUT_FILE} が存在しません', file=sys.stderr)
-        sys.exit(1)
-
-    df_all = store.load_entries()
+    df_all = store.load_entries(slot)
 
     today = dt.date.today()
     start = today - dt.timedelta(days=args.days - 1)
     df = df_all[df_all['date'].dt.date >= start].reset_index(drop=True)
 
-    print(f'# 日次記録（{start:%Y-%m-%d} 〜 {today:%Y-%m-%d}）\n')
+    label = {'morning': '朝', 'evening': '夜'}[slot]
+    print(f'# 日次記録（{label}、{start:%Y-%m-%d} 〜 {today:%Y-%m-%d}）\n')
     print(f"記録 {len(df)}日分（{args.days}日中）\n")
 
     print('## スコア\n')
-    print(render.render_scores(df))
+    print(render.render_scores(df, slot))
     print('\n## コメント\n')
     print(render.render_comments(df))
 
 
-def main():
-    parser = argparse.ArgumentParser(description='日次記録（Google Form）')
-    sub = parser.add_subparsers(dest='command', required=True)
+def _add_action_subparsers(slot_parser, slot):
+    sub = slot_parser.add_subparsers(dest='action', required=True)
 
     p_setup = sub.add_parser('setup-form', help='フォームを生成する')
     p_setup.add_argument('--update', action='store_true',
@@ -348,18 +396,27 @@ def main():
                          help='トークンが無効ならブラウザを開かず落とす（cron 用）')
     p_fetch.set_defaults(func=cmd_fetch)
 
-    p_migrate = sub.add_parser('migrate-manual',
-                               help='manual.csv の一次入力5列を移行する')
-    p_migrate.add_argument('--dry-run', action='store_true',
-                           help='書き込まず対象件数だけ表示する')
-    p_migrate.set_defaults(func=cmd_migrate_manual)
-
     p_show = sub.add_parser('show', help='記録のサマリを markdown で表示する')
     p_show.add_argument('--days', type=int, default=7,
                         help='直近N日（既定 7）')
     p_show.add_argument('--update', action='store_true',
                         help='表示前に fetch で最新データを取得する')
     p_show.set_defaults(func=cmd_show)
+
+    if slot == 'morning':
+        p_migrate = sub.add_parser('migrate-manual',
+                                   help='manual.csv の一次入力5列を移行する')
+        p_migrate.add_argument('--dry-run', action='store_true',
+                               help='書き込まず対象件数だけ表示する')
+        p_migrate.set_defaults(func=cmd_migrate_manual)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='日次記録（朝・夜、Google Form）')
+    slot_sub = parser.add_subparsers(dest='slot', required=True)
+    for slot in ('morning', 'evening'):
+        slot_parser = slot_sub.add_parser(slot)
+        _add_action_subparsers(slot_parser, slot)
 
     args = parser.parse_args()
     args.func(args)

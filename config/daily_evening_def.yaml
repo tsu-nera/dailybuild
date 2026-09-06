@@ -1,0 +1,52 @@
+# 日次記録・夜（Google Form）の定義（Issue #157）
+#
+# フォームは scripts/daily.py evening setup-form がこの定義から生成する。
+# 朝（daily_morning_def.yaml）と対をなす新規フォーム。朝は「前夜の帰結」、
+# 夜は「一日の評価」を測るため分けている（背景は docs/forms.md）。
+
+# setup-form が新規作成時に書き戻す。空なら未作成（merge 後に対話で作成する）
+form_id:
+form_title: 夜の記録
+
+grid_title: 今日一日はどうだった？
+
+# 満足感・達成感は Beck の Mastery / Pleasure（『うつ病の認知療法』1979）。
+# 1日1点への集約で、原典の「どの行動の後か」を特定する用途は満たさない
+# （それは data/activity.csv の楽しさ／重要さの役割）。
+# **満足感／達成感を data/activity.csv の楽しさ／重要さと混ぜない。**
+# 前者は1日1点の粗い常時チャネル、後者は1時間枠ごとの手書きスパースな
+# 高解像度チャネルで母集団が違う。「重要さ」（事前の価値判断）と
+# 「達成感」（事後の感覚）も別物（詳細は docs/forms.md）。
+questions:
+  mind:         気分
+  body:         身体の軽さ
+  head:         頭の軽さ
+  satisfaction: 満足感
+  achievement:  達成感
+  comment:      コメント
+
+# グリッドの行タイトル（questions のキー）の並び順。
+# **この並びが questionId の対応付けそのもの（出現順=FIFO）。並び替えたり
+# 削除したりすると既存回答の questionId が別の行に付け替わる。
+# 行を足すのは末尾に追加するだけでよい**
+grid_rows: [mind, body, head, satisfaction, achievement]
+
+# mind だけ必須（記録コストを上げないため、朝と同じ方針）
+grid_required:
+  mind: true
+  body: false
+  head: false
+  satisfaction: false
+  achievement: false
+
+# グリッドの列（1〜5）。5行とも「高=良好」で揃える
+score:
+  low: 1
+  high: 5
+  low_label: 悪い
+  high_label: 良い
+
+# date は 5:00 境界（00:00-04:59 の回答は前日に帰属する）。朝と違い暦日の
+# ままにしないのは、夜更かしのチェックアウトが翌日に付かないようにするため
+# （data/activity.csv の帳票日と同じ切り方）。実装は
+# src/lib/daily/store.py の response_date()。
