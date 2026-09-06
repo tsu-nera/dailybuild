@@ -451,3 +451,20 @@ def answer_values(response: dict, question_id: str) -> list:
     if not answer:
         return []
     return [a['value'] for a in answer.get('textAnswers', {}).get('answers', [])]
+
+
+def update_form_info(service, form_id: str, title: str) -> dict:
+    """フォームの画面タイトルを差し替える
+
+    sync_questions とは別の batchUpdate にする。updateFormInfo は item に
+    触らないので questionId には影響しないが、質問の同期と混ぜると
+    「タイトルだけ直したいのに item も動いた」という切り分けができなくなる。
+
+    documentTitle（Drive 上のファイル名）はここで変えられない。create の
+    ときしか設定できず、後から updateFormInfo に載せると
+    「document_title is read-only in subsequent requests」で 400 になる。
+    改名したフォームは Drive 上の名前だけ旧称のまま残る。
+    """
+    return service.forms().batchUpdate(formId=form_id, body={'requests': [
+        {'updateFormInfo': {'info': {'title': title}, 'updateMask': 'title'}},
+    ]}).execute()
