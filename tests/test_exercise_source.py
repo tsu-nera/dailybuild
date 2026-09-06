@@ -25,7 +25,21 @@ def write_csv(tmp_path, monkeypatch, body):
     return csv_path
 
 
-def test_overlapping_sessions_drop_lower_priority_platform(tmp_path, monkeypatch):
+def test_overlapping_cycling_keeps_fitbit(tmp_path, monkeypatch):
+    # サイクリングは Fitbit 側が GPS・距離・平均心拍を持つので Fitbit を残す
+    write_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 06:40:00+09:00,2026-08-20 07:13:00+09:00,'
+        '1980,OUTDOOR_BIKE,野外サイクリング,FITBIT,300,8000,120\n'
+        '2222222222222222222,2026-08-20 06:45:00+09:00,2026-08-20 07:12:00+09:00,'
+        '1620,BIKING,サイクリング,HEALTH_CONNECT,280,,118\n'
+    ))
+    df = exercise_source.load_sessions()
+    assert list(df['id']) == ['1111111111111111111']
+
+
+def test_overlapping_strength_keeps_health_connect(tmp_path, monkeypatch):
+    # 筋トレは Hevy（HEALTH_CONNECT）を残す。Fitbit は停止し忘れると
+    # 黙って伸び続けるため、重なったら Fitbit 側を落とす
     write_csv(tmp_path, monkeypatch, (
         '1111111111111111111,2026-08-20 06:40:00+09:00,2026-08-20 07:13:00+09:00,'
         '1980,WEIGHTS,リフティング,FITBIT,300,,120\n'
@@ -33,7 +47,24 @@ def test_overlapping_sessions_drop_lower_priority_platform(tmp_path, monkeypatch
         '1620,STRENGTH_TRAINING,ウェイトトレーニング,HEALTH_CONNECT,280,,118\n'
     ))
     df = exercise_source.load_sessions()
-    assert list(df['id']) == ['1111111111111111111']
+    assert list(df['id']) == ['2222222222222222222']
+
+
+def test_forgotten_stop_on_fitbit_does_not_swallow_other_sessions(tmp_path, monkeypatch):
+    # Fitbit の停止し忘れ（実測: 2026-01-13 に 439分）は、重なった Hevy の
+    # セッションに負けて落ちる。さらに、その裏に入っているサイクリングを
+    # 巻き込んで消してはならない
+    write_csv(tmp_path, monkeypatch, (
+        '1111111111111111111,2026-08-20 14:38:00+09:00,2026-08-20 21:57:00+09:00,'
+        '26354,WEIGHTS,リフティング,FITBIT,924,,110\n'
+        '2222222222222222222,2026-08-20 14:39:00+09:00,2026-08-20 15:10:00+09:00,'
+        '1856,STRENGTH_TRAINING,筋力トレーニング,HEALTH_CONNECT,,,\n'
+        '3333333333333333333,2026-08-20 18:00:00+09:00,2026-08-20 18:40:00+09:00,'
+        '2400,OUTDOOR_BIKE,野外サイクリング,FITBIT,250,12000,128\n'
+    ))
+    df = exercise_source.load_sessions()
+    assert list(df['id']) == ['2222222222222222222', '3333333333333333333']
+    assert df['duration_min'].max() < 60
 
 
 def test_non_overlapping_sessions_are_both_kept_regardless_of_platform(tmp_path, monkeypatch):

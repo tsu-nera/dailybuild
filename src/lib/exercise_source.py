@@ -26,7 +26,20 @@ EXERCISE_CSV_FILE = require_private_path(REPO_ROOT / 'data' / 'googlehealth' / '
 
 # 重なりの解決にのみ使う優先度。重なっていないセッションは platform に
 # 関係なく残す（Fitbit を外したときに Health Connect 側で穴が埋まる）
+#
+# 既定は Fitbit 優先。サイクリングは Fitbit 側が GPS・距離・平均心拍を持ち、
+# Health Connect 側には無い。
 PLATFORM_PRIORITY = ('FITBIT', 'HEALTH_CONNECT')
+
+# 筋トレだけは Health Connect（Hevy）優先。Fitbit のエクササイズ記録は
+# 開始も停止も手動で、停止し忘れると黙って回り続ける（2026年実測で
+# 52本中3本、最長 439分＝実際は31分のセッション）。Hevy は Finish を
+# 押さないとワークアウトが保存されないので、押し忘れれば記録自体が
+# 残り、暴走した長さが混入しない。開始時刻も Hevy の記録と秒単位で
+# 一致する（2026-01-09 の Health Connect 連携開始以降、全セッション）。
+# 引き換えに calories と average_heart_rate は落ちる（HC 側は持たない）。
+STRENGTH_PLATFORM_PRIORITY = ('HEALTH_CONNECT', 'FITBIT')
+
 # この秒数を超えて重なったら同一セッションとみなす
 OVERLAP_THRESHOLD_SEC = 60
 
@@ -38,7 +51,8 @@ STRENGTH_TYPES = (
 
 
 def dedup_by_platform(rows: list[dict], priority=PLATFORM_PRIORITY,
-                       threshold_sec: int = OVERLAP_THRESHOLD_SEC) -> list[dict]:
+                       threshold_sec: int = OVERLAP_THRESHOLD_SEC,
+                       strength_priority=STRENGTH_PLATFORM_PRIORITY) -> list[dict]:
     """時間が重なるセッションを platform の優先順で1本に畳む
 
     同じ運動が Fitbit（Charge 6）と Health Connect（Google Fit / Hevy）の
@@ -46,10 +60,15 @@ def dedup_by_platform(rows: list[dict], priority=PLATFORM_PRIORITY,
     2本入るため、重なったら優先度の高い platform 側だけを残す。
     優先度は「重なりの解決」にのみ使う。重なっていないものは platform に
     関係なく残す（Fitbit を外したときに Health Connect 側で穴が埋まる）。
+
+    優先度は exercise_type で切り替わる。筋トレだけ Health Connect が
+    勝つ（理由は STRENGTH_PLATFORM_PRIORITY のコメント）。
     """
     def rank(row):
+        table = (strength_priority if row.get('exercise_type') in STRENGTH_TYPES
+                 else priority)
         platform = row.get('platform')
-        return priority.index(platform) if platform in priority else len(priority)
+        return table.index(platform) if platform in table else len(table)
 
     # 優先度が高い順に採用し、既に採ったものと重なるセッションを落とす
     kept: list[dict] = []

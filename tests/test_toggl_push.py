@@ -351,7 +351,8 @@ def test_exercise_skips_types_outside_categories(tmp_path, monkeypatch):
 
 
 def test_exercise_drops_lower_priority_platform_on_overlap(tmp_path, monkeypatch):
-    # 同じ筋トレが Fitbit と Health Connect(Hevy) の両方から届く
+    # 同じ筋トレが Fitbit と Health Connect(Hevy) の両方から届く。
+    # 筋トレは Hevy 側を残す（Fitbit は停止し忘れで伸びる）
     write_exercise_csv(tmp_path, monkeypatch, (
         '1111111111111111111,2026-08-20 06:40:00+09:00,2026-08-20 07:13:00+09:00,'
         '1980,WEIGHTS,リフティング,FITBIT\n'
@@ -361,7 +362,7 @@ def test_exercise_drops_lower_priority_platform_on_overlap(tmp_path, monkeypatch
     intervals = toggl_sources.googlehealth_exercise_intervals(
         dt.date(2026, 8, 20), dt.date(2026, 8, 20), EXERCISE_CONFIG, JST,
     )
-    assert [i.source_id for i in intervals] == ['1111111111111111111']
+    assert [i.source_id for i in intervals] == ['2222222222222222222']
 
 
 def test_exercise_keeps_non_overlapping_low_priority_platform(tmp_path, monkeypatch):
