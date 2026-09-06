@@ -1,0 +1,27 @@
+# 活動記録（Google Sheets）の定義
+#
+# BATD-R の Daily Monitoring（Form 1）に相当する記録。ただし原典の
+# 1時間刻み22行の帳票はそのまま移していない。経緯と原典との相違は
+# docs/batdr.md を読むこと。
+#
+# 記録は手入力。Toggl やセンサーからの自動投入はしない（活動の列挙を
+# 自動化すると、本人が「何をしたと認識しているか」が消える）。
+# timestamp は Apps Script（scripts/gas/activity_timestamp.gs）が
+# activity の入力時に自動で埋めるので、手では打たない。
+
+# Drive の dailybuild フォルダ配下。親フォルダは config/personal.yaml の
+# gdrive.folder_id
+sheet_id: 1KjZ1QG2__q9rtwP8QdUXmjtNs3oqSywDuCu6GyAJyf4
+worksheet: 記録
+
+# シートの列。この並びが CSV の列順でもある。
+# activity は自由記述のまま始める。固定語彙（プルダウン）にするのは
+# 活動の顔ぶれが見えてから（原典でいう第2週の終わり）。先に語彙を
+# 決めると、記録に現れない活動を想像で並べることになる
+columns: [timestamp, activity, enjoyment, importance, note]
+
+# enjoyment / importance は 0-10。シート側に同じ範囲の入力規則
+# （プルダウン）を設定してある。空欄は「未評定」であって 0 ではない
+score:
+  low: 0
+  high: 10

@@ -144,6 +144,8 @@ uv run scripts/bowel.py setup-form --update  # 選択肢・質問文を yaml に
 uv run scripts/daily_summary.py fetch  # 日次記録（気分・身体・頭・睡眠・コメント、Google Form回答）取得
 uv run scripts/daily_summary.py show   # 日次記録のサマリ（既定は直近7日）
 uv run scripts/daily_summary.py setup-form --update  # 質問文を yaml に合わせ直す
+uv run scripts/activity.py fetch     # 活動記録（Google Sheets）取得
+uv run scripts/activity.py show      # 活動記録のサマリ（既定は直近7日）
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
@@ -229,6 +231,48 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
+
+## Google Drive
+
+**このプロジェクトが Google 上に作るものは、すべて Drive の `dailybuild` フォルダ
+配下に置く**（`config/personal.yaml` の `gdrive.folder_id`）。Sheets・Forms に限らず、
+今後増える種類も同じ。マイドライブ直下に散らかさない。
+
+**Drive / Forms の作成 API は親を省略するとマイドライブ直下に作る。** 作成時は
+必ず `gdrive.folder_id` を親に指定すること。Forms API の `forms.create` には親の
+指定が無いので、**作成後に Drive API で移動する**（現状の4フォームは手動で移した）。
+
+**フォルダを移動しても `form_id` / スプレッドシート ID は変わらない。** 既存の
+フォームをこのフォルダへ移しても `config/*_def.yaml` の `form_id` はそのままで、
+fetch は影響を受けない。
+
+- **サービスアカウントはファイルを所有できない**（Drive の `storageQuota.limit` が 0）。
+  作成は本人の OAuth で行い、サービスアカウントには**編集者として共有**する。
+  Forms で `forms.create` が 500 になるのと同じ理由（[docs/forms.md](docs/forms.md)）
+- Drive のアクセス制御は ACL なので、ファイル ID や フォルダ ID を public repo に
+  書いても共有されない。**リンク共有を有効にしたファイルの ID は別**（それは
+  実質パスワードになる）
+- Google Forms の回答先スプレッドシートは作らない。回答は Forms API で直接読む
+
+### Apps Script
+
+シートに貼るスクリプトの正本は `scripts/gas/`。反映は clasp で行い、画面で直接
+編集しない（画面で直すとリポジトリ側が古いまま気づけなくなる）。
+
+```bash
+cd scripts/gas && clasp push   # .clasp.json の scriptId へ反映
+```
+
+- **`onEdit` は simple trigger なので、API 経由の書き込みでは発火しない。**
+  gspread や Sheets API で足した行には timestamp が入らない。機械が行を足す
+  設計にするなら、書き込み側で timestamp を入れること
+- `appsscript.json` の `timeZone` は既定が `America/New_York`。`new Date()` を
+  素で使うと9時間ずれる（`Asia/Tokyo` に直してある）
+- clasp は独自の OAuth クライアントを使い、トークンは `~/.clasprc.json`。
+  `config/gforms_token.json` とは無関係なのでフォーム取得に影響しない。
+  利用には https://script.google.com/home/usersettings の
+  「Google Apps Script API」が ON である必要がある（ユーザー単位の設定で、
+  API からは切り替えられない）
 
 ## 非公開データ
 

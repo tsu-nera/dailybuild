@@ -69,6 +69,7 @@ step "日次記録"       uv run scripts/daily_summary.py fetch --non-interactiv
 step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
 step "PHQ-9"         uv run python scripts/phq9.py fetch --non-interactive
 step "排便記録"       uv run python scripts/bowel.py fetch --non-interactive
+step "活動記録"       uv run python scripts/activity.py fetch
 step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される

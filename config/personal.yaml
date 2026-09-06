@@ -3,6 +3,13 @@ timezone: Asia/Tokyo           # Fitbit/Toggl CSVのnaive時刻はこのTZのロ
 birth_date: 1986-10-25        # age はシステム日付から都度算出（更新不要）
 # height_cm:                  # 将来用
 
+# Google Drive の dailybuild 用フォルダ（マイドライブ直下 `dailybuild`）。
+# スクリプトが作る Google Sheets と、手動記録の Google Forms の置き場。
+# リンク共有はしていないので、この ID を知っていても共有されない限り
+# アクセスはできない（Drive のアクセス制御は ACL で、ID の秘匿ではない）
+gdrive:
+  folder_id: 10V9Bijc4rIDfTPdV-SBYyAejBtSsGUFs
+
 hr_zones:
   max_hr_override:            # ランプテスト等の実測最大HR。設定時はTanaka推定より優先（空/null=Tanaka）
   resting_hr:
