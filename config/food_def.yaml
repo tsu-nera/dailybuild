@@ -1,0 +1,40 @@
+# 食事記録（Google Sheets）の定義
+#
+# #63: 栄養記録の入力手段を Google Sheets に決めた。以前は daily_report
+# スプレッドシートに相乗りしていたが、#137 で Sheets 経由の manual 取得が
+# 削除されて相乗り先が役目を終えたため、食事専用シートを新設した。
+
+# Drive の dailybuild フォルダ配下（config/personal.yaml の gdrive.folder_id）。
+# サービスアカウントに writer 共有済み
+sheet_id: 1lI_gXPz97yHTGKP4AANOF51prbRSq8TI4IpT4Qbluv4
+
+# 3タブの役割:
+#   food_master  スクリプトが書く。食品名の一覧（ドロップダウンの参照範囲）
+#   food_recipe  人が書く。鍋の材料（recipe_name / cooked_total_g は
+#                最初の材料行にだけ書けばよい）
+#   food_log     人が書く。date / meal / name / grams
+tabs:
+  master: food_master
+  recipe: food_recipe
+  log: food_log
+
+columns:
+  master: [name]
+  recipe: [recipe_name, cooked_total_g, name, grams]
+  log: [date, meal, name, grams, note]
+
+# food_master に流し込む候補の選び方（sync-sheet）。
+#
+# 成分表2,538件を全部流し込むとスマホのドロップダウンで実用的に絞り込めない
+# （issue #63 の論点3）。候補は「実際に使う見込みが高いもの」の和集合にする:
+#   - foods_master.csv の手動登録行（source != mext。冷凍食品など）
+#   - recipes.csv のレシピ名
+#   - entries.csv の使用実績上位 top_n 件
+#   - 下の seed_names（手書きの初期候補）
+#
+# 実績もレシピも無い立ち上げ期は候補が0件になりうる。その場合は
+# `sync-sheet --all` で成分表全件を流し込める（issue 論点1の実機検証用の
+# エスケープハッチで、既定では使わない）。
+candidates:
+  top_n: 50
+  seed_names: []
