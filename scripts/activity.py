@@ -13,6 +13,7 @@ CSV にする。1日 = 22枠（5am 開始・翌 5am まで）× 活動 / 楽し�
 
 import argparse
 import datetime as dt
+import importlib.util
 import re
 import sys
 from pathlib import Path
@@ -176,7 +177,7 @@ def build_dataframe(values: list[list[str]], conf: dict) -> pd.DataFrame:
 
 
 def col_letter(n: int) -> str:
-    """1始まりの列番号を A1 記法の列名にする（28列あるので AB まで出る）"""
+    """1始まりの列番号を A1 記法の列名にする"""
     name = ''
     while n:
         n, r = divmod(n - 1, 26)
@@ -191,12 +192,18 @@ def slot_window(date: dt.date, hour: int) -> tuple[dt.datetime, dt.datetime]:
     return begin, begin + dt.timedelta(hours=store.SLOT_HOURS[hour])
 
 
-def toggl_labels(date: dt.date) -> dict[int, str]:
+def entry_label(row) -> str:
+    """Toggl エントリの表示名。評定表のキーでもある"""
+    desc = '' if pd.isna(row['description']) else str(row['description']).strip()
+    label = str(row['project_name'])
+    return f'{label}: {desc}' if desc and desc != label else label
+
+
+def toggl_slots(date: dt.date) -> dict[int, str]:
     """その日の Toggl エントリを22枠に割り付ける
 
-    枠ごとに、重なりが最も長いエントリだけを採る。**下書きなので、複数の
-    活動が入る枠を無理に並べない**（本人が書き直す前提の材料であって、
-    記録そのものではない）。
+    枠ごとに、重なりが最も長いエントリだけを採る。1枠に複数の活動が入る
+    ことはあるが、原典の帳票が枠あたり1行なので、最長のものを代表にする。
     """
     df = toggl_store.load_entries()
     labels = {}
@@ -204,31 +211,80 @@ def toggl_labels(date: dt.date) -> dict[int, str]:
         begin, end = slot_window(date, hour)
         best, best_sec = None, 0
         for _, r in df.iterrows():
-            stop = r['stop']
-            if pd.isna(stop):
+            if pd.isna(r['stop']):
                 continue  # 計測中のエントリ
-            overlap = (min(stop, end) - max(r['start'], begin)).total_seconds()
+            overlap = (min(r['stop'], end) - max(r['start'], begin)).total_seconds()
             if overlap > best_sec:
                 best, best_sec = r, overlap
-        if best is None:
-            continue
-        desc = '' if pd.isna(best['description']) else str(best['description'])
-        label = best['project_name']
-        if desc and desc != label:
-            label = f'{label}: {desc}'
-        labels[hour] = label[:40]
+        if best is not None:
+            labels[hour] = entry_label(best)[:40]
     return labels
 
 
-def cmd_draft(args, out=None):
-    """その日の Toggl を参照列に書く（活動列には入れない）"""
+def load_ratings(conf) -> dict[str, dict]:
+    path = BASE_DIR / conf['ratings_file']
+    with open(path) as f:
+        return (yaml.safe_load(f) or {}).get('ratings') or {}
+
+
+def fetch_toggl(date: dt.date) -> None:
+    """canonical な Toggl 取得（scripts/toggl.py の run_fetch）をそのまま使う
+
+    ここで自前に取得を書くと save_fetch_window を落としがちで、push の
+    削除検出が壊れる。窓は date を含む2日ぶん（日跨ぎエントリを拾うため）。
+    """
+    spec = importlib.util.spec_from_file_location(
+        'toggl_script', BASE_DIR / 'scripts' / 'toggl.py')
+    toggl = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(toggl)
+    args = argparse.Namespace(
+        update=False, days=None,
+        start_date=(date - dt.timedelta(days=1)).isoformat(),
+        end_date=(date + dt.timedelta(days=1)).isoformat())
+    toggl.run_fetch(args, sys.stderr)
+
+
+def merge_day_rows(current, slots, ratings, width, off):
+    """1日ぶんのセルに Toggl の割り付けと評定を重ねる（シートに触らない純関数）
+
+    **手で書いたセルは上書きしない。** 記録の正本は本人の申告で、Toggl は
+    それを埋める材料でしかない。評定は「活動が入っていて評定が空の枠」に
+    入れるので、rate で後から表に足したぶんが再実行で既存の枠にも行き渡る。
+    """
+    rows, wrote, rated, unrated = [], 0, 0, set()
+    for i, (hour, _) in enumerate(store.SLOTS):
+        row = list(current[i]) if i < len(current) else []
+        row += [''] * (width - len(row))
+
+        label = slots.get(hour)
+        if label and not row[off['activity']].strip():
+            row[off['activity']] = label
+            wrote += 1
+
+        name = row[off['activity']].strip()
+        if name:
+            r = ratings.get(name) or ratings.get(name.split(':')[0].strip())
+            blank = not (row[off['enjoyment']].strip()
+                         or row[off['importance']].strip())
+            if r and blank:
+                row[off['enjoyment']] = str(r['enjoyment'])
+                row[off['importance']] = str(r['importance'])
+                rated += 1
+            elif not r and blank:
+                unrated.add(name)
+        rows.append(row)
+    return rows, wrote, rated, unrated
+
+
+def cmd_sync(args, out=None):
+    """Toggl を取得して、その日の空いているセルだけを埋める"""
     out = out or sys.stdout
     conf = load_def()
-    date = (dt.date.fromisoformat(args.date) if args.date
-            else dt.date.today())
+    date = dt.date.fromisoformat(args.date) if args.date else dt.date.today()
 
-    labels = toggl_labels(date)
-    if not labels:
+    fetch_toggl(date)
+    slots = toggl_slots(date)
+    if not slots:
         print(f'{date}: Toggl にエントリなし', file=out)
         return
 
@@ -241,12 +297,46 @@ def cmd_draft(args, out=None):
               file=sys.stderr)
         sys.exit(1)
 
-    n = len(conf['day_columns'])
+    day_cols = conf['day_columns']
+    n = len(day_cols)
     d = week_dates(key).index(date)
-    col = col_letter(1 + n * d + conf['day_columns'].index(conf['toggl_column']) + 1)
-    cells = [[labels.get(h, '')] for h, _ in store.SLOTS]
-    ws.update(cells, f'{col}3:{col}{2 + len(store.SLOTS)}')
-    print(f'{date}（{key} の{col}列）に {len(labels)}枠ぶん書いた', file=out)
+    first = 1 + n * d + 1  # 1始まりの列番号（A列が枠の見出し）
+    rng = f'{col_letter(first)}3:{col_letter(first + n - 1)}{2 + len(store.SLOTS)}'
+    current = ws.get(rng)
+
+    off = {k: day_cols.index(v) for k, v in conf['record_columns'].items()}
+    rows, wrote, rated, unrated = merge_day_rows(
+        current, slots, load_ratings(conf), n, off)
+
+    ws.update(rows, rng)
+    print(f'{date}: 活動を{wrote}枠、評定を{rated}枠に入れた'
+          f'（Toggl が割り付いたのは{len(slots)}枠）', file=out)
+    if unrated:
+        print('\n評定が無い活動:', file=out)
+        for label in sorted(unrated):
+            print(f"  uv run scripts/activity.py rate '{label}' <楽しさ> <重要さ>",
+                  file=out)
+    blank = [store.slot_label(h) for h, _ in store.SLOTS if h not in slots]
+    if blank:
+        print(f'\nToggl が空の枠（自分で書く）: {" ".join(blank)}', file=out)
+
+
+def cmd_rate(args, out=None):
+    """評定表に活動を1件足す"""
+    out = out or sys.stdout
+    conf = load_def()
+    path = BASE_DIR / conf['ratings_file']
+    text = path.read_text()
+    data = yaml.safe_load(text) or {}
+    ratings = data.get('ratings') or {}
+    ratings[args.activity] = {'enjoyment': args.enjoyment,
+                              'importance': args.importance}
+    head = text.split('ratings:')[0]
+    body = yaml.safe_dump({'ratings': ratings}, allow_unicode=True,
+                          sort_keys=True, default_flow_style=False)
+    path.write_text(head + body)
+    print(f'{args.activity}: 楽しさ {args.enjoyment} / '
+          f'重要さ {args.importance}', file=out)
 
 
 def open_sheet(conf):
@@ -375,10 +465,16 @@ def main():
         'setup-sheet', help='当週・翌週のタブを作る（既存には触れない）')
     p_setup.set_defaults(func=cmd_setup_sheet)
 
-    p_draft = sub.add_parser(
-        'draft', help='その日の Toggl をシートの参照列に書く（下書き）')
-    p_draft.add_argument('--date', help='対象日（既定は今日）')
-    p_draft.set_defaults(func=cmd_draft)
+    p_sync = sub.add_parser(
+        'sync', help='Toggl を取得して、その日の空いている枠を埋める')
+    p_sync.add_argument('--date', help='対象日（既定は今日）')
+    p_sync.set_defaults(func=cmd_sync)
+
+    p_rate = sub.add_parser('rate', help='活動の楽しさ・重要さを評定表に足す')
+    p_rate.add_argument('activity', help='活動名（Toggl の表示名）')
+    p_rate.add_argument('enjoyment', type=int, help='楽しさ 0-10')
+    p_rate.add_argument('importance', type=int, help='重要さ 0-10')
+    p_rate.set_defaults(func=cmd_rate)
 
     p_fetch = sub.add_parser('fetch', help='シートを読んで CSV に保存する')
     p_fetch.set_defaults(func=cmd_fetch)
