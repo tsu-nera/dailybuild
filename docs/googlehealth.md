@@ -304,10 +304,43 @@ discovery の全44フィールドに無い。夜間の温度を時系列で追�
 絶対値 `nightlyTemperatureCelsius` と `relativeNightlyStddev30dCelsius`（その夜のずれが
 有意かを判断する分母）を捨てている。**未対応。**
 
-### 未取得の型
+### 未取得の型（2026-09-06 に全型を実測）
 
-discovery の全型のうち、fetcher が持っていないもので実用があり得るのは
-`dailyHeartRateZones` / `electrocardiogram` / `irregularRhythmNotification` /
-`moods` / `symptoms` / `timeInHeartRateZone`。`vo2Max` 系は3型（`vo2Max` /
-`dailyVo2Max` / `runVo2Max`）あり、body レポートの「VO2 Max: 計測終了」表示と
-食い違う可能性がある（**未検証**）。
+**取れる（実データあり）**:
+
+| 型 | 中身 | 直近 |
+|---|---|---|
+| `daily-heart-rate-zones` | Fitbit 自身のゾーン境界（LIGHT 30-100 / MODERATE 101-127 …） | 当日 |
+| `time-in-heart-rate-zone` | 分刻みのゾーン滞在 | 当日 |
+| `active-energy-burned` | 分刻みの活動消費 | 当日 |
+| `activity-level` | 分刻みの活動レベル | 当日 |
+| `hydration-log` | 水分記録 | 2026-08-27 |
+| `altitude` / `height` / `swim-lengths-data` | | altitude は 2025-09 |
+
+`daily-heart-rate-zones` は注意。レポートは Karvonen 法（maxHR=181 / RHR=54）で
+境界を自前計算しており、**Fitbit の境界と別物**。同じ「Zone2」が2種類存在する。
+
+**403（現行スコープでは読めない）**: `electrocardiogram` /
+`irregular-rhythm-notification`。追加スコープの再認可が要る。
+
+**list 非対応**: `moods` / `symptoms` / `menstrual-period` / `ovulation-test` /
+`floors` は `List is not supported`。`floors` は reconcile で読めるが、
+**`moods` と `symptoms` は reconcile も dailyRollUp も 400** で取得経路が無い。
+気分データを Google 側から取ることはできない。
+
+### VO2 Max は3型とも 2025 年で停止（2026-09-06 実測）
+
+```
+daily-vo2-max  最新 2025-05-05  53.16  (estimated / VERY_GOOD)
+vo2-max        2点のみ  最新 2025-03-25  51.86
+run-vo2-max    2点のみ  最新 2025-03-25  47.17
+```
+
+`data/wearable/cardio_score.csv` の 2026-09-05 / 63 は **Fitbit 自身の Cardio
+Fitness Score** で、`63e9af0`（Fitbit 取得系の削除）で「計測終了」表示に切り替えた
+もの。矛盾ではない（当初これを不整合と疑ったが誤り）。
+
+ただし**両者の値は接続できない**。2025-03-25 では Google 51.86 と CSV 52.0 で
+一致するが、その後 Fitbit 側は60台へ上がり Google 側は 2025-05 で停止。
+仮に Google 側が再開しても10ポイントの段差を挟む。**Google Health で VO2 Max を
+再開する案は成立しない。**
