@@ -64,23 +64,47 @@ def sheet_grid(key: str, conf: dict) -> list[list[str]]:
     return [header_date, header_col] + body
 
 
-def validation_requests(sheet_id: int, conf: dict) -> list[dict]:
-    """楽しさ / 重要さの列に 0-10 のプルダウンを張る"""
+def format_requests(sheet_id: int, conf: dict) -> list[dict]:
+    """見た目を整える。値には触らないので既存タブにも当てられる
+
+    列幅を決めるのは装飾ではない。活動名が長いと隣の評定列へはみ出して
+    表示され、どの列がどの日か読めなくなる（グリッドがずれて見える）。
+    """
     low, high = conf['score']['low'], conf['score']['high']
     values = [{'userEnteredValue': str(v)} for v in range(low, high + 1)]
     day_cols = conf['day_columns']
     n = len(day_cols)
     rated = [day_cols.index(conf['record_columns'][k])
              for k in ('enjoyment', 'importance')]
+    act = day_cols.index(conf['record_columns']['activity'])
+    total = 1 + n * DAYS_PER_TAB
     reqs = []
+
+    def width(start, end, px):
+        return {'updateDimensionProperties': {
+            'range': {'sheetId': sheet_id, 'dimension': 'COLUMNS',
+                      'startIndex': start, 'endIndex': end},
+            'properties': {'pixelSize': px}, 'fields': 'pixelSize'}}
+
+    reqs.append(width(0, 1, 64))
     for d in range(DAYS_PER_TAB):
+        base = 1 + n * d
+        reqs.append(width(base + act, base + act + 1, 190))
+        for i in rated:
+            reqs.append(width(base + i, base + i + 1, 56))
+        # 日付は3列にまたがって見せる。get_all_values は結合セルの値を
+        # 左上だけに返すので、パーサ側（先頭列から引く）と食い違わない
+        reqs.append({'mergeCells': {
+            'range': {'sheetId': sheet_id, 'startRowIndex': 0, 'endRowIndex': 1,
+                      'startColumnIndex': base, 'endColumnIndex': base + n},
+            'mergeType': 'MERGE_ALL'}})
         reqs.append({'setDataValidation': {
             'range': {
                 'sheetId': sheet_id,
                 'startRowIndex': 2,
                 'endRowIndex': 2 + len(store.SLOTS),
-                'startColumnIndex': 1 + n * d + min(rated),
-                'endColumnIndex': 1 + n * d + max(rated) + 1,
+                'startColumnIndex': base + min(rated),
+                'endColumnIndex': base + max(rated) + 1,
             },
             'rule': {
                 'condition': {'type': 'ONE_OF_LIST', 'values': values},
@@ -88,6 +112,21 @@ def validation_requests(sheet_id: int, conf: dict) -> list[dict]:
                 'strict': False,
             },
         }})
+
+    # はみ出しを止める。CLIP にしないと空セルの隣に長い活動名が流れ込む
+    reqs.append({'repeatCell': {
+        'range': {'sheetId': sheet_id, 'startRowIndex': 0,
+                  'startColumnIndex': 0, 'endColumnIndex': total},
+        'cell': {'userEnteredFormat': {'wrapStrategy': 'CLIP'}},
+        'fields': 'userEnteredFormat.wrapStrategy'}})
+    # 見出し2行を中央寄せ・太字にして、日付の区切りを目で追えるようにする
+    reqs.append({'repeatCell': {
+        'range': {'sheetId': sheet_id, 'startRowIndex': 0, 'endRowIndex': 2,
+                  'startColumnIndex': 0, 'endColumnIndex': total},
+        'cell': {'userEnteredFormat': {'horizontalAlignment': 'CENTER',
+                                       'textFormat': {'bold': True}}},
+        'fields': 'userEnteredFormat.horizontalAlignment,'
+                  'userEnteredFormat.textFormat.bold'}})
     reqs.append({'updateSheetProperties': {
         'properties': {'sheetId': sheet_id,
                        'gridProperties': {'frozenRowCount': 2,
@@ -352,25 +391,27 @@ def cmd_setup_sheet(args, out=None):
     out = out or sys.stdout
     conf = load_def()
     sheet = open_sheet(conf)
-    existing = {ws.title for ws in sheet.worksheets()}
+    existing = {ws.title: ws for ws in sheet.worksheets()}
 
     today = dt.date.today()
     keys = [week_key(today), week_key(today + dt.timedelta(days=7))]
     created = []
     for key in keys:
-        if key in existing:
-            continue
-        grid = sheet_grid(key, conf)
-        ws = sheet.add_worksheet(title=key, rows=len(grid),
-                                 cols=len(grid[1]))
-        ws.update(grid, 'A1')
-        sheet.batch_update({'requests': validation_requests(ws.id, conf)})
-        created.append(key)
+        ws = existing.get(key)
+        if ws is None:
+            grid = sheet_grid(key, conf)
+            ws = sheet.add_worksheet(title=key, rows=len(grid),
+                                     cols=len(grid[1]))
+            ws.update(grid, 'A1')
+            created.append(key)
+        # 書式は毎回当て直す。値には触れないので、既にある記録は壊れない
+        sheet.batch_update({'requests': format_requests(ws.id, conf)})
 
     if created:
         print(f"タブを作成: {', '.join(created)}", file=out)
     else:
-        print(f"タブは揃っている: {', '.join(keys)}", file=out)
+        print(f"タブは揃っている（書式は当て直した）: {', '.join(keys)}",
+              file=out)
 
 
 def cmd_fetch(args, out=None):
