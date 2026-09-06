@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
 import yaml
-from lib.activity import store
+from lib.activity import render, store
 from lib.clients import gsheets_client
 from lib.toggl import store as toggl_store
 from lib.utils import csv_utils
@@ -476,26 +476,9 @@ def cmd_show(args):
         return
 
     if args.list:
-        print('| 日付 | 枠 | 活動 | 楽しさ | 重要さ |')
-        print('|---|---|---|---:|---:|')
-        for _, r in df.iterrows():
-            e = '' if pd.isna(r['enjoyment']) else int(r['enjoyment'])
-            i = '' if pd.isna(r['importance']) else int(r['importance'])
-            print(f"| {r['date']:%m-%d} | {store.slot_label(r['hour'])} "
-                  f"| {r['activity']} | {e} | {i} |")
-        return
-
-    # 「楽しくも重要でもない時間の長さ」がこの帳票の主目的なので、件数ではなく
-    # 時間で出す（評定が付いた枠だけが分母。未評定を 0 として混ぜない）
-    print('| 日付 | 記録 | 楽しさ平均 | 重要さ平均 | 低評定(3以下)の時間 |')
-    print('|---|---:|---:|---:|---:|')
-    for date, g in df.groupby(df['date'].dt.date):
-        rated = g[g['enjoyment'].notna() & g['importance'].notna()]
-        low = rated[(rated['enjoyment'] <= 3) & (rated['importance'] <= 3)]
-        e = f"{g['enjoyment'].mean():.1f}" if g['enjoyment'].notna().any() else '-'
-        i = f"{g['importance'].mean():.1f}" if g['importance'].notna().any() else '-'
-        print(f"| {date:%m-%d} | {int(g['hours'].sum())}h | {e} | {i} "
-              f"| {int(low['hours'].sum())}h |")
+        print(render.render_entries(df))
+    else:
+        print(render.render_daily(df))
 
 
 def main():
