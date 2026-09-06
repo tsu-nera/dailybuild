@@ -1,5 +1,6 @@
 """merge_csv() / merge_csv_by_columns() / replace_csv_period() のテスト（Issue #43, #75, #103）"""
 
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -457,3 +458,41 @@ def test_replace_csv_period_preserves_row_order_of_untouched_dates(tmp_path: Pat
     untouched_before = df_old[df_old["dateOfSleep"] != "2026-01-30"].reset_index(drop=True)
     untouched_after = df_merged[df_merged["dateOfSleep"] != "2026-01-30"].reset_index(drop=True)
     pd.testing.assert_frame_equal(untouched_before, untouched_after)
+
+
+def test_merge_keeps_date_only_format_when_existing_csv_is_header_only(tmp_path):
+    """ヘッダだけの CSV へ最初の1行を足しても日付が "YYYY-MM-DD" のまま
+
+    空の df_old と concat すると datetime64 が object へ落ち、Timestamp が
+    str() で "2026-09-06 00:00:00" と書き出される。次の fetch で読み直せば
+    直るので気づきにくいが、同じ列がファイルの状態次第で別の書式になる。
+    """
+    csv_path = tmp_path / 'evening.csv'
+    csv_path.write_text('date,mind_score\n')
+
+    df_new = pd.DataFrame({'date': [date(2026, 9, 6)], 'mind_score': [2]})
+    merged = merge_csv_by_columns(
+        df_new, csv_path, key_columns=['date'],
+        parse_dates=['date'], sort_by=['date'])
+    merged.to_csv(csv_path, index=False)
+
+    assert csv_path.read_text().splitlines()[1].startswith('2026-09-06,')
+
+
+def test_merge_date_format_matches_between_empty_and_populated_existing_csv(tmp_path):
+    """ヘッダのみ / 既存行あり のどちらから足しても日付の書式が揃う"""
+    empty = tmp_path / 'empty.csv'
+    empty.write_text('date,v\n')
+    populated = tmp_path / 'populated.csv'
+    populated.write_text('date,v\n2026-01-03,9\n')
+
+    df_new = pd.DataFrame({'date': [date(2026, 9, 6)], 'v': [1]})
+    lines = []
+    for path in (empty, populated):
+        merged = merge_csv_by_columns(
+            df_new, path, key_columns=['date'],
+            parse_dates=['date'], sort_by=['date'])
+        merged.to_csv(path, index=False)
+        lines.append(path.read_text().splitlines()[-1].split(',')[0])
+
+    assert lines[0] == lines[1] == '2026-09-06'

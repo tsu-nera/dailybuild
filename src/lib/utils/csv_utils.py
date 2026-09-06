@@ -108,6 +108,16 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         df_merged = pd.concat([df_old, df_new_copy])
         df_merged = df_merged.drop_duplicates(subset=key_columns, keep='last')
 
+    # df_old が**ヘッダだけの空 CSV** だと concat が datetime64 を object へ
+    # 落とし、Timestamp が str() で展開されて "2026-09-06 00:00:00" と書かれる
+    # （非空の df_old なら datetime64 のままで日付だけになる）。同じ列が
+    # ファイルの状態次第で別の書式になるので、明示的に戻す。
+    # 次回の fetch で読み直せば直るため見つけにくい
+    if parse_dates:
+        for col in parse_dates:
+            if col in df_merged.columns:
+                df_merged[col] = pd.to_datetime(df_merged[col])
+
     if sort_by:
         # kind='stable' は必須。既定の quicksort は同着キーの行順を毎回組み替えるため、
         # 1日80行が同じ日付を持つ sleep_levels.csv では内容が同一でも全期間が並び替わり、
