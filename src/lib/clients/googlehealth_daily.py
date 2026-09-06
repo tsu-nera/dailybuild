@@ -62,15 +62,23 @@ def fetch_breathing_rate(creds, start_date: dt.date, end_date: dt.date) -> list[
 
 def fetch_temperature_skin(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
     """
-    列: date, nightly_relative, log_type
+    列: date, nightly_relative, log_type, nightly_celsius, relative_stddev_30d
 
     Fitbit の nightly_relative は「基礎体温からの差分」で、Google はその材料
     （実測値とベースライン）を別々に返すため差を取って再現する。log_type に
     相当するフィールドは Google 側に無い。
+
+    nightly_celsius（絶対値）と relative_stddev_30d は Fitbit 時代に無かった列で、
+    移行前の既存行では空になる。relative_stddev_30d は Google が返す
+    relativeNightlyStddev30dCelsius で、**その夜のずれが意味のある大きさかを
+    判断する分母**。これが無いと nightly_relative の 0.5 が大きいのか小さいのか
+    決められない。皮膚温は intraday が API に存在せず一晩1点しか取れないので
+    （docs/googlehealth.md「API 仕様の参照先」）、返ってくる情報は取りこぼさない。
     """
     def build(v):
         nightly = _num(v.get('nightlyTemperatureCelsius'))
         baseline = _num(v.get('baselineTemperatureCelsius'))
+        stddev = _num(v.get('relativeNightlyStddev30dCelsius'))
         if nightly is None or baseline is None:
             return None
         # +0.0 は負のゼロの正規化。round(-0.04, 1) は -0.0 を返し、
@@ -78,6 +86,8 @@ def fetch_temperature_skin(creds, start_date: dt.date, end_date: dt.date) -> lis
         return {
             'nightly_relative': round(nightly - baseline, 1) + 0.0,
             'log_type': None,
+            'nightly_celsius': round(nightly, 2) + 0.0,
+            'relative_stddev_30d': (round(stddev, 3) + 0.0) if stddev is not None else None,
         }
 
     return _daily_rows(

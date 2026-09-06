@@ -300,9 +300,20 @@ python3 -c "import json;d=json.load(open('/tmp/gh_disc.json'));print(json.dumps(
 **皮膚温の intraday は API に存在しない。** 単独の skin-temperature 型は
 discovery の全44フィールドに無い。夜間の温度を時系列で追う分析は設計できない。
 
-`temperature_skin.csv` は `nightly_relative`（nightly − baseline）だけを保存しており、
-絶対値 `nightlyTemperatureCelsius` と `relativeNightlyStddev30dCelsius`（その夜のずれが
-有意かを判断する分母）を捨てている。**未対応。**
+`temperature_skin.csv` は `nightly_celsius`（絶対値）と `relative_stddev_30d`
+（`relativeNightlyStddev30dCelsius`。その夜のずれが有意かを判断する分母）も保存する。
+`nightly_relative` の 0.5 が大きいのか小さいのかは、この分母が無いと決められない。
+
+`sleep.csv` は `manuallyEdited` と `recordingMethod` を保存する。アプリで睡眠ログを
+編集すると**区間は本人の入力になるがステージはセンサから再計算される**ため、
+入眠時刻は本人の申告と一致しない。この2列が無いと「機器の誤判定」と「本人が直した
+結果」を切り分けられない（2026-09-06 に実際に判別できず、生 dataPoint を直接
+叩く羽目になった）。
+
+**どちらも過去分は空欄**。列を足した以降に取得した行にしか入らない。
+`sleep` の遡り取得は Fitbit が過去の値を書き換えるため（memory
+`fitbit-values-change-retroactively`）別途の判断が要る。**空欄を「編集されていない」
+と読まない。**
 
 ### 未取得の型（2026-09-06 に全型を実測）
 
