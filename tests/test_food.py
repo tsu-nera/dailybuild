@@ -182,3 +182,13 @@ def test_シートが0件で既存entriesに行があれば故障扱いする(tm
     pd.DataFrame([{'date': '2026-09-01', 'name': '鶏むね肉'}]).to_csv(csv_path, index=False)
     empty, _ = store.resolve_log(pd.DataFrame(), pd.DataFrame())
     assert store.detect_empty_sheet_failure(empty, csv_path) is True
+
+
+def test_全件モードはレシピ名を含む():
+    df_master = pd.DataFrame([
+        {'name': '米', 'source': 'mext'},
+        {'name': '解凍餃子', 'source': 'manual'},
+    ])
+    names = store.all_names(df_master, pd.Series(['カレー']), seed_names=['納豆'])
+    # レシピ名が抜けると、鍋を登録してもドロップダウンから選べない
+    assert names == sorted(['米', '解凍餃子', 'カレー', '納豆'])
