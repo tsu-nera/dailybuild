@@ -1,13 +1,17 @@
-# 日次記録（Google Form）の定義
+# 日次記録・朝（Google Form）の定義
 #
-# フォームは scripts/daily_summary.py setup-form がこの定義から生成する。
+# フォームは scripts/daily.py morning setup-form がこの定義から生成する。
 # data/manual.csv（Google Sheets 手動入力）の一次入力5列をこのフォームへ
 # 移す（Issue #33 / #135）。移行元との対応は
 # mind/body/sleep/comment = mind_score/body_score/sleep_score/comment。
+#
+# Issue #157 で朝の記録スクリプトを改名（daily.py morning）。form_id は維持
+# （questionId が変わると過去回答が読めなくなるため）。画面タイトルのみ
+# 「日次記録」→「朝の記録」に変更（questionId は保たれる）。
 
 # setup-form が書き戻す。空なら未作成
 form_id: 1fqyTh4Yr7dsXdStt0L4228SfGrzuVa18jkZ1LAR4WeQ
-form_title: 日次記録
+form_title: 朝の記録
 
 # グリッド item 自体のタイトル（行ごとの questionId には無関係。画面の
 # 見出しとしてのみ使う）

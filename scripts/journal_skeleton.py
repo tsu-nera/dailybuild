@@ -71,7 +71,7 @@ DAILY_SOURCES = [
     ('breathing_rate', 'data/wearable/breathing_rate.csv', 'date'),
     ('activity', 'data/wearable/activity.csv', 'date'),
     ('temperature_skin', 'data/wearable/temperature_skin.csv', 'date'),
-    ('daily_summary', 'data/daily_summary.csv', 'date'),
+    ('daily_morning', 'data/daily_morning.csv', 'date'),
 ]
 
 # 疎なソース。測る日と測らない日があるのが常態なので、当日の不在を欠測として
@@ -156,7 +156,8 @@ _SOURCE_PATHS = {
     'rhr': ('data/wearable/heart_rate.csv', 'date'),
     'br': ('data/wearable/breathing_rate.csv', 'date'),
     'act': ('data/wearable/activity.csv', 'date'),
-    'man': ('data/daily_summary.csv', 'date'),
+    'man': ('data/daily_morning.csv', 'date'),
+    'eve': ('data/daily_evening.csv', 'date'),
     # body レポートと同じ healthplanet_innerscan.csv を使う。体組成は3経路
     # （Fitbit / HealthPlanet / Google Health）あるが統合しない方針なので、
     # レポートと違う経路を読むと骨組みとレポートで数字が食い違う
@@ -182,6 +183,13 @@ _METRIC_SPECS = [
     ('body_score', '主観 body', 'man', lambda d: d['body_score'], '', 1),
     ('head_score', '主観 head', 'man', lambda d: d['head_score'], '', 1),
     ('sleep_score', '主観 sleep', 'man', lambda d: d['sleep_score'], '', 1),
+    # 夜の主観5指標（Issue #157）。'man'（朝）とは別ソースキー。satisfaction/achievement
+    # に接尾辞を付けないのは、夜にしか存在せず朝夜の軸を持たない量だから
+    ('mind_pm', '主観 mind(夜)', 'eve', lambda d: d['mind_score'], '', 1),
+    ('body_pm', '主観 body(夜)', 'eve', lambda d: d['body_score'], '', 1),
+    ('head_pm', '主観 head(夜)', 'eve', lambda d: d['head_score'], '', 1),
+    ('satisfaction', '満足感', 'eve', lambda d: d['satisfaction'], '', 1),
+    ('achievement', '達成感', 'eve', lambda d: d['achievement'], '', 1),
 ]
 
 
@@ -213,6 +221,7 @@ def _load_sources(lo, hi) -> dict:
         'br': _read(*_SOURCE_PATHS['br']),
         'act': _read(*_SOURCE_PATHS['act']),
         'man': _read(*_SOURCE_PATHS['man']),
+        'eve': _read(*_SOURCE_PATHS['eve']),
         'body': _read(*_SOURCE_PATHS['body']),
         'tdf': tdf,
     }
@@ -359,7 +368,7 @@ def collect_bowel(target: dt.date) -> dict | None:
 
 
 def collect_comment(target: dt.date) -> str | None:
-    man = _read('data/daily_summary.csv', 'date')
+    man = _read('data/daily_morning.csv', 'date')
     if man.empty or 'comment' not in man.columns:
         return None
     row = man[man['_date'] == pd.Timestamp(target)]
@@ -578,7 +587,7 @@ STREAK_MAX_GAP = 2
 #   睡眠時間      daily-review スキルの観点「7-8時間が理想」
 #   睡眠効率      同「85%以上が目標」
 #   睡眠負債      config/targets.yaml（target 0 / direction zero）
-#   主観スコア    config/daily_summary_def.yaml の score.low〜high "1-5"
+#   主観スコア    config/daily_morning_def.yaml の score.low〜high "1-5"
 #                 （下限=1。床に張り付いている状態を出す。「2以下」のような
 #                 中間の線は引かない）
 #   陽性感情      daily-review スキルの観点「陽性がN日途切れているは書く価値がある」
@@ -618,7 +627,7 @@ PIPELINE_SOURCES = [
     ('Fitbit sleep', 'data/wearable/sleep.csv', 'dateOfSleep', 1, 'active', ''),
     ('Fitbit HRV', 'data/wearable/hrv.csv', 'date', 1, 'active', ''),
     ('Fitbit activity', 'data/wearable/activity.csv', 'date', 1, 'active', ''),
-    ('日次記録', 'data/daily_summary.csv', 'date', 2, 'active', ''),
+    ('日次記録（朝）', 'data/daily_morning.csv', 'date', 2, 'active', ''),
     ('体組成', 'data/healthplanet_innerscan.csv', 'date', 3, 'active',
      '測らない日があるのが常態'),
     ('気分記録', 'data/emotion.csv', 'date', 3, 'active', '断続で運用が成立している'),
@@ -700,7 +709,7 @@ def _state_series(target: dt.date) -> dict:
     add('sleep_hours', sleep, 'minutesAsleep', 1 / 60)
     add('sleep_efficiency', sleep, 'efficiency')
 
-    man = _read('data/daily_summary.csv', 'date')
+    man = _read('data/daily_morning.csv', 'date')
     add('mind', man, 'mind_score')
     add('body', man, 'body_score')
     add('head', man, 'head_score')

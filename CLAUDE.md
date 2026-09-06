@@ -141,9 +141,12 @@ uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml �
 uv run scripts/bowel.py fetch        # 排便記録（Bristol、Google Form回答）取得
 uv run scripts/bowel.py show         # 排便記録のサマリ（既定は直近7日）
 uv run scripts/bowel.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
-uv run scripts/daily_summary.py fetch  # 日次記録（気分・身体・頭・睡眠・コメント、Google Form回答）取得
-uv run scripts/daily_summary.py show   # 日次記録のサマリ（既定は直近7日）
-uv run scripts/daily_summary.py setup-form --update  # 質問文を yaml に合わせ直す
+uv run scripts/daily.py morning fetch  # 日次記録・朝（気分・身体・頭・睡眠・コメント、Google Form回答）取得
+uv run scripts/daily.py morning show   # 日次記録・朝のサマリ（既定は直近7日）
+uv run scripts/daily.py morning setup-form --update  # 質問文を yaml に合わせ直す
+uv run scripts/daily.py evening fetch  # 日次記録・夜（気分・身体・頭・満足感・達成感・コメント）取得
+uv run scripts/daily.py evening show   # 日次記録・夜のサマリ（既定は直近7日）
+uv run scripts/daily.py evening setup-form  # 夜フォーム初回作成（merge 後に対話で実行）
 uv run scripts/activity.py setup-sheet  # 活動記録の週タブを作る（当週・翌週、冪等）
 uv run scripts/activity.py sync      # Toggl を取得して当日の空き枠を埋める（既定は今日、--date で指定）
 uv run scripts/activity.py fetch     # 活動記録（Google Sheets）取得
@@ -196,7 +199,7 @@ stdout）。
 | `src/lib/exercise_source.py` / 運動系レポート（body / mind）を変更するとき | `data/googlehealth/exercise.csv` が正本。`data/wearable/activity_logs.csv`（Fitbit Web API 廃止で更新停止）はアーカイブとして凍結し統合しない（id空間・distance単位・activeZoneMinutes構造が別物）。platform 重複解決（優先度・閾値）は `exercise_source.py` のモジュール定数を push とレポートで共有する |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
-| `emotion.py` / `phq9.py` / `bowel.py` / `daily_summary.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
+| `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | `scripts/activity.py` / 行動活性化（BATD-R）を触るとき | [docs/batdr.md](docs/batdr.md) — 原典の帳票は1時間刻み22枠で最後だけ3時間。粒度を丸めると測りたい量が消える。issue 本文より原典が優先する |
