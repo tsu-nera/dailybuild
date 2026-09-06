@@ -192,3 +192,24 @@ def test_全件モードはレシピ名を含む():
     names = store.all_names(df_master, pd.Series(['カレー']), seed_names=['納豆'])
     # レシピ名が抜けると、鍋を登録してもドロップダウンから選べない
     assert names == sorted(['米', '解凍餃子', 'カレー', '納豆'])
+
+
+def test_日付はシリアルでも文字列でも同じ日になる():
+    # 「9/6」と入力するとシートは日付シリアルで保存し、表示だけ年を落とす。
+    # 表示文字列を読むと 0001-09-06 になっていた
+    parsed = store.parse_dates([46271, '2026-09-06', '', 'invalid'])
+    assert parsed[0] == pd.Timestamp('2026-09-06')
+    assert parsed[1] == pd.Timestamp('2026-09-06')
+    assert pd.isna(parsed[2])
+    assert pd.isna(parsed[3])
+
+
+def test_resolve_logは日付シリアルを解釈する():
+    df_foods = nutrient_frame([{'name': 'じゃがいも', 'energy_kcal': 51.0}])
+    df_log = pd.DataFrame([
+        {'date': 46271, 'meal': '', 'name': 'じゃがいも', 'grams': 240},
+    ])
+    entries, issues = store.resolve_log(df_log, df_foods)
+    assert issues['bad_date'] == 0
+    assert entries.iloc[0]['date'] == pd.Timestamp('2026-09-06')
+    assert entries.iloc[0]['energy_kcal'] == pytest.approx(122.4)

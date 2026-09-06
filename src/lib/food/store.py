@@ -71,9 +71,33 @@ def _sum_strict(df, columns):
     return pd.Series(out)
 
 
+# Sheets の日付シリアルの原点（1899-12-30）。Excel 互換で、1900年うるう年の
+# 誤りを引き継いでいるため 1899-12-31 ではない
+SHEET_EPOCH = pd.Timestamp('1899-12-30')
+
+
 def read_sheet(spreadsheet, title):
+    """シートを生値（UNFORMATTED_VALUE）で読む
+
+    表示文字列で読むと、セルが日付型のとき年が落ちる。「9/6」と入力すると
+    シートは日付シリアル 46271 として保存し表示だけ「9/6」にするので、
+    表示を読むと 0001-09-06 として解釈されてしまう（実際に起きた）。
+    """
     ws = spreadsheet.worksheet(title)
-    return pd.DataFrame(ws.get_all_records())
+    return pd.DataFrame(ws.get_all_records(value_render_option='UNFORMATTED_VALUE'))
+
+
+def parse_dates(values):
+    """日付列を Timestamp に直す。シリアル値と文字列が混在してよい
+
+    シートに日付として入れれば数値（シリアル）、`2026-09-06` を文字列として
+    入れれば文字列で届く。どちらも同じ日付になるようにする。
+    """
+    s = pd.Series(values)
+    serial = pd.to_numeric(s, errors='coerce')
+    out = pd.to_datetime(s.where(serial.isna()), errors='coerce')
+    from_serial = SHEET_EPOCH + pd.to_timedelta(serial, unit='D')
+    return out.fillna(from_serial).dt.normalize()
 
 
 def build_recipes(df_recipe, df_master):
@@ -125,7 +149,7 @@ def resolve_log(df_log, df_foods):
     df = df_log.copy()
     df = df[df['name'].astype(str).str.strip() != '']
     df['grams'] = pd.to_numeric(df['grams'], errors='coerce')
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df['date'] = parse_dates(df['date'])
 
     bad_date = df[df['date'].isna()]
     bad_grams = df[df['date'].notna() & df['grams'].isna()]
