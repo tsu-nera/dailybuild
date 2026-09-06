@@ -194,6 +194,7 @@ stdout）。
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily_summary.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
+| 行動活性化（BATD-R）のフォーム・スキルを作るとき | [docs/batdr.md](docs/batdr.md) — 原典の帳票は1時間刻み。issue 本文より原典が優先する |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
 
 ## Report Generation
