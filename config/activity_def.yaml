@@ -1,27 +1,38 @@
 # 活動記録（Google Sheets）の定義
 #
-# BATD-R の Daily Monitoring（Form 1）に相当する記録。ただし原典の
-# 1時間刻み22行の帳票はそのまま移していない。経緯と原典との相違は
-# docs/batdr.md を読むこと。
+# BATD-R の Daily Monitoring（Form 1）。原典の帳票をそのまま移してある。
+# 1日 = 22枠（5am 開始・翌 5am まで）× 活動 / 楽しさ / 重要さ。
+# 枠の刻みを粗くしない理由と、原典との相違は docs/batdr.md を読むこと。
 #
 # 記録は手入力。Toggl やセンサーからの自動投入はしない（活動の列挙を
 # 自動化すると、本人が「何をしたと認識しているか」が消える）。
-# timestamp は Apps Script（scripts/gas/activity_timestamp.gs）が
-# activity の入力時に自動で埋めるので、手では打たない。
 
 # Drive の dailybuild フォルダ配下。親フォルダは config/personal.yaml の
 # gdrive.folder_id
 sheet_id: 1KjZ1QG2__q9rtwP8QdUXmjtNs3oqSywDuCu6GyAJyf4
-worksheet: 記録
 
-# シートの列。この並びが CSV の列順でもある。
-# activity は自由記述のまま始める。固定語彙（プルダウン）にするのは
-# 活動の顔ぶれが見えてから（原典でいう第2週の終わり）。先に語彙を
-# 決めると、記録に現れない活動を想像で並べることになる
-columns: [timestamp, activity, enjoyment, importance, note]
+# タブは ISO week ごとに1枚（例: 2026-W37）。setup-sheet が当週と翌週を
+# 冪等に作る。fetch はこの正規表現に一致するタブだけを読むので、
+# 手で作ったメモのタブが混ざっても拾わない
+tab_pattern: '^\d{4}-W\d{2}$'
 
-# enjoyment / importance は 0-10。シート側に同じ範囲の入力規則
-# （プルダウン）を設定してある。空欄は「未評定」であって 0 ではない
+# シートの見出し。1行目が日付、2行目がこの列の繰り返し（日付ごと）。
+# A列は枠の見出しで time_header
+time_header: 時間
+day_columns: [活動, 楽しさ, 重要さ]
+
+# CSV に落とす列（シートの見出し → CSV の列名）。ここに無い列は読み捨てる
+record_columns:
+  activity: 活動
+  enjoyment: 楽しさ
+  importance: 重要さ
+
+# 楽しさ / 重要さは 0-10。シート側に同じ範囲のプルダウンを張る。
+# 空欄は「未評定」であって 0 ではない
 score:
   low: 0
   high: 10
+
+# 日次の総合気分（原典 Form 1 の末尾 0-10）はこのシートに置かない。
+# daily_summary の「気分」を代用する（二重入力を作らないため）。
+# 段階数が 1-5 で原典と異なる点は docs/batdr.md に相違として記録してある

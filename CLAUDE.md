@@ -144,8 +144,11 @@ uv run scripts/bowel.py setup-form --update  # 選択肢・質問文を yaml に
 uv run scripts/daily_summary.py fetch  # 日次記録（気分・身体・頭・睡眠・コメント、Google Form回答）取得
 uv run scripts/daily_summary.py show   # 日次記録のサマリ（既定は直近7日）
 uv run scripts/daily_summary.py setup-form --update  # 質問文を yaml に合わせ直す
+uv run scripts/activity.py setup-sheet  # 活動記録の週タブを作る（当週・翌週、冪等）
+uv run scripts/activity.py sync      # Toggl を取得して当日の空き枠を埋める（既定は今日、--date で指定）
 uv run scripts/activity.py fetch     # 活動記録（Google Sheets）取得
 uv run scripts/activity.py show      # 活動記録のサマリ（既定は直近7日）
+uv run scripts/activity.py show --list  # 枠ごとの一覧
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
@@ -196,7 +199,7 @@ stdout）。
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily_summary.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
-| 行動活性化（BATD-R）のフォーム・スキルを作るとき | [docs/batdr.md](docs/batdr.md) — 原典の帳票は1時間刻み。issue 本文より原典が優先する |
+| `scripts/activity.py` / 行動活性化（BATD-R）を触るとき | [docs/batdr.md](docs/batdr.md) — 原典の帳票は1時間刻み22枠で最後だけ3時間。粒度を丸めると測りたい量が消える。issue 本文より原典が優先する |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
 
 ## Report Generation
