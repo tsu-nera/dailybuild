@@ -23,6 +23,7 @@ import pandas as pd
 import yaml
 from lib.activity import store
 from lib.clients import gsheets_client
+from lib.toggl import store as toggl_store
 from lib.utils import csv_utils
 from lib.utils.private_data import ensure_dir
 
@@ -66,6 +67,10 @@ def validation_requests(sheet_id: int, conf: dict) -> list[dict]:
     """楽しさ / 重要さの列に 0-10 のプルダウンを張る"""
     low, high = conf['score']['low'], conf['score']['high']
     values = [{'userEnteredValue': str(v)} for v in range(low, high + 1)]
+    day_cols = conf['day_columns']
+    n = len(day_cols)
+    rated = [day_cols.index(conf['record_columns'][k])
+             for k in ('enjoyment', 'importance')]
     reqs = []
     for d in range(DAYS_PER_TAB):
         reqs.append({'setDataValidation': {
@@ -73,8 +78,8 @@ def validation_requests(sheet_id: int, conf: dict) -> list[dict]:
                 'sheetId': sheet_id,
                 'startRowIndex': 2,
                 'endRowIndex': 2 + len(store.SLOTS),
-                'startColumnIndex': 2 + 3 * d,
-                'endColumnIndex': 4 + 3 * d,
+                'startColumnIndex': 1 + n * d + min(rated),
+                'endColumnIndex': 1 + n * d + max(rated) + 1,
             },
             'rule': {
                 'condition': {'type': 'ONE_OF_LIST', 'values': values},
@@ -124,6 +129,9 @@ def build_dataframe(values: list[list[str]], conf: dict) -> pd.DataFrame:
                 f'見出しが崩れている: {got} / 期待: {day_cols}。'
                 f'{DEF_FILE.name} の day_columns と合わせること')
         days.append((pd.to_datetime(raw).date(), base))
+
+    # CSV に落とす列だけを名前で引く。Toggl 列（draft の下書き）は読み捨てる
+    off = {k: day_cols.index(v) for k, v in conf['record_columns'].items()}
     if not days:
         return empty
 
@@ -138,17 +146,17 @@ def build_dataframe(values: list[list[str]], conf: dict) -> pd.DataFrame:
                 f'一致していない（行を足したり並べ替えたりしない）')
         hour = store.LABEL_TO_HOUR[label]
         for date, base in days:
-            activity = cell(raw, base)
-            # 活動が空の枠は「未記録」。評定だけが入っていても記録として
-            # 成立していないので取り込まない
+            activity = cell(raw, base + off['activity'])
+            # 活動が空の枠は「未記録」。評定や Toggl の下書きだけが入って
+            # いても記録として成立していないので取り込まない
             if not activity:
                 continue
             rows.append({
                 'date': date,
                 'hour': hour,
                 'activity': activity,
-                'enjoyment': cell(raw, base + 1),
-                'importance': cell(raw, base + 2),
+                'enjoyment': cell(raw, base + off['enjoyment']),
+                'importance': cell(raw, base + off['importance']),
             })
 
     if not rows:
@@ -165,6 +173,80 @@ def build_dataframe(values: list[list[str]], conf: dict) -> pd.DataFrame:
     # 手でタブを複製したときに備えて最後を採る
     df = df.drop_duplicates(subset=['date', 'hour'], keep='last')
     return df[store.COLUMNS]
+
+
+def col_letter(n: int) -> str:
+    """1始まりの列番号を A1 記法の列名にする（28列あるので AB まで出る）"""
+    name = ''
+    while n:
+        n, r = divmod(n - 1, 26)
+        name = chr(65 + r) + name
+    return name
+
+
+def slot_window(date: dt.date, hour: int) -> tuple[dt.datetime, dt.datetime]:
+    """枠の実時間の範囲。0-2時台の枠は帳票上の日付の翌暦日にある"""
+    day = date + dt.timedelta(days=1) if hour < 5 else date
+    begin = dt.datetime.combine(day, dt.time(hour))
+    return begin, begin + dt.timedelta(hours=store.SLOT_HOURS[hour])
+
+
+def toggl_labels(date: dt.date) -> dict[int, str]:
+    """その日の Toggl エントリを22枠に割り付ける
+
+    枠ごとに、重なりが最も長いエントリだけを採る。**下書きなので、複数の
+    活動が入る枠を無理に並べない**（本人が書き直す前提の材料であって、
+    記録そのものではない）。
+    """
+    df = toggl_store.load_entries()
+    labels = {}
+    for hour, _ in store.SLOTS:
+        begin, end = slot_window(date, hour)
+        best, best_sec = None, 0
+        for _, r in df.iterrows():
+            stop = r['stop']
+            if pd.isna(stop):
+                continue  # 計測中のエントリ
+            overlap = (min(stop, end) - max(r['start'], begin)).total_seconds()
+            if overlap > best_sec:
+                best, best_sec = r, overlap
+        if best is None:
+            continue
+        desc = '' if pd.isna(best['description']) else str(best['description'])
+        label = best['project_name']
+        if desc and desc != label:
+            label = f'{label}: {desc}'
+        labels[hour] = label[:40]
+    return labels
+
+
+def cmd_draft(args, out=None):
+    """その日の Toggl を参照列に書く（活動列には入れない）"""
+    out = out or sys.stdout
+    conf = load_def()
+    date = (dt.date.fromisoformat(args.date) if args.date
+            else dt.date.today())
+
+    labels = toggl_labels(date)
+    if not labels:
+        print(f'{date}: Toggl にエントリなし', file=out)
+        return
+
+    key = week_key(date)
+    sheet = open_sheet(conf)
+    try:
+        ws = sheet.worksheet(key)
+    except Exception:
+        print(f'エラー: タブ {key} が無い。先に setup-sheet を実行すること',
+              file=sys.stderr)
+        sys.exit(1)
+
+    n = len(conf['day_columns'])
+    d = week_dates(key).index(date)
+    col = col_letter(1 + n * d + conf['day_columns'].index(conf['toggl_column']) + 1)
+    cells = [[labels.get(h, '')] for h, _ in store.SLOTS]
+    ws.update(cells, f'{col}3:{col}{2 + len(store.SLOTS)}')
+    print(f'{date}（{key} の{col}列）に {len(labels)}枠ぶん書いた', file=out)
 
 
 def open_sheet(conf):
@@ -292,6 +374,11 @@ def main():
     p_setup = sub.add_parser(
         'setup-sheet', help='当週・翌週のタブを作る（既存には触れない）')
     p_setup.set_defaults(func=cmd_setup_sheet)
+
+    p_draft = sub.add_parser(
+        'draft', help='その日の Toggl をシートの参照列に書く（下書き）')
+    p_draft.add_argument('--date', help='対象日（既定は今日）')
+    p_draft.set_defaults(func=cmd_draft)
 
     p_fetch = sub.add_parser('fetch', help='シートを読んで CSV に保存する')
     p_fetch.set_defaults(func=cmd_fetch)

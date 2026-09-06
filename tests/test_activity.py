@@ -22,7 +22,11 @@ _spec = importlib.util.spec_from_file_location(
 activity = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(activity)
 
-CONF = {'time_header': '時間', 'day_columns': ['活動', '楽しさ', '重要さ']}
+CONF = {'time_header': '時間',
+        'day_columns': ['Toggl', '活動', '楽しさ', '重要さ'],
+        'record_columns': {'activity': '活動', 'enjoyment': '楽しさ',
+                           'importance': '重要さ'},
+        'toggl_column': 'Toggl'}
 DATES = ['2026-09-07', '2026-09-08']
 
 
@@ -30,12 +34,20 @@ def grid(*slot_rows, dates=DATES):
     """ヘッダ2行 + 指定した枠の行だけを持つシートを作る
 
     slot_rows は (枠の見出し, [日1の3セル], [日2の3セル], ...) の並び。
+    3セルは 活動 / 楽しさ / 重要さ で、参照列（Toggl）は空で前に付く。
+    4セル渡した場合は先頭を Toggl の下書きとして扱う。
     """
+    cols = CONF['day_columns']
     n = len(dates)
-    head_date = [''] + [d if i == 0 else '' for d in dates for i in range(3)]
-    head_col = ['時間'] + ['活動', '楽しさ', '重要さ'] * n
-    body = [[label] + [c for cells in per_day for c in cells]
-            for label, *per_day in slot_rows]
+    head_date = [''] + [d if i == 0 else ''
+                        for d in dates for i in range(len(cols))]
+    head_col = ['時間'] + cols * n
+    body = []
+    for label, *per_day in slot_rows:
+        row = [label]
+        for cells in per_day:
+            row += list(cells) if len(cells) == len(cols) else [''] + list(cells)
+        body.append(row)
     return [head_date, head_col] + body
 
 
@@ -74,7 +86,7 @@ def test_日ごとの列ブロックが正しい日付に割り当たる():
 def test_見出しが崩れていたら落とす():
     """黙って別の列を読むと、評定が別の日に付く"""
     values = grid(('10-11', ['読書', '', ''], ['', '', '']))
-    values[1][2] = '重要さ'  # 楽しさ / 重要さ が入れ替わった状態
+    values[1][3] = '重要さ'  # 楽しさ / 重要さ が入れ替わった状態
     with pytest.raises(ValueError):
         activity.build_dataframe(values, CONF)
 
@@ -169,7 +181,51 @@ def test_取得しなかった週の行は消さない(tmp_path):
 def test_タブの中身は22枠と7日ぶんの列を持つ():
     conf = dict(CONF, score={'low': 0, 'high': 10})
     g = activity.sheet_grid('2026-W37', conf)
-    assert g[0][1] == '2026-09-07' and g[0][19] == '2026-09-13'
+    assert g[0][1] == '2026-09-07' and g[0][25] == '2026-09-13'
     assert len(g) == 2 + 22
-    assert len(g[1]) == 1 + 21
+    assert len(g[1]) == 1 + 28
     assert g[2][0] == '5-6' and g[-1][0] == '2-5'
+
+
+def test_Toggl列の下書きだけではCSVに入らない():
+    """シートを一度も開いていない日に記録があることにしない（欠測の捏造）"""
+    df = activity.build_dataframe(
+        grid(('10-11', ['読書', '', '', ''], ['', '', '', ''])), CONF)
+    assert df.empty
+
+
+def test_Toggl列があっても活動を書けば取り込む():
+    df = activity.build_dataframe(
+        grid(('10-11', ['読書', '積読の消化', '7', '4'], ['', '', '', ''])),
+        CONF)
+    assert list(df['activity']) == ['積読の消化']
+    assert df.iloc[0]['enjoyment'] == 7
+
+
+def test_draft列の位置がToggl列と一致する():
+    """1列ずれると Toggl の下書きが 活動 列に入り、記録を捏造する"""
+    cols = CONF['day_columns']
+    n = len(cols)
+    for d, expected in enumerate(['B', 'F', 'J', 'N', 'R', 'V', 'Z']):
+        col = activity.col_letter(
+            1 + n * d + cols.index(CONF['toggl_column']) + 1)
+        assert col == expected
+
+
+def test_列名は26列を超えても正しい():
+    assert activity.col_letter(1) == 'A'
+    assert activity.col_letter(26) == 'Z'
+    assert activity.col_letter(27) == 'AA'
+    assert activity.col_letter(29) == 'AC'
+
+
+def test_未明の枠は翌暦日の実時間に対応する():
+    """Toggl の割り付けで日付を間違えると、前夜の活動が翌日に付く"""
+    import datetime as dt
+    begin, end = activity.slot_window(dt.date(2026, 9, 7), 0)
+    assert begin == dt.datetime(2026, 9, 8, 0, 0)
+    assert end == dt.datetime(2026, 9, 8, 1, 0)
+    begin, end = activity.slot_window(dt.date(2026, 9, 7), 2)
+    assert (end - begin) == dt.timedelta(hours=3)
+    begin, _ = activity.slot_window(dt.date(2026, 9, 7), 5)
+    assert begin == dt.datetime(2026, 9, 7, 5, 0)

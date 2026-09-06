@@ -16,10 +16,22 @@ sheet_id: 1KjZ1QG2__q9rtwP8QdUXmjtNs3oqSywDuCu6GyAJyf4
 # 手で作ったメモのタブが混ざっても拾わない
 tab_pattern: '^\d{4}-W\d{2}$'
 
-# シートの見出し。1行目が日付、2行目がこの3列の繰り返し（日付ごとに3列）。
+# シートの見出し。1行目が日付、2行目がこの列の繰り返し（日付ごと）。
 # A列は枠の見出しで time_header
 time_header: 時間
-day_columns: [活動, 楽しさ, 重要さ]
+day_columns: [Toggl, 活動, 楽しさ, 重要さ]
+
+# CSV に落とす列（シートの見出し → CSV の列名）。**ここに無い列は読み捨てる。**
+# Toggl 列は draft が書く下書きで、記録そのものではない。CSV に入れると
+# 「シートを一度も開いていない日」に記録があることになり、欠測を捏造する
+record_columns:
+  activity: 活動
+  enjoyment: 楽しさ
+  importance: 重要さ
+
+# draft が Toggl から埋める参照列。本人が書く 活動 列の左に置いて、
+# 見ながら書けるようにする（自動で 活動 列へは入れない）
+toggl_column: Toggl
 
 # 楽しさ / 重要さは 0-10。シート側に同じ範囲のプルダウンを張る。
 # 空欄は「未評定」であって 0 ではない

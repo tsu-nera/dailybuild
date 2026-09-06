@@ -145,6 +145,7 @@ uv run scripts/daily_summary.py fetch  # 日次記録（気分・身体・頭・
 uv run scripts/daily_summary.py show   # 日次記録のサマリ（既定は直近7日）
 uv run scripts/daily_summary.py setup-form --update  # 質問文を yaml に合わせ直す
 uv run scripts/activity.py setup-sheet  # 活動記録の週タブを作る（当週・翌週、冪等）
+uv run scripts/activity.py draft     # その日の Toggl をシートの参照列に書く（下書き。活動列には入れない）
 uv run scripts/activity.py fetch     # 活動記録（Google Sheets）取得
 uv run scripts/activity.py show      # 活動記録のサマリ（既定は直近7日）
 uv run scripts/activity.py show --list  # 枠ごとの一覧
