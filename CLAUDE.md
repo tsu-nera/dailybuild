@@ -155,6 +155,10 @@ uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_de
 uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-routine.sh が実行）
 uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
+uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）
+uv run scripts/food.py sync-sheet    # food_master に候補を流し込む（実績上位＋レシピ＋手動登録＋seed）
+uv run scripts/food.py sync-sheet --all  # 成分表2,538件を全部流し込む（実機検証用。既定では使わない）
+uv run scripts/food.py fetch         # シートを読んで entries.csv / daily.csv を作る
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
 uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
@@ -195,7 +199,7 @@ stdout）。
 | `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / exercise / activity / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。exercise は platform 重複あり。intraday の steps は4系統同居で素の合算は3.6倍。activity の Fitbit→Google 段差は caloriesOut だけ（steps/distance/*ActiveMinutesは折れ目なし） |
 | `src/lib/exercise_source.py` / 運動系レポート（body / mind）を変更するとき | `data/googlehealth/exercise.csv` が正本。`data/wearable/activity_logs.csv`（Fitbit Web API 廃止で更新停止）はアーカイブとして凍結し統合しない（id空間・distance単位・activeZoneMinutes構造が別物）。platform 重複解決（優先度・閾値）は `exercise_source.py` のモジュール定数を push とレポートで共有する |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
-| `scripts/food.py` / 成分表を扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない |
+| `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily_summary.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
