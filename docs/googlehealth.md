@@ -265,3 +265,93 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   引き直すと2021-06にもデータが存在する
 - 日次実行への影響: `--days 2` で intraday 4種（heart_rate_intraday を除く）の
   追加取得は実測で79ページ・約57秒
+
+## API 仕様の参照先
+
+**推測でエンドポイント名を総当たりしない**（2026-09-06 に皮膚温 intraday の有無を調べるため
+20個の型名を probe して全て 400 を食った。下の discovery document を1回引けば済んだ）。
+
+正典は machine-readable な discovery document:
+
+```bash
+curl -s 'https://health.googleapis.com/$discovery/rest?version=v4' -o /tmp/gh_disc.json
+# 全データ型の一覧（DataPoint のペイロードフィールドがそのままデータ型に対応する）
+python3 -c "import json;d=json.load(open('/tmp/gh_disc.json'));print('\n'.join(sorted(d['schemas']['DataPoint']['properties'])))"
+# 特定の型が返すフィールド
+python3 -c "import json;d=json.load(open('/tmp/gh_disc.json'));print(json.dumps(d['schemas']['DailySleepTemperatureDerivations'],indent=2,ensure_ascii=False))"
+```
+
+`users/me/dataTypes` の**一覧エンドポイントは存在しない**（404）。型の存在確認は discovery で行う。
+
+人が読む版:
+
+- [REST リファレンス](https://developers.google.com/health/reference/rest)
+- [データ型: Vitals](https://developers.google.com/health/data-types/vitals) — 各型が list / reconcile / rollUp / dailyRollUp のどれを持つか
+- [データ型: Nutrition](https://developers.google.com/health/data-types/nutrition)
+- [API specifications](https://developers.google.com/health/migration/api-specifications)
+
+### 温度系は2型しかない（2026-09-06 確認、discovery revision 20260828）
+
+| 型 | 粒度 | 中身 |
+|---|---|---|
+| `core-body-temperature` | 時系列（`sampleTime.physicalTime`） | 実測は `recordingMethod: MANUAL` のみ。体温計の手入力で、Charge 6 は書かない |
+| `daily-sleep-temperature-derivations` | **一晩1点** | `nightlyTemperatureCelsius` / `baselineTemperatureCelsius` / `relativeNightlyStddev30dCelsius`。`sampleTime` も `interval` も持たない |
+
+**皮膚温の intraday は API に存在しない。** 単独の skin-temperature 型は
+discovery の全44フィールドに無い。夜間の温度を時系列で追う分析は設計できない。
+
+`temperature_skin.csv` は `nightly_celsius`（絶対値）と `relative_stddev_30d`
+（`relativeNightlyStddev30dCelsius`。その夜のずれが有意かを判断する分母）も保存する。
+`nightly_relative` の 0.5 が大きいのか小さいのかは、この分母が無いと決められない。
+
+`sleep.csv` は `manuallyEdited` と `recordingMethod` を保存する。アプリで睡眠ログを
+編集すると**区間は本人の入力になるがステージはセンサから再計算される**ため、
+入眠時刻は本人の申告と一致しない。この2列が無いと「機器の誤判定」と「本人が直した
+結果」を切り分けられない（2026-09-06 に実際に判別できず、生 dataPoint を直接
+叩く羽目になった）。
+
+**どちらも過去分は空欄**。列を足した以降に取得した行にしか入らない。
+`sleep` の遡り取得は Fitbit が過去の値を書き換えるため（memory
+`fitbit-values-change-retroactively`）別途の判断が要る。**空欄を「編集されていない」
+と読まない。**
+
+### 未取得の型（2026-09-06 に全型を実測）
+
+**取れる（実データあり）**:
+
+| 型 | 中身 | 直近 |
+|---|---|---|
+| `daily-heart-rate-zones` | Fitbit 自身のゾーン境界（LIGHT 30-100 / MODERATE 101-127 …） | 当日 |
+| `time-in-heart-rate-zone` | 分刻みのゾーン滞在 | 当日 |
+| `active-energy-burned` | 分刻みの活動消費 | 当日 |
+| `activity-level` | 分刻みの活動レベル | 当日 |
+| `hydration-log` | 水分記録 | 2026-08-27 |
+| `altitude` / `height` / `swim-lengths-data` | | altitude は 2025-09 |
+
+`daily-heart-rate-zones` は注意。レポートは Karvonen 法（maxHR=181 / RHR=54）で
+境界を自前計算しており、**Fitbit の境界と別物**。同じ「Zone2」が2種類存在する。
+
+**403（現行スコープでは読めない）**: `electrocardiogram` /
+`irregular-rhythm-notification`。追加スコープの再認可が要る。
+
+**list 非対応**: `moods` / `symptoms` / `menstrual-period` / `ovulation-test` /
+`floors` は `List is not supported`。`floors` は reconcile で読めるが、
+**`moods` と `symptoms` は reconcile も dailyRollUp も 400** で取得経路が無い。
+気分データを Google 側から取ることはできない。
+
+### VO2 Max は3型とも 2025 年で停止（2026-09-06 実測）
+
+```
+daily-vo2-max  最新 2025-05-05  53.16  (estimated / VERY_GOOD)
+vo2-max        2点のみ  最新 2025-03-25  51.86
+run-vo2-max    2点のみ  最新 2025-03-25  47.17
+```
+
+`data/wearable/cardio_score.csv` の 2026-09-05 / 63 は **Fitbit 自身の Cardio
+Fitness Score** で、`63e9af0`（Fitbit 取得系の削除）で「計測終了」表示に切り替えた
+もの。矛盾ではない（当初これを不整合と疑ったが誤り）。
+
+ただし**両者の値は接続できない**。2025-03-25 では Google 51.86 と CSV 52.0 で
+一致するが、その後 Fitbit 側は60台へ上がり Google 側は 2025-05 で停止。
+仮に Google 側が再開しても10ポイントの段差を挟む。**Google Health で VO2 Max を
+再開する案は成立しない。**

@@ -144,6 +144,15 @@ def fetch_sleep_all(creds, start_date: dt.date, end_date: dt.date) -> tuple[list
             'lightAvg30': None,
             'remAvg30': None,
             'wakeAvg30': None,
+            # 由来の記録（Issue: 手修正の夜を CSV から識別できるようにする）。
+            # アプリで睡眠ログを編集すると区間は本人の入力になるが、ステージは
+            # センサから再計算されるため、入眠時刻は本人の申告と一致しない。
+            # この2列が無いと「機器の誤判定」と「本人が直した結果」を
+            # レポート側で切り分けられない（2026-09-06 に実際に判別できず、
+            # 生 dataPoint を直接叩いて確認する羽目になった）。
+            # recordingMethod は sleep ではなく dataPoint 直下にある。
+            'manuallyEdited': bool(metadata.get('manuallyEdited', False)),
+            'recordingMethod': point.get('dataSource', {}).get('recordingMethod'),
         }
 
         sessions.append({
