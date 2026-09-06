@@ -288,4 +288,14 @@ Issue #157 で朝・夜の2フォームに分割し、旧スクリプト名（�
   スコープは足さない（`config/gforms_token.json` は emotion/bowel/phq9 の
   非対話 fetch と共用しており、スコープを増やすと再認可が要って壊れる）ため、
   `gdrive_client.py` は独自トークン（`config/gdrive_token.json`、スコープ
-  `drive.file` のみ）を持つ
+  `drive.file` のみ）を持つ。
+  **この経路は OAuth クライアントの GCP プロジェクトで Drive API が有効で
+  ないと 403 `accessNotConfigured` になる**（Forms API が有効でも Drive API
+  は別に有効化が要る）。夜フォームの実作成ではこれを踏み、移動は手で行った。
+  移動に失敗してもフォーム自体は作成済みで `form_id` は保存されるので、
+  警告を出して続行する
+- **`form_title` の変更は画面タイトルだけ。** `setup-form --update` は
+  `updateFormInfo` で `info.title` を差し替えるが、`documentTitle`（Drive 上の
+  ファイル名）は create のときしか設定できず、後から送ると 400
+  `document_title is read-only in subsequent requests` になる。日次記録を
+  「朝の記録」へ改名したときも Drive 上の名前は「日次記録」のまま残っている

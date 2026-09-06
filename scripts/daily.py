@@ -162,6 +162,13 @@ def cmd_setup_form(args):
         existing_form = gforms_client.get_form(service, conf['form_id'])
         gforms_client.sync_questions(service, conf['form_id'], items,
                                   existing_form=existing_form)
+        # 画面タイトルは item ではないので sync_questions が触らない。
+        # questionId には影響しないが、差分があるときだけ叩く
+        current_title = existing_form.get('info', {}).get('title')
+        if current_title != conf['form_title']:
+            gforms_client.update_form_info(service, conf['form_id'],
+                                        conf['form_title'])
+            print(f"タイトルを更新: {current_title} -> {conf['form_title']}")
         print('フォームを yaml に合わせて更新した')
         form = gforms_client.get_form(service, conf['form_id'])
     else:
