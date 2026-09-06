@@ -8,10 +8,4 @@
 # 原典では枠ごとに評定するが（Form 1）、活動ごとの評定は Form 2 の軸その
 # もので、同じ活動に毎回違う値を付け直す運用は現実的でない。日ごとの
 # ばらつきは捨てる代わりに、「楽しくも重要でもない時間の長さ」が測れる。
-ratings:
-  'futurismo: dailybuild':
-    enjoyment: 7
-    importance: 6
-  睡眠:
-    enjoyment: 5
-    importance: 9
+ratings: {}
