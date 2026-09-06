@@ -146,6 +146,7 @@ uv run scripts/daily_summary.py show   # 日次記録のサマリ（既定は直
 uv run scripts/daily_summary.py setup-form --update  # 質問文を yaml に合わせ直す
 uv run scripts/activity.py fetch     # 活動記録（Google Sheets）取得
 uv run scripts/activity.py show      # 活動記録のサマリ（既定は直近7日）
+uv run scripts/hevy.py fetch       # 筋トレ記録（Hevy の CSV export、Google Drive 経由）取得
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）

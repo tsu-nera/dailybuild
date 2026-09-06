@@ -14,17 +14,6 @@ import pandas as pd
 import numpy as np
 
 
-# チョコザップマシン名マッピング（Hevy → チョコザップ）
-CHOCOZAP_MACHINE_MAPPING = {
-    'Seated Shoulder Press (Machine)': 'ショルダープレス',
-    'Lat Pulldown (Machine)': 'ラットプルダウン',
-    'Seated Dip Machine': 'ディップス',
-    'Preacher Curl (Machine)': 'バイセップスカール',
-    'Leg Press Horizontal (Machine)': 'レッグプレス',
-    'Chest Press (Machine)': 'チェストプレス',
-}
-
-
 def calc_training_volume(row):
     """
     1セットのTraining Volumeを計算（データソース非依存）
@@ -63,19 +52,15 @@ def prepare_workout_df(df):
     Returns
     -------
     DataFrame
-        ISO週番号・volume・is_bodyweight・exercise_jp列を追加したDataFrame
+        ISO週番号・volume・is_bodyweight・exercise_title列を追加したDataFrame
 
     Notes
     -----
     - ISO週番号は月曜始まり〜日曜終わり
     - volumeは calc_training_volume() で計算
     - is_bodyweight は weight_kg が NaN かどうかで判定
-    - exercise_jpはチョコザップのマシン名（日本語）
     """
     df = df.copy()
-
-    # チョコザップマシン名に変換
-    df['exercise_jp'] = df['exercise_title'].map(CHOCOZAP_MACHINE_MAPPING).fillna(df['exercise_title'])
 
     # ISO週番号を追加（月曜始まり）
     df['iso_year'] = df['start_dt'].dt.isocalendar().year
@@ -98,7 +83,7 @@ def calc_weekly_volume(df):
     ----------
     df : DataFrame
         prepare_workout_df()処理済みのDataFrame
-        - iso_year, iso_week, exercise_jp, volume, is_bodyweight, reps, set_index を含む
+        - iso_year, iso_week, exercise_title, volume, is_bodyweight, reps, set_index を含む
 
     Returns
     -------
@@ -107,7 +92,7 @@ def calc_weekly_volume(df):
         Columns:
         - iso_year: int
         - iso_week: int
-        - exercise_jp: str (チョコザップマシン名)
+        - exercise_title: str (エクササイズ名)
         - total_volume: float
         - total_reps: int (総レップ数)
         - total_sets: int (総セット数)
@@ -120,12 +105,12 @@ def calc_weekly_volume(df):
 
     Notes
     -----
-    - グルーピング: (iso_year, iso_week, exercise_jp)
-    - 前週比は同じexercise_jp内で計算
+    - グルーピング: (iso_year, iso_week, exercise_title)
+    - 前週比は同じexercise_title内で計算
     - 最初の週は NaN となる
     """
     # 週・エクササイズでグルーピング
-    grouped = df.groupby(['iso_year', 'iso_week', 'exercise_jp']).agg({
+    grouped = df.groupby(['iso_year', 'iso_week', 'exercise_title']).agg({
         'volume': 'sum',
         'reps': 'sum',
         'set_index': 'count',
@@ -134,13 +119,13 @@ def calc_weekly_volume(df):
     }).reset_index()
 
     # マルチレベルカラムをフラット化
-    grouped.columns = ['iso_year', 'iso_week', 'exercise_jp', 'total_volume', 'total_reps', 'total_sets', 'min_weight', 'max_weight', 'is_bodyweight']
+    grouped.columns = ['iso_year', 'iso_week', 'exercise_title', 'total_volume', 'total_reps', 'total_sets', 'min_weight', 'max_weight', 'is_bodyweight']
 
     # エクササイズごとに前週比を計算
-    grouped = grouped.sort_values(['exercise_jp', 'iso_year', 'iso_week'])
-    grouped['week_over_week_diff'] = grouped.groupby('exercise_jp')['total_volume'].diff()
-    grouped['reps_diff'] = grouped.groupby('exercise_jp')['total_reps'].diff()
-    grouped['sets_diff'] = grouped.groupby('exercise_jp')['total_sets'].diff()
+    grouped = grouped.sort_values(['exercise_title', 'iso_year', 'iso_week'])
+    grouped['week_over_week_diff'] = grouped.groupby('exercise_title')['total_volume'].diff()
+    grouped['reps_diff'] = grouped.groupby('exercise_title')['total_reps'].diff()
+    grouped['sets_diff'] = grouped.groupby('exercise_title')['total_sets'].diff()
 
     return grouped
 
@@ -309,7 +294,7 @@ def calc_weekly_stats(df):
     ----------
     df : DataFrame
         prepare_workout_df()処理済みのDataFrame
-        - iso_year, iso_week, volume, reps, is_bodyweight, start_dt, exercise_jp を含む
+        - iso_year, iso_week, volume, reps, is_bodyweight, start_dt, exercise_title を含む
 
     Returns
     -------
@@ -331,13 +316,13 @@ def calc_weekly_stats(df):
     """
     # 週ごとに集計
     stats = df.groupby(['iso_year', 'iso_week']).agg({
-        'exercise_jp': 'nunique',  # 種目数
+        'exercise_title': 'nunique',  # 種目数
         'reps': 'sum',  # 総レップ数
         'set_index': 'count',  # 総セット数（行数）
     }).reset_index()
 
     stats = stats.rename(columns={
-        'exercise_jp': 'exercise_count',
+        'exercise_title': 'exercise_count',
         'reps': 'total_reps',
         'set_index': 'total_sets'
     })
