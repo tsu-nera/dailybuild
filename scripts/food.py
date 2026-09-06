@@ -17,8 +17,8 @@ Usage:
     python scripts/food.py build-master --xlsx path/to/seibun.xlsx
 
     python scripts/food.py setup-sheet               # 3タブを冪等に作る
-    python scripts/food.py sync-sheet                # food_master へ候補を流し込む
-    python scripts/food.py sync-sheet --all          # 成分表全件を流し込む（実機検証用）
+    python scripts/food.py sync-sheet                # food_master へ全件を流し込む
+    python scripts/food.py sync-sheet --candidates   # 候補を絞って流し込む
     python scripts/food.py fetch                     # シートを読んで CSV を作る
 """
 
@@ -148,21 +148,21 @@ def cmd_sync_sheet(args, out=None):
         print("エラー: タブが無い。先に setup-sheet を実行すること", file=sys.stderr)
         sys.exit(1)
 
-    if args.all:
-        # 実機検証用のエスケープハッチ（issue #63 論点1）。
-        # 既定では使わない: 2,538件を全部流し込むとスマホで絞り込めない
-        names = sorted(df_master['name'].dropna().astype(str))
-    else:
-        recipe_names = _read_names_csv(store.RECIPES_CSV, 'name')
+    recipe_names = _read_names_csv(store.RECIPES_CSV, 'name')
+    cand = conf['candidates']
+
+    if args.candidates:
         entry_names = _read_names_csv(store.ENTRIES_CSV, 'name')
-        cand = conf['candidates']
         names = store.select_candidates(
             df_master, recipe_names, entry_names,
             cand['seed_names'], cand['top_n'])
         if not names:
-            print("警告: 候補が0件。sync-sheet --all で成分表全件を流し込むか、"
+            print("警告: 候補が0件。--candidates を外して全件を流し込むか、"
                   f"{DEF_FILE.name} の candidates.seed_names に手書きで足すこと",
                   file=sys.stderr)
+    else:
+        # 実機で2,538件でも絞り込めたので全件が既定（issue #63 論点1）
+        names = store.all_names(df_master, recipe_names, cand['seed_names'])
 
     store.sync_master(ss, names)
     print(f"{store.MASTER_SHEET} に {len(names)}件の食品名を流し込んだ", file=out)
@@ -273,8 +273,8 @@ def main():
 
     sync = subparsers.add_parser(
         'sync-sheet', help='food_master へ候補を流し込み、ドロップダウンを張り直す')
-    sync.add_argument('--all', action='store_true',
-                      help='成分表全件を流し込む（既定は候補を絞る。実機検証用）')
+    sync.add_argument('--candidates', action='store_true',
+                      help='候補を絞って流し込む（既定は全件。実績上位＋レシピ＋手動登録＋seed）')
     sync.set_defaults(func=cmd_sync_sheet)
 
     fetch = subparsers.add_parser('fetch', help='シートを読んで CSV を作る')

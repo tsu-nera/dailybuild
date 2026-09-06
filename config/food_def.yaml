@@ -23,18 +23,18 @@ columns:
   recipe: [recipe_name, cooked_total_g, name, grams]
   log: [date, meal, name, grams, note]
 
-# food_master に流し込む候補の選び方（sync-sheet）。
+# food_master に流し込む候補の選び方（sync-sheet --candidates のとき）。
 #
-# 成分表2,538件を全部流し込むとスマホのドロップダウンで実用的に絞り込めない
-# （issue #63 の論点3）。候補は「実際に使う見込みが高いもの」の和集合にする:
+# 2026-09-06 に実機で確認したところ、スマホの Sheets アプリでも2,538件の
+# ドロップダウンを実用的に絞り込めた。よって既定は全件で、候補を絞るのは
+# オプション（--candidates）。候補は次の和集合:
 #   - foods_master.csv の手動登録行（source != mext。冷凍食品など）
 #   - recipes.csv のレシピ名
 #   - entries.csv の使用実績上位 top_n 件
 #   - 下の seed_names（手書きの初期候補）
 #
-# 実績もレシピも無い立ち上げ期は候補が0件になりうる。その場合は
-# `sync-sheet --all` で成分表全件を流し込める（issue 論点1の実機検証用の
-# エスケープハッチで、既定では使わない）。
+# 立ち上げ期は候補が0件になりうる（実績もレシピも無い）。既定が全件なのは
+# そのためでもある。
 candidates:
   top_n: 50
   seed_names: []

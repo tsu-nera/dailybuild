@@ -159,8 +159,8 @@ uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily
 uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）
-uv run scripts/food.py sync-sheet    # food_master に候補を流し込む（実績上位＋レシピ＋手動登録＋seed）
-uv run scripts/food.py sync-sheet --all  # 成分表2,538件を全部流し込む（実機検証用。既定では使わない）
+uv run scripts/food.py sync-sheet    # food_master に全件を流し込む（成分表＋手動登録＋レシピ＋seed）
+uv run scripts/food.py sync-sheet --candidates  # 候補を絞る（実績上位＋レシピ＋手動登録＋seed）
 uv run scripts/food.py fetch         # シートを読んで entries.csv / daily.csv を作る
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）

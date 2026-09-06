@@ -159,12 +159,25 @@ def aggregate_daily(df_entries):
     return daily[ordered].round(3)
 
 
+def all_names(df_master, recipe_names, seed_names):
+    """food_master へ流し込む名前の全件（成分表 + 手動登録 + レシピ + seed）
+
+    スマホの Sheets アプリで2,538件でも実用的に絞り込めることを実機で確認した
+    ため、これが既定。レシピ名を必ず含めるのが要点で、これが無いと鍋を登録しても
+    ドロップダウンから選べない。
+    """
+    names = set(df_master['name'].dropna().astype(str))
+    names |= set(str(n) for n in recipe_names if str(n).strip())
+    names |= set(str(n) for n in seed_names if str(n).strip())
+    return sorted(names)
+
+
 def select_candidates(df_master, recipe_names, entry_names, seed_names, top_n):
     """
     food_master タブへ流し込む候補名を選ぶ（純関数）。
 
-    成分表2,538件を全部流し込むとスマホのドロップダウンで実用的に絞り込めない
-    （issue #63 論点3）ため、次の和集合に絞る:
+    実機では2,538件でも絞り込めたので既定は all_names だが、候補を絞りたい
+    ときのために残す（--candidates）。次の和集合に絞る:
       - foods_master.csv の手動登録行（source != 'mext'。冷凍食品など）
       - レシピ名
       - 使用実績（entries.csv の name の出現回数）上位 top_n 件
