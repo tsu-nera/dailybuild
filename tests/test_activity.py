@@ -196,45 +196,25 @@ def test_sync列の位置が日ごとにずれない():
 def test_syncは手で書いたセルを上書きしない():
     """記録の正本は本人の申告。Toggl はそれを埋める材料でしかない"""
     current = [['自分で書いた', '9', '9']] + [[''] * 3] * 21
-    rows, wrote, _, _ = activity.merge_day_rows(
-        current, {5: 'futurismo: dailybuild'}, {}, 3, OFF)
+    rows, wrote = activity.merge_day_rows(
+        current, {5: 'futurismo: dailybuild'}, 3, OFF)
     assert rows[0] == ['自分で書いた', '9', '9']
     assert wrote == 0
 
 
 def test_syncは空いた枠にだけTogglを入れる():
-    rows, wrote, _, unrated = activity.merge_day_rows(
-        [], {5: '睡眠', 10: 'GTD: 日次レビュー'}, {}, 3, OFF)
+    rows, wrote = activity.merge_day_rows(
+        [], {5: '睡眠', 10: 'GTD: 日次レビュー'}, 3, OFF)
     assert rows[0][0] == '睡眠' and rows[5][0] == 'GTD: 日次レビュー'
     assert rows[1][0] == ''
     assert wrote == 2
-    assert unrated == {'睡眠', 'GTD: 日次レビュー'}
 
 
-def test_評定表は既に活動が入っている枠にも行き渡る():
-    """rate で後から足した評定が、再実行で既存の枠にも入る"""
-    current = [['睡眠', '', '']] + [[''] * 3] * 21
-    rows, wrote, rated, unrated = activity.merge_day_rows(
-        current, {}, {'睡眠': {'enjoyment': 5, 'importance': 9}}, 3, OFF)
-    assert rows[0] == ['睡眠', '5', '9']
-    assert (wrote, rated, unrated) == (0, 1, set())
-
-
-def test_評定表はすでに付いている評定を上書きしない():
-    """その日だけ違う値を付けたときに、表の値で潰さない"""
-    current = [['睡眠', '2', '']] + [[''] * 3] * 21
-    rows, _, rated, _ = activity.merge_day_rows(
-        current, {}, {'睡眠': {'enjoyment': 5, 'importance': 9}}, 3, OFF)
-    assert rows[0] == ['睡眠', '2', '']
-    assert rated == 0
-
-
-def test_評定表はプロジェクト名だけでも引ける():
-    rows, _, rated, _ = activity.merge_day_rows(
-        [], {5: 'futurismo: dailybuild'},
-        {'futurismo': {'enjoyment': 7, 'importance': 6}}, 3, OFF)
-    assert rows[0] == ['futurismo: dailybuild', '7', '6']
-    assert rated == 1
+def test_syncは評定に触らない():
+    """評定はシートに直接書く。sync が上書きすると申告が消える"""
+    current = [['睡眠', '2', '8']] + [[''] * 3] * 21
+    rows, _ = activity.merge_day_rows(current, {5: '睡眠'}, 3, OFF)
+    assert rows[0] == ['睡眠', '2', '8']
 
 
 def test_列名は26列を超えても正しい():

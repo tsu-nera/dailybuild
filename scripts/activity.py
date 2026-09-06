@@ -260,12 +260,6 @@ def toggl_slots(date: dt.date) -> dict[int, str]:
     return labels
 
 
-def load_ratings(conf) -> dict[str, dict]:
-    path = BASE_DIR / conf['ratings_file']
-    with open(path) as f:
-        return (yaml.safe_load(f) or {}).get('ratings') or {}
-
-
 def fetch_toggl(date: dt.date) -> None:
     """canonical な Toggl 取得（scripts/toggl.py の run_fetch）をそのまま使う
 
@@ -283,36 +277,22 @@ def fetch_toggl(date: dt.date) -> None:
     toggl.run_fetch(args, sys.stderr)
 
 
-def merge_day_rows(current, slots, ratings, width, off):
-    """1日ぶんのセルに Toggl の割り付けと評定を重ねる（シートに触らない純関数）
+def merge_day_rows(current, slots, width, off):
+    """1日ぶんのセルに Toggl の割り付けを重ねる（シートに触らない純関数）
 
     **手で書いたセルは上書きしない。** 記録の正本は本人の申告で、Toggl は
-    それを埋める材料でしかない。評定は「活動が入っていて評定が空の枠」に
-    入れるので、rate で後から表に足したぶんが再実行で既存の枠にも行き渡る。
+    それを埋める材料でしかない。評定には触れない（シートに直接書く）。
     """
-    rows, wrote, rated, unrated = [], 0, 0, set()
+    rows, wrote = [], 0
     for i, (hour, _) in enumerate(store.SLOTS):
         row = list(current[i]) if i < len(current) else []
         row += [''] * (width - len(row))
-
         label = slots.get(hour)
         if label and not row[off['activity']].strip():
             row[off['activity']] = label
             wrote += 1
-
-        name = row[off['activity']].strip()
-        if name:
-            r = ratings.get(name) or ratings.get(name.split(':')[0].strip())
-            blank = not (row[off['enjoyment']].strip()
-                         or row[off['importance']].strip())
-            if r and blank:
-                row[off['enjoyment']] = str(r['enjoyment'])
-                row[off['importance']] = str(r['importance'])
-                rated += 1
-            elif not r and blank:
-                unrated.add(name)
         rows.append(row)
-    return rows, wrote, rated, unrated
+    return rows, wrote
 
 
 def cmd_sync(args, out=None):
@@ -344,38 +324,11 @@ def cmd_sync(args, out=None):
     current = ws.get(rng)
 
     off = {k: day_cols.index(v) for k, v in conf['record_columns'].items()}
-    rows, wrote, rated, unrated = merge_day_rows(
-        current, slots, load_ratings(conf), n, off)
+    rows, wrote = merge_day_rows(current, slots, n, off)
 
     ws.update(rows, rng)
-    print(f'{date}: 活動を{wrote}枠、評定を{rated}枠に入れた'
+    print(f'{date}: {wrote}枠に活動を入れた'
           f'（Toggl が割り付いたのは{len(slots)}枠）', file=out)
-    if unrated:
-        print('\n評定が無い活動:', file=out)
-        for label in sorted(unrated):
-            print(f"  uv run scripts/activity.py rate '{label}' <楽しさ> <重要さ>",
-                  file=out)
-    blank = [store.slot_label(h) for h, _ in store.SLOTS if h not in slots]
-    if blank:
-        print(f'\nToggl が空の枠（自分で書く）: {" ".join(blank)}', file=out)
-
-
-def cmd_rate(args, out=None):
-    """評定表に活動を1件足す"""
-    out = out or sys.stdout
-    conf = load_def()
-    path = BASE_DIR / conf['ratings_file']
-    text = path.read_text()
-    data = yaml.safe_load(text) or {}
-    ratings = data.get('ratings') or {}
-    ratings[args.activity] = {'enjoyment': args.enjoyment,
-                              'importance': args.importance}
-    head = text.split('ratings:')[0]
-    body = yaml.safe_dump({'ratings': ratings}, allow_unicode=True,
-                          sort_keys=True, default_flow_style=False)
-    path.write_text(head + body)
-    print(f'{args.activity}: 楽しさ {args.enjoyment} / '
-          f'重要さ {args.importance}', file=out)
 
 
 def open_sheet(conf):
@@ -493,12 +446,6 @@ def main():
         'sync', help='Toggl を取得して、その日の空いている枠を埋める')
     p_sync.add_argument('--date', help='対象日（既定は今日）')
     p_sync.set_defaults(func=cmd_sync)
-
-    p_rate = sub.add_parser('rate', help='活動の楽しさ・重要さを評定表に足す')
-    p_rate.add_argument('activity', help='活動名（Toggl の表示名）')
-    p_rate.add_argument('enjoyment', type=int, help='楽しさ 0-10')
-    p_rate.add_argument('importance', type=int, help='重要さ 0-10')
-    p_rate.set_defaults(func=cmd_rate)
 
     p_fetch = sub.add_parser('fetch', help='シートを読んで CSV に保存する')
     p_fetch.set_defaults(func=cmd_fetch)
