@@ -265,3 +265,49 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   引き直すと2021-06にもデータが存在する
 - 日次実行への影響: `--days 2` で intraday 4種（heart_rate_intraday を除く）の
   追加取得は実測で79ページ・約57秒
+
+## API 仕様の参照先
+
+**推測でエンドポイント名を総当たりしない**（2026-09-06 に皮膚温 intraday の有無を調べるため
+20個の型名を probe して全て 400 を食った。下の discovery document を1回引けば済んだ）。
+
+正典は machine-readable な discovery document:
+
+```bash
+curl -s 'https://health.googleapis.com/$discovery/rest?version=v4' -o /tmp/gh_disc.json
+# 全データ型の一覧（DataPoint のペイロードフィールドがそのままデータ型に対応する）
+python3 -c "import json;d=json.load(open('/tmp/gh_disc.json'));print('\n'.join(sorted(d['schemas']['DataPoint']['properties'])))"
+# 特定の型が返すフィールド
+python3 -c "import json;d=json.load(open('/tmp/gh_disc.json'));print(json.dumps(d['schemas']['DailySleepTemperatureDerivations'],indent=2,ensure_ascii=False))"
+```
+
+`users/me/dataTypes` の**一覧エンドポイントは存在しない**（404）。型の存在確認は discovery で行う。
+
+人が読む版:
+
+- [REST リファレンス](https://developers.google.com/health/reference/rest)
+- [データ型: Vitals](https://developers.google.com/health/data-types/vitals) — 各型が list / reconcile / rollUp / dailyRollUp のどれを持つか
+- [データ型: Nutrition](https://developers.google.com/health/data-types/nutrition)
+- [API specifications](https://developers.google.com/health/migration/api-specifications)
+
+### 温度系は2型しかない（2026-09-06 確認、discovery revision 20260828）
+
+| 型 | 粒度 | 中身 |
+|---|---|---|
+| `core-body-temperature` | 時系列（`sampleTime.physicalTime`） | 実測は `recordingMethod: MANUAL` のみ。体温計の手入力で、Charge 6 は書かない |
+| `daily-sleep-temperature-derivations` | **一晩1点** | `nightlyTemperatureCelsius` / `baselineTemperatureCelsius` / `relativeNightlyStddev30dCelsius`。`sampleTime` も `interval` も持たない |
+
+**皮膚温の intraday は API に存在しない。** 単独の skin-temperature 型は
+discovery の全44フィールドに無い。夜間の温度を時系列で追う分析は設計できない。
+
+`temperature_skin.csv` は `nightly_relative`（nightly − baseline）だけを保存しており、
+絶対値 `nightlyTemperatureCelsius` と `relativeNightlyStddev30dCelsius`（その夜のずれが
+有意かを判断する分母）を捨てている。**未対応。**
+
+### 未取得の型
+
+discovery の全型のうち、fetcher が持っていないもので実用があり得るのは
+`dailyHeartRateZones` / `electrocardiogram` / `irregularRhythmNotification` /
+`moods` / `symptoms` / `timeInHeartRateZone`。`vo2Max` 系は3型（`vo2Max` /
+`dailyVo2Max` / `runVo2Max`）あり、body レポートの「VO2 Max: 計測終了」表示と
+食い違う可能性がある（**未検証**）。
