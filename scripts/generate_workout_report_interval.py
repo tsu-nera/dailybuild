@@ -37,7 +37,7 @@ def prepare_workout_interval_report_data(weekly_stats, weekly_volume):
         週次統計CSV（iso_year, iso_week, training_days, duration_minutes,
                       total_reps, total_sets, total_volume_kg）
     weekly_volume : DataFrame
-        週次ボリューム（iso_year, iso_week, exercise_jp, total_volume,
+        週次ボリューム（iso_year, iso_week, exercise_title, total_volume,
                        total_reps, total_sets, min_weight, max_weight,
                        is_bodyweight, week_over_week_diff）
 
@@ -65,7 +65,7 @@ def prepare_workout_interval_report_data(weekly_stats, weekly_volume):
 
     # 2. 週次ボリューム表
     # 全エクササイズをアルファベット順で取得
-    exercises = sorted(weekly_volume['exercise_jp'].unique())
+    exercises = sorted(weekly_volume['exercise_title'].unique())
 
     # 対象週のリストを取得
     recent_weeks = weekly_stats[['iso_year', 'iso_week']].sort_values(
@@ -85,7 +85,7 @@ def prepare_workout_interval_report_data(weekly_stats, weekly_volume):
         # 各エクササイズのvolumeを取得
         volumes = []
         for exercise in exercises:
-            exercise_data = week_data[week_data['exercise_jp'] == exercise]
+            exercise_data = week_data[week_data['exercise_title'] == exercise]
             if len(exercise_data) > 0:
                 vol = exercise_data.iloc[0]['total_volume']
                 volumes.append(str(int(vol)) if pd.notna(vol) else "-")
@@ -102,7 +102,7 @@ def prepare_workout_interval_report_data(weekly_stats, weekly_volume):
     for exercise in exercises:
         # そのエクササイズのデータを抽出（古い週→新しい週）
         exercise_data = weekly_volume[
-            weekly_volume['exercise_jp'] == exercise
+            weekly_volume['exercise_title'] == exercise
         ].sort_values(['iso_year', 'iso_week'])
 
         weekly_data = []
