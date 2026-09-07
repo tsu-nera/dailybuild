@@ -2,7 +2,10 @@
 
 行動の実行記録を持たせる先。dailybuild が「結果指標（不随意な観測）」を持つのに対し、
 Habitica は「行動（随意の実行）」を持つ。**取得はまだ実装していない**（2026-08-29 時点で
-API の性質を実測した段階）。認証情報は `config/habitica_creds.json`。
+API の性質を実測した段階）。認証情報は **repo の外**の
+`~/.config/habitica/creds.json`（環境変数 `HABITICA_CREDS` で上書き可）。
+gtd / titan からも同じ規則で参照するため repo 内に置かない。解決は
+`src/lib/clients/habitica_client.py` の `creds_path()`。
 
 必須ヘッダは `x-api-user` / `x-api-key` / `x-client: <UserID>-<AppName>`。
 
@@ -18,8 +21,13 @@ API の性質を実測した段階）。認証情報は `config/habitica_creds.j
 
 Daily の `history` は `{date, value, isDue, completed}` を持ち、**未完了日が
 記録される**（org-mode の DONE と違って分母が取れる）。ただし1エントリ＝1 due日
-ではなく **1エントリ＝1 cron実行**で、cron はユーザーがアクセスした日にしか
-走らない。
+ではなく、cron はユーザーがアクセスした日にしか走らない。
+
+**同じ日に2エントリ届くことがある。** cron 実行時に `completed=False` の行が
+入り、その後で本人が完了させると `completed=True` の行がもう1つ増える
+（2026-09-07 実測。10:54 の cron 行と 22:29 の完了行が同居していた）。
+`(date, task_id)` を一意キーにする側で**その日の最後の ts を採って畳む**こと。
+畳まずに数えると達成率の分母が水増しされる。
 
 **`completed / len(history)` を達成率としてはいけない。** 開いた日だけを母数に
 した過大評価になる。実測（2026-08-29、アカウント2020-07-07 開設）で履歴に現れた
@@ -92,6 +100,14 @@ HP を行動の履行度として読む設計も壊れる（罰の倍率が変�
   ときだけ計算される）
 
 ## 運用
+
+`scripts/habitica.py fetch` が Habit / Daily の `history` を
+`data/habitica/history.csv` に落とす（列は `date, ts, task_id, task_type,
+task_name, value, is_due, completed, scored_up, scored_down`）。**マージは
+`(date, task_id)` の差し替えで、API に無い task_id の行は消さない** —
+タスクを削除すると history ごと消えるため、全上書きすると過去の記録まで失う。
+同時に `data/habitica/tasks.json` へ全量スナップショットを上書き保存する
+（削除されたタスクの復元用。private 側の git 履歴が世代を持つ）。
 
 `scripts/habitica.py cron` を `daily-routine.sh` から毎日実行する。`needsCron` が
 立っているときだけ `POST /cron` を叩き、結果を `data/habitica/cron_log.csv` に

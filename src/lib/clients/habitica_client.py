@@ -8,6 +8,7 @@
 
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.request
@@ -18,6 +19,16 @@ logger = logging.getLogger(__name__)
 BASE_URL = 'https://habitica.com/api/v3'
 APP_NAME = 'dailybuild'
 MAX_RETRY_WAIT = 90.0
+
+# 認証情報は repo の外に置く。gtd / titan からも同じ規則で参照するため
+# （gsheets_client が ~/.config/gcp/gdrive-creds.json を見るのと同じ形）。
+# public repo に置かないこと自体が目的でもある
+DEFAULT_CREDS = Path.home() / '.config' / 'habitica' / 'creds.json'
+
+
+def creds_path() -> Path:
+    env = os.environ.get('HABITICA_CREDS')
+    return Path(env) if env else DEFAULT_CREDS
 
 
 class HabiticaError(RuntimeError):
@@ -102,6 +113,13 @@ class HabiticaClient:
     def run_cron(self) -> dict:
         """未処理の日付をまたぐ処理を走らせる（Daily の history はこれでしか増えない）"""
         return self.request('POST', '/cron')
+
+    def get_tags(self) -> list:
+        """タグ定義（id → name)。タスク側は id しか持たない"""
+        data = self.request('GET', '/tags')
+        if not isinstance(data, list):
+            raise HabiticaError(f"tags がリストを返しません: {type(data)}")
+        return data
 
     def get_tasks(self, task_type: str) -> list:
         data = self.request('GET', f'/tasks/user?type={task_type}')
