@@ -35,10 +35,10 @@ emotion = _load_script()
 
 CONF = {
     'questions': {
-        'score': 'いまの気分', 'body': '身体の軽さ', 'head': '頭の軽さ',
+        'score': 'いまの気分',
         'emotions': 'いまの気持ち', 'note': '何があった？',
     },
-    'grid_rows': ['score', 'body', 'head'],
+    'grid_rows': ['score'],
     'score': {'low': 1, 'high': 5, 'low_label': '悪い', 'high_label': '良い'},
     'vocabulary': [
         {'label': '楽しい・うれしい', 'valence': 'pos', 'arousal': 'high'},
@@ -56,10 +56,6 @@ def _form():
                     'questions': [
                         {'questionId': 'q_score', 'required': True,
                          'rowQuestion': {'title': 'いまの気分'}},
-                        {'questionId': 'q_body', 'required': True,
-                         'rowQuestion': {'title': '身体の軽さ'}},
-                        {'questionId': 'q_head', 'required': True,
-                         'rowQuestion': {'title': '頭の軽さ'}},
                     ],
                     'grid': {'columns': {
                         'type': 'RADIO',
@@ -88,14 +84,10 @@ def _form():
     }
 
 
-def _response(timestamp, score=None, body=None, head=None, emotions=None, note=None):
+def _response(timestamp, score=None, emotions=None, note=None):
     answers = {}
     if score is not None:
         answers['q_score'] = {'textAnswers': {'answers': [{'value': score}]}}
-    if body is not None:
-        answers['q_body'] = {'textAnswers': {'answers': [{'value': body}]}}
-    if head is not None:
-        answers['q_head'] = {'textAnswers': {'answers': [{'value': head}]}}
     if emotions is not None:
         answers['q_emotions'] = {
             'textAnswers': {'answers': [{'value': e} for e in emotions]}}
@@ -120,33 +112,13 @@ def test_build_dataframe_score_is_nullable_int_and_survives_missing():
 def test_build_dataframe_column_order():
     df = emotion.build_dataframe(_form(), [], CONF)
     assert list(df.columns) == \
-        ['timestamp', 'date', 'score', 'body', 'head', 'emotions', 'note']
+        ['timestamp', 'date', 'score', 'emotions', 'note']
 
 
 def test_build_dataframe_empty_has_score_column():
     df = emotion.build_dataframe(_form(), [], CONF)
     assert df.empty
     assert 'score' in df.columns
-
-
-def test_build_dataframe_body_head_are_nullable_int_and_survive_missing():
-    """身体・頭（Issue #104）も score と同じ扱い。値が無い過去回答は NA になり、
-    0（最悪）に潰さない"""
-    responses = [
-        _response('2026-08-20T10:00:00Z', score='3', body='4', head='2',
-                  emotions=['イライラ'], note='仕事'),
-        # グリッド化前の回答を模す: score だけ無い時代とは別に、body/head が
-        # 未設問だった時代（今回の移行直後）を model 化する
-        _response('2026-08-21T10:00:00Z', score='5', emotions=['楽しい・うれしい'],
-                  note='散歩'),
-    ]
-    df = emotion.build_dataframe(_form(), responses, CONF)
-    assert str(df['body'].dtype) == 'Int64'
-    assert str(df['head'].dtype) == 'Int64'
-    assert df['body'].iloc[0] == 4
-    assert df['head'].iloc[0] == 2
-    assert pd.isna(df['body'].iloc[1])
-    assert pd.isna(df['head'].iloc[1])
 
 
 # --- update_vocab_history ---
@@ -318,8 +290,8 @@ def test_sync_questions_raises_on_unmatched_existing_item():
 
 
 def _existing_grid_form(row_ids):
-    """行タイトルは実際のフォームの並びのまま（q_score/q_body/q_head の
-    questionId を持つ3行）。row_ids は questionId のリスト（出現順）"""
+    """2026-09-07 の行削除より前のフォーム（いまの気分/身体の軽さ/頭の軽さの
+    3行）。row_ids は questionId のリスト（出現順）"""
     titles = ['いまの気分', '身体の軽さ', '頭の軽さ']
     return {
         'items': [
@@ -405,6 +377,27 @@ def test_sync_questions_grid_add_row_preserves_existing_row_ids():
     assert questions[3]['rowQuestion']['title'] == '快'
 
 
+def test_sync_questions_grid_remove_trailing_rows_preserves_first_row_id():
+    """末尾の行を外しても先頭行の questionId は保持される
+
+    2026-09-07 に 身体の軽さ / 頭の軽さ を外した移行の安全性。出現順（FIFO）
+    対応なので末尾からの削除なら「いまの気分」の対応付けは動かない。
+    先頭・中間を消すと過去回答が別の行に付け替わる（行順変更と同じ事故）。
+    """
+    existing_form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
+    shrunk = gforms_client.grid_item(
+        'いまの状態', ['いまの気分'], 1, 5, '悪い', '良い', required=[True])
+
+    requests = _run_sync([shrunk], existing_form)
+    updates = [r['updateItem'] for r in requests if 'updateItem' in r]
+    assert len(updates) == 1
+    questions = updates[0]['item']['questionGroupItem']['questions']
+
+    assert len(questions) == 1
+    assert questions[0]['rowQuestion']['title'] == 'いまの気分'
+    assert questions[0]['questionId'] == 'q_score'
+
+
 def test_question_id_by_title_reads_grid_rows():
     """question_id_by_title がグリッドの行名 -> questionId を引けること"""
     form = _existing_grid_form(['q_score', 'q_body', 'q_head'])
@@ -447,16 +440,20 @@ def test_grid_item_required_list_length_mismatch_raises():
 
 def test_build_items_required_matches_grid_required_config():
     """emotion.py の build_items が yaml の grid_required を行ごとに反映すること。
-    いまの気分だけ required、身体の軽さ・頭の軽さは任意"""
-    conf = {**CONF, 'grid_title': 'いまの状態',
-            'grid_required': {'score': True, 'body': False, 'head': False}}
+    行を足したときに必須が漏れない（＝記録コストが上がらない）ことを見る"""
+    conf = {
+        **CONF,
+        'grid_title': 'いまの状態',
+        'questions': {**CONF['questions'], 'extra': '快'},
+        'grid_rows': ['score', 'extra'],
+        'grid_required': {'score': True, 'extra': False},
+    }
     items = emotion.build_items(conf)
     grid_spec = next(i for i in items if 'questionGroupItem' in i)
     questions = grid_spec['questionGroupItem']['questions']
     by_title = {q['rowQuestion']['title']: q['required'] for q in questions}
     assert by_title['いまの気分'] is True
-    assert by_title['身体の軽さ'] is False
-    assert by_title['頭の軽さ'] is False
+    assert by_title['快'] is False
 
 
 def test_build_items_missing_grid_required_defaults_to_required():

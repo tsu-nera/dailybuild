@@ -17,15 +17,9 @@ grid_title: いまの状態
 
 # 質問タイトル。回答は questionId で引くので、ここを変えたら
 # setup-form --update でフォーム側も合わせること。
-# score/body/head はグリッド（1つの questionGroupItem）の行になる
+# score はグリッド（1つの questionGroupItem）の行になる
 questions:
   score: いまの気分
-  body: 身体の軽さ
-  # 2026-09-05 に「頭の冴え」から改名した。身体（軽さ）と同じ軸に揃えるため。
-  # questionId は保持されるので過去回答も head 列に着地し続けるが、
-  # 改名前の24件は「冴え」という別の構成概念で記録されている。
-  # 版は data/emotion_grid_history.csv にあるので接いで読まないこと
-  head: 頭の軽さ
   emotions: いまの気持ち
   note: 何があった？
 
@@ -34,20 +28,22 @@ questions:
 # 既存回答の questionId が別の行に付け替わる（PHQ-9 の9問と同じ制約。
 # 詳細は docs/forms.md）。行を足すのは末尾に追加するだけでよい（既存行の
 # questionId は保持される）が、既存行の削除・並べ替えはしないこと**
-grid_rows: [score, body, head]
+#
+# 2026-09-07 に body（身体の軽さ）/ head（頭の軽さ）の2行を外した。
+# 同じ軸を daily.py の朝・夜フォームが取っており、二重に記録していたため。
+# 末尾2行の削除なので score の questionId は保持され、過去回答は
+# data/emotion.csv の body / head 列に残る（列は消さない）
+grid_rows: [score]
 
 # グリッドの行ごとの必須/任意。grid_rows と同じキーで指定する。
-# 全行必須にすると、気分だけ記録したいときも身体・頭を必ず答えることになり
-# 1回あたりの記録コストが上がる（続けられるかに直結する）。いまの気分だけを
-# 必須にし、身体の軽さ・頭の軽さは任意にしてある
+# 行を足すときは、記録コストが1回あたりに直接効く（続けられるかに直結する）
+# ことを踏まえて既定を任意にすること
 grid_required:
   score: true
-  body: false
-  head: false
 
-# グリッドの列（1〜5）。全行共通で、向きは全行「高=良好」（グリッドの列見出しが
-# 行共通のため構造的に強制される）。manual_metrics の mind_score / body_score と
-# 同じ向きで、将来一本化できるようにしてある。感情や身体感覚の「強さ」ではない
+# グリッドの列（1〜5）。向きは「高=良好」（グリッドの列見出しが行共通のため、
+# 行を足しても構造的に強制される）。manual_metrics の mind_score / body_score と
+# 同じ向きで、将来一本化できるようにしてある。感情の「強さ」ではない
 score:
   low: 1
   high: 5

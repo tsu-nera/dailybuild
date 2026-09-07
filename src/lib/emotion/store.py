@@ -31,14 +31,14 @@ def load_entries() -> pd.DataFrame:
 
     score はフォームに設問を足した 2026-08-26 より前の回答が空になる。
     0 に潰すと「最悪の気分」として集計に混ざるため、欠測を保てる
-    nullable Int64 のまま扱う。body/head（Issue #104 のグリッド化）も同じ扱い。
+    nullable Int64 のまま扱う。列ごと無い場合も「未設問」であって
+    「0件」ではないので、全欠測の列として補う（欠測を 0 として捏造しない）。
 
-    グリッド化前に fetch した CSV には body/head 列が無い。列ごと無いのは
-    「未設問」であって「0件」ではないので、無ければ全欠測の列として補う
-    （欠測を 0 として捏造しない）。
+    body / head（2026-08-31〜09-07 のグリッド行。朝・夜フォームと二重に
+    記録していたため設問を廃止した）は CSV に残るが読まない。
     """
     df = pd.read_csv(CSV_FILE, parse_dates=['timestamp'])
-    for col in ('score', 'body', 'head'):
+    for col in ('score',):
         if col not in df.columns:
             df[col] = pd.NA
         df[col] = pd.to_numeric(df[col], errors='coerce').astype('Int64')

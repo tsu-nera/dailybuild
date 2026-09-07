@@ -167,9 +167,12 @@ def cmd_setup_form(args):
 def build_dataframe(form, responses, conf):
     """回答リストを CSV スキーマの DataFrame にする
 
-    グリッドの行（conf['grid_rows']、既定は score/body/head）は列として
-    そのまま出力する。行を足すだけで列が増える構成にしてあるので、将来
-    快・達成感の行を足しても build_dataframe 自体は変更不要。
+    グリッドの行（conf['grid_rows']、現状は score のみ）は列としてそのまま
+    出力する。行を足すだけで列が増える構成にしてあるので、将来 快・達成感の
+    行を足しても build_dataframe 自体は変更不要。
+
+    2026-09-07 に外した body / head は列を出さなくなるが、CSV 側の列は
+    マージ（preserve_existing_on_nan=True）で残り続ける。
     """
     by_title = gforms_client.question_id_by_title(form)
     q = conf['questions']
