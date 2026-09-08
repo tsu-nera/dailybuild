@@ -163,6 +163,11 @@ TASKS = {
 
 WEEKS = ['2026-W36', '2026-W37']
 
+ROSTER = {
+    '筋トレ': {'track': 'up'},
+    'やけ食い': {'track': 'down'},
+}
+
 
 def _hist():
     rows = habitica.history_rows([HABIT], 'habit') + habitica.history_rows([DAILY], 'daily')
@@ -177,8 +182,8 @@ def _hist():
 
 
 def test_一度も押していない習慣が0として表に出る():
-    """history 起点にすると、これから形成する習慣ほど表から消える"""
-    table = habitica.habit_table(_hist(), WEEKS, {}, TASKS['habits'], 'up')
+    """roster 起点にしないと、これから形成する習慣ほど表から消える"""
+    table = habitica.habit_table(_hist(), WEEKS, ROSTER, TASKS['habits'], 'up')
 
     assert '筋トレ' in table.index          # history が1件も無い
     assert table.loc['筋トレ', '2026-W37'] == 0
@@ -190,11 +195,101 @@ def test_一度も押していない習慣が0として表に出る():
 
 def test_減らす習慣はscored_downで数える():
     """up=False の Habit を scored_up で数えると常に0になる"""
-    up = habitica.habit_table(_hist(), WEEKS, {}, TASKS['habits'], 'up')
-    down = habitica.habit_table(_hist(), WEEKS, {}, TASKS['habits'], 'down')
+    up = habitica.habit_table(_hist(), WEEKS, ROSTER, TASKS['habits'], 'up')
+    down = habitica.habit_table(_hist(), WEEKS, ROSTER, TASKS['habits'], 'down')
 
     assert 'やけ食い' not in up.index       # 増やす表には出ない
     assert down.loc['やけ食い', '2026-W37'] == 2
+
+
+def test_Dailyの目標はyamlが持つ():
+    """Habitica の Daily は「週x回」を表現できないので、回数は yaml 側で持つ"""
+    roster = {'冷水シャワー': {'target_per_week': 4}}
+    table = habitica.daily_table(_hist(), WEEKS, TASKS['dailys'], roster)
+
+    assert table.loc['冷水シャワー', '目標'] == 4
+    assert table.loc['新しい日課', '目標'] == '-'      # 目標なしは判定しない
+    # 目標を渡さなければ列自体を作らない（従来どおりの表）
+    assert '目標' not in habitica.daily_table(_hist(), WEEKS, TASKS['dailys']).columns
+
+
+def test_Dailyもrosterで絞る():
+    """cron が毎日行を書くことと、レビューしたいかは別の問題"""
+    roster = {'冷水シャワー': {'target_per_week': 4}}
+    picked = habitica.tracked_dailys(roster, TASKS['dailys'])
+
+    assert [t['text'] for t in picked] == ['冷水シャワー']
+
+    table = habitica.daily_table(_hist(), WEEKS, picked, roster)
+    assert table.loc['冷水シャワー', '目標'] == 4
+    assert '新しい日課' not in table.index
+
+
+def test_目標が空のDailyは判定しない():
+    roster = {'冷水シャワー': {'target_per_week': None}}
+    table = habitica.daily_table(_hist(), WEEKS,
+                                 habitica.tracked_dailys(roster, TASKS['dailys']), roster)
+    assert table.loc['冷水シャワー', '目標'] == '-'
+
+
+def test_対象に指定した名前はHabitとDailyの両方から探す():
+    """yaml は型を区別せず名前で指定する。Habit から Daily へ移しても落ちない"""
+    roster = {'冷水シャワー': {}, '筋トレ': {}}
+    both = TASKS['habits'] + TASKS['dailys']
+
+    assert habitica.missing_from_habitica(roster, both) == []
+    assert habitica.missing_from_habitica(roster, TASKS['habits']) == ['冷水シャワー']
+
+
+def test_rosterに無い習慣は表に出ない():
+    """Habitica に登録があっても、対象に入れていなければレビューしない"""
+    up = habitica.habit_table(_hist(), WEEKS, ROSTER, TASKS['habits'], 'up')
+    assert '坐禅' not in up.index
+
+
+def test_向きはHabiticaのフラグでなくrosterで決まる():
+    """up/down 両方が立つタスクを、どちらとして見るかは yaml が決める"""
+    tasks = [{'id': 'h-both', 'text': 'NoFap', 'up': True, 'down': True, 'value': 7.0}]
+    roster = {'NoFap': {'track': 'down'}}
+
+    assert habitica.tracked_habits(roster, tasks, 'up') == []
+    assert [t['id'] for t in habitica.tracked_habits(roster, tasks, 'down')] == ['h-both']
+
+
+def test_対象に指定した習慣がHabiticaに無ければ名指しで出す():
+    """リネームや削除で黙って対象から抜けるのを防ぐ"""
+    assert habitica.missing_from_habitica(ROSTER, TASKS['habits']) == []
+    assert habitica.missing_from_habitica({'消えた習慣': {'track': 'up'}},
+                                          TASKS['habits']) == ['消えた習慣']
+
+
+def test_最終押下は窓の外でも拾う():
+    """週の窓（既定4週）より古い空白が「0 が並ぶ」に化けるのを防ぐ"""
+    rows = habitica.last_pressed(_hist(), TASKS['habits'], dt.date(2026, 9, 10))
+    got = {name: (day, days) for name, day, days in rows}
+
+    assert got['やけ食い'] == (dt.date(2026, 9, 7), 3)
+    assert got['筋トレ'] == (None, None)     # 一度も押していない
+
+
+def test_減らす習慣は卒業候補に出さない():
+    """down の value は「押していない期間」で上がり、押し忘れと区別できない。
+
+    しかも up/down 両方が立つ Habit は放置しても減衰しない（実測: NoFap が
+    660日で 8.18→8.995）。一度候補に出ると再発時にしか外れない。
+    """
+    tasks = {
+        'habits': [{'id': 'h-both', 'text': 'NoFap', 'up': True, 'down': True,
+                    'value': 7.4}],
+        'dailys': [{'id': 'daily-1', 'text': '冷水シャワー', 'value': 26.9}],
+        'tags': [],
+    }
+    config = {'habits': {'NoFap': {'track': 'down'}}, 'graduate': {'value_min': 5}}
+    out = habitica.render_show(_hist(), tasks, config, WEEKS, dt.date(2026, 9, 10))
+
+    grad = out.split('## 卒業候補')[1]
+    assert 'NoFap' not in grad
+    assert '冷水シャワー' in grad       # Daily は対象のまま
 
 
 def test_卒業タグの付いたタスクだけを除外する():

@@ -3,7 +3,7 @@
 
 dailybuild は public リポジトリのため、お金・時間・気分・CBT などの非公開
 データは別リポジトリ dailybuild-private が持ち、data/ 配下へ symlink で
-参照している。
+参照している（設定のうち非公開のものは config/private/ 配下）。
 
 symlink が張られていない環境（新マシン、git worktree など）では参照先が
 dailybuild 内の実在しないパスに解決される。読み取りは「データ0件」として
@@ -24,7 +24,9 @@ from pathlib import Path
 
 PRIVATE_REPO = 'dailybuild-private'
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PRIVATE_DIRS = ('data', 'reports')
+# public 側に落ちてはいけない場所。config/ は公開の認証情報以外の設定も持つので、
+# config 全体ではなく config/private だけを対象にする
+PRIVATE_DIRS = (('data',), ('reports',), ('config', 'private'))
 
 
 def require_private_path(path: Path) -> Path:
@@ -70,14 +72,15 @@ def require_private_write(path: Path) -> Path:
     if REPO_ROOT not in resolved.parents:
         return path
 
-    top = resolved.relative_to(REPO_ROOT).parts[0]
-    if top not in PRIVATE_DIRS:
-        return path
-
-    raise FileNotFoundError(
-        f"{top}/ が {PRIVATE_REPO} に解決されないまま書き込もうとしました: {path}\n"
-        f"symlink が未設定です。scripts/setup_private_links.sh を実行してください。"
-    )
+    parts = resolved.relative_to(REPO_ROOT).parts
+    for prefix in PRIVATE_DIRS:
+        if parts[:len(prefix)] == prefix:
+            raise FileNotFoundError(
+                f"{'/'.join(prefix)}/ が {PRIVATE_REPO} に解決されないまま"
+                f"書き込もうとしました: {path}\n"
+                f"symlink が未設定です。scripts/setup_private_links.sh を実行してください。"
+            )
+    return path
 
 
 def ensure_dir(path: Path) -> Path:

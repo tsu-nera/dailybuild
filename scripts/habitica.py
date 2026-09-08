@@ -50,7 +50,8 @@ HISTORY_COLUMNS = [
 ]
 HISTORY_KEY = ['date', 'task_id']
 
-HABITS_YAML = BASE_DIR / 'config' / 'habits.yaml'
+# 習慣名そのものが非公開なので private 側に置く（dailybuild は public）
+HABITS_YAML = require_private_path(BASE_DIR / 'config' / 'private' / 'habits.yaml')
 GRADUATED_TAG = '卒業'
 
 logger = logging.getLogger(__name__)
@@ -232,8 +233,15 @@ def cmd_fetch(_args) -> int:
 
 
 def load_config() -> dict:
+    """対象と目標値。**無ければ落とす。**
+
+    空の dict を返すと全習慣が黙って「対象外」になり、レビューが何も出ないまま
+    正常終了する。設定を見失ったことに気づけないので、例外にする。
+    """
     if not HABITS_YAML.exists():
-        return {}
+        raise FileNotFoundError(
+            f'習慣の設定がありません: {HABITS_YAML}\n'
+            f'dailybuild-private の config/habits.yaml を確認してください。')
     return yaml.safe_load(HABITS_YAML.read_text()) or {}
 
 
@@ -272,15 +280,41 @@ def _weekly(hist: pd.DataFrame, weeks: list, column: str) -> pd.DataFrame:
             .reindex(columns=weeks).fillna(0).astype(int))
 
 
-def habit_table(hist: pd.DataFrame, weeks: list, targets: dict,
-                tasks: list, direction: str) -> pd.DataFrame:
-    """Habit は回数。scored_up / scored_down が1日の押下回数（実測で最大4）。
+def tracked_habits(roster: dict, tasks: list, direction: str) -> list:
+    """roster（yaml）に載っていて `track` が direction のものだけを返す。
 
-    **行は Habitica にあるタスク全件から作る。** history 起点にすると、一度も
-    押していない習慣が表から消える。これから形成する習慣ほど消えるので、
-    0 が見えないことが一番困る。
+    **行は roster 起点で作る。** history 起点にすると、一度も押していない習慣が
+    表から消える。これから形成する習慣ほど消えるので、0 が見えないと困る。
     """
-    picked = [t for t in tasks if t.get(direction)]
+    by_name = {t.get('text', ''): t for t in tasks}
+    return [by_name[name] for name, spec in roster.items()
+            if spec.get('track') == direction and name in by_name]
+
+
+def missing_from_habitica(roster: dict, tasks: list) -> list:
+    """yaml が対象に指定しているのに Habitica に無い名前。
+
+    リネームや削除で黙って対象から落ちるのを防ぐ。飛ばさずに名指しで出す。
+    Habit と Daily を混ぜて渡すこと（yaml は型を区別せず名前で指定する）。
+    """
+    names = {t.get('text', '') for t in tasks}
+    return sorted(name for name in roster if name not in names)
+
+
+def tracked_dailys(roster: dict, tasks: list) -> list:
+    """Daily も roster に書いたものだけを見る。
+
+    以前は Daily を常に全件出していた（cron が毎日行を書くので押し忘れが穴に
+    ならない、という理由）。だが「記録が信用できるか」と「レビューしたいか」は
+    別の問題で、家事の Daily まで毎週表に出ても読む対象が薄まるだけだった。
+    """
+    return [t for t in tasks if t.get('text', '') in roster]
+
+
+def habit_table(hist: pd.DataFrame, weeks: list, roster: dict,
+                tasks: list, direction: str) -> pd.DataFrame:
+    """Habit は回数。scored_up / scored_down が1日の押下回数（実測で最大4）。"""
+    picked = tracked_habits(roster, tasks, direction)
     if not picked:
         return pd.DataFrame()
     column = 'scored_up' if direction == 'up' else 'scored_down'
@@ -289,12 +323,40 @@ def habit_table(hist: pd.DataFrame, weeks: list, targets: dict,
     table.index = [t.get('text', '') for t in picked]
     table.index.name = '習慣'
     if direction == 'up':
-        table['目標'] = [targets.get(name) or '-' for name in table.index]
+        # 「減らす」は評価の対象にしないので目標も持たせない
+        table['目標'] = [roster[name].get('target_per_week') or '-' for name in table.index]
     return table
 
 
-def daily_table(hist: pd.DataFrame, weeks: list, tasks: list) -> pd.DataFrame:
-    """Daily は 完了/due。**分母は is_due の行数**で、記録が無い日は欠測"""
+def last_pressed(hist: pd.DataFrame, tasks: list, today: dt.date) -> list:
+    """(名前, 最終押下日, 経過日数)。押下が一度も無ければ日付は None。
+
+    週あたりの回数だけだと、窓（既定4週）より古い空白が「0 が4つ」に化けて
+    見えなくなる。実際 2年押されていない習慣が W34-W37 の全 0 に紛れていた。
+    行動についてではなく**記録について**の文なので、「N日やっていない」とは読まない。
+    """
+    h = hist[hist['task_type'] == 'habit']
+    pressed = h[(h['scored_up'].fillna(0) > 0) | (h['scored_down'].fillna(0) > 0)]
+    rows = []
+    for t in tasks:
+        own = pressed[pressed['task_id'] == t['id']]
+        if own.empty:
+            rows.append((t.get('text', ''), None, None))
+            continue
+        day = pd.to_datetime(own['date']).max().date()
+        rows.append((t.get('text', ''), day, (today - day).days))
+    return rows
+
+
+def daily_table(hist: pd.DataFrame, weeks: list, tasks: list,
+                roster: dict | None = None) -> pd.DataFrame:
+    """Daily は 完了/due。**分母は is_due の行数**で、記録が無い日は欠測。
+
+    Habitica の Daily は「週x回」を表現できない（frequency は曜日か everyX のみ）。
+    そこで repeat を全曜日にして毎日 due にし、**週何回を目標にするかは
+    `config/habits.yaml` の target_per_week で持つ**。曜日固定にすると、動けない
+    日に未達が確定して融通が利かない。
+    """
     if not tasks:
         return pd.DataFrame()
     due = hist[(hist['task_type'] == 'daily') & (hist['is_due'].astype(str) == 'True')]
@@ -308,6 +370,9 @@ def daily_table(hist: pd.DataFrame, weeks: list, tasks: list) -> pd.DataFrame:
     table = cell.where(total > 0, '-')
     table.index = [t.get('text', '') for t in tasks]
     table.index.name = '習慣'
+    if roster:
+        table['目標'] = [(roster.get(name) or {}).get('target_per_week') or '-'
+                         for name in table.index]
     return table
 
 
@@ -320,58 +385,99 @@ def coverage(weeks: list) -> pd.Series:
     return log.groupby('week')['date'].nunique().reindex(weeks, fill_value=0)
 
 
-def graduation_candidates(tasks: dict, done: set, value_min: float) -> list:
+def graduation_candidates(habits: list, dailys: list, value_min: float) -> list:
+    """レビュー対象のものだけを候補にする。対象外の習慣は卒業もしない。
+
+    **`track: down` の Habit は渡さない。** down の value は「押していない期間」で
+    上がるが、押していない理由が「起きていない」か「押し忘れ」か区別できない。
+    それを評価に使わないと決めておきながら卒業判定にだけ使うのは筋が通らない。
+    しかも up/down 両方が立つ Habit は放置しても減衰しないので（実測: NoFap が
+    660日で 8.18→8.995）、一度候補に出ると再発時にしか外れない。
+    """
     rows = []
-    for kind, key in (('habit', 'habits'), ('daily', 'dailys')):
-        for t in tasks.get(key, []):
-            if t['id'] in done:
-                continue
+    for kind, group in (('habit', habits), ('daily', dailys)):
+        for t in group:
             value = float(t.get('value', 0))
             if value >= value_min:
                 rows.append((t.get('text', ''), kind, value))
     return sorted(rows, key=lambda r: -r[2])
 
 
-def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list) -> str:
-    targets = {k: (v or {}).get('target_per_week')
-               for k, v in (config.get('habits') or {}).items()}
+def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
+                today: dt.date) -> str:
+    roster = {k: (v or {}) for k, v in (config.get('habits') or {}).items()}
     grad = config.get('graduate') or {}
     done = graduated_ids(tasks)
     habits = [t for t in tasks.get('habits', []) if t['id'] not in done]
     dailys = [t for t in tasks.get('dailys', []) if t['id'] not in done]
+    tracked = tracked_habits(roster, habits, 'up') + tracked_habits(roster, habits, 'down')
+    picked_dailys = tracked_dailys(roster, dailys)
+    tracked_ids = {t['id'] for t in tracked} | {t['id'] for t in picked_dailys}
+
+    current = today.strftime('%G-W%V')
+    labels = [f'{w} (途中)' if w == current else w for w in weeks]
+
+    def relabel(table):
+        return table.rename(columns=dict(zip(weeks, labels))) if not table.empty else table
 
     def section(title, table, note=None):
         body = [f'## {title}', '']
-        body += [table.to_markdown() if not table.empty else '対象なし', '']
+        body += [relabel(table).to_markdown() if not table.empty else '対象なし', '']
         if note:
             body += [note, '']
         return body
 
-    out = [f'# 習慣レビュー {weeks[-1]}', '']
+    out = [f'# 習慣レビュー {current}', '']
+
+    absent = missing_from_habitica(roster, habits + dailys)
+    if absent:
+        out += ['> **対象に指定した習慣が Habitica にありません**: ' + ' / '.join(absent),
+                '> リネームか削除。yaml を直すまでこの習慣はレビューされない。', '']
+
     out += section(
         'Habit / 増やす（週あたりの回数）',
-        habit_table(hist, weeks, targets, habits, 'up'),
+        habit_table(hist, weeks, roster, habits, 'up'),
         '押した回数であって、やった回数ではない。**0 を「やらなかった」と読まない**。')
     out += section(
         'Habit / 減らす（週あたりの回数）',
-        habit_table(hist, weeks, targets, habits, 'down'),
+        habit_table(hist, weeks, roster, habits, 'down'),
         '押し忘れると過少に出るうえ機械で裏が取れない。**評価の対象にしない**。')
-    out += section('Daily（完了 / due日数）', daily_table(hist, weeks, dailys))
+
+    if tracked:
+        out += ['## Habit / 最後に記録された日', '']
+        for name, day, days in last_pressed(hist, tracked, today):
+            when = f'{day}（{days}日前）' if day else '記録なし'
+            out += [f'- {name}: {when}']
+        out += ['', '窓の外の空白を見るための行。記録についての文で、'
+                '「N日やっていない」とは読まない。', '']
+
+    out += section(
+        'Daily（完了 / due日数）', daily_table(hist, weeks, picked_dailys, roster),
+        '目標がある習慣は「4週の平均が目標に届いたか」で見る。単週で判定しない。')
 
     cov = coverage(weeks)
     out += ['## 記録の被覆（cron を走らせた日数 / 7）', '',
-            '| ' + ' | '.join(weeks) + ' |',
+            '| ' + ' | '.join(labels) + ' |',
             '|' + '---|' * len(weeks),
             '| ' + ' | '.join(f'{cov[w]}/7' for w in weeks) + ' |',
-            '', 'Daily の分母はこの日数。走らなかった日は未達ではなく欠測。', '']
+            '', 'Daily の分母はこの日数。走らなかった日は未達ではなく欠測。'
+            ' (途中) の週は経過日数ぶんしか無いので、完了した週と比べない。', '']
 
-    cands = graduation_candidates(tasks, done, float(grad.get('value_min', 5)))
+    cands = graduation_candidates(tracked_habits(roster, habits, 'up'), picked_dailys,
+                                  float(grad.get('value_min', 5)))
     out += ['## 卒業候補', '']
     if cands:
         out += [f'- {name}（{kind} / value {value:.1f}）' for name, kind, value in cands]
         out += ['', 'Tag「卒業」を付けて `repeat` を空にすると対象から外れる（手動）。']
     else:
         out += ['なし']
+
+    untracked = [t.get('text', '') for t in habits + dailys if t['id'] not in tracked_ids]
+    if untracked:
+        out += ['', f'## 対象外（{len(untracked)}件）', '',
+                '- ' + ' / '.join(untracked),
+                '', 'Habitica には残っているがレビューしない。'
+                '戻すには `config/habits.yaml` に足す。']
 
     if done:
         names = [t.get('text', '') for t in tasks.get('habits', []) + tasks.get('dailys', [])
@@ -388,8 +494,19 @@ def cmd_show(args) -> int:
               file=sys.stderr)
         return 1
     tasks = json.loads(TASKS_JSON.read_text()) if TASKS_JSON.exists() else {}
-    weeks = week_keys(dt.date.today(), args.weeks)
-    print(render_show(hist, tasks, load_config(), weeks), end='')
+    today = dt.date.today()
+    weeks = week_keys(today, args.weeks)
+    config = load_config()
+    print(render_show(hist, tasks, config, weeks, today), end='')
+
+    # yaml が指す習慣が Habitica から消えていたら、レポートは出したうえで落とす。
+    # 黙って対象から抜けるのが一番困る。
+    absent = missing_from_habitica(config.get('habits') or {},
+                                   tasks.get('habits', []) + tasks.get('dailys', []))
+    if absent:
+        print('対象に指定した習慣が Habitica にありません: ' + ' / '.join(absent),
+              file=sys.stderr)
+        return 1
     return 0
 
 

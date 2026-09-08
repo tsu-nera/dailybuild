@@ -14,17 +14,21 @@ if [ ! -d "$PRIVATE/.git" ]; then
   exit 1
 fi
 
+# link <リポジトリ内のパス> [private 側のパス（省略時は同名）]
 link() {
+  local dst="$1" src="${2:-$1}"
   # 実体ディレクトリが残っていると symlink が中に作られてしまうので拒否する
-  if [ -e "$DAILYBUILD/$1" ] && [ ! -L "$DAILYBUILD/$1" ]; then
-    echo "エラー: $DAILYBUILD/$1 が実体として存在します。private へ退避してから再実行してください" >&2
+  if [ -e "$DAILYBUILD/$dst" ] && [ ! -L "$DAILYBUILD/$dst" ]; then
+    echo "エラー: $DAILYBUILD/$dst が実体として存在します。private へ退避してから再実行してください" >&2
     exit 1
   fi
-  ln -sfn "$PRIVATE/$1" "$DAILYBUILD/$1"
-  printf '  %-10s -> %s\n' "$1" "$PRIVATE/$1"
+  mkdir -p "$(dirname "$DAILYBUILD/$dst")"
+  ln -sfn "$PRIVATE/$src" "$DAILYBUILD/$dst"
+  printf '  %-14s -> %s\n' "$dst" "$PRIVATE/$src"
 }
 
 echo "非公開データの symlink を作成:"
 link data
 link reports
+link config/private config
 echo "完了"

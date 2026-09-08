@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 以前は健康データを `dailybuild` 側に置き、非公開のものだけを private へ逃していたが、
 `reports/` の散文が主観メンタルや金銭ストレスを引用しており、パス単位の線引きが
 機能していなかった。データとレポートは**まるごと** private が持ち、`dailybuild`
-には `data` `reports` の symlink だけを置く（後述）。公開判断を毎回しなくてよい形にする。
+には `data` `reports` `config/private` の symlink だけを置く（後述）。公開判断を毎回しなくてよい形にする。
 
 データ側は日次で機械が書き換わり、コード側は人と agent が書く。両者を分けたことで
 コミット履歴も混ざらない。
@@ -151,6 +151,8 @@ uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取�
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
 uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-routine.sh が実行）
+uv run scripts/habitica.py fetch     # Habit / Daily の history を CSV に落とす
+uv run scripts/habitica.py show --weeks 4  # 週ごとの回数・達成（/habits-review が使う）
 uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）
@@ -234,6 +236,7 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
+- `private/habits.yaml` - 習慣レビューの対象と週の目標値。**実体は dailybuild-private**（`config/private` は symlink。習慣名が非公開なため）
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
 
@@ -281,12 +284,23 @@ cd scripts/gas && clasp push   # .clasp.json の scriptId へ反映
 
 ## 非公開データ
 
-`dailybuild` は public でコードしか持たない。`data/` と `reports/` は
+`dailybuild` は public でコードしか持たない。`data/` `reports/` `config/private/` は
 `dailybuild-private` への symlink で、実体はすべて private 側にある
 （`.gitignore` 済み、symlink 自体もコミットしない）。
 
+| リポジトリ内 | private 側 | 中身 |
+|---|---|---|
+| `data/` | `data/` | 取得の正本 |
+| `reports/` | `reports/` | レポート・ジャーナル |
+| `config/private/` | `config/` | 中身自体が非公開な設定 |
+
 新しい取得先を足すときも、公開してよいかを判断する必要はない。データは
 無条件に private へ落ちる。
+
+**設定はデータと違い、既定は public 側（`config/` 直下）。** private へ回すのは
+`config/private/habits.yaml` のように**設定の中身そのものが非公開**なとき
+（習慣名は本人の生活と信条をそのまま含む）。認証情報は `config/*.json` として
+`.gitignore` 済みなので、private へ移す必要はない。
 
 ### セットアップ（新マシン・worktree）
 

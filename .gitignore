@@ -20,6 +20,8 @@ venv/
 # Project specific
 config/*.json
 config/phq9_def.yaml
+# 非公開設定（dailybuild-private/config への symlink）
+config/private
 tmp/
 
 # データとレポートの実体は private リポジトリ dailybuild-private にあり、

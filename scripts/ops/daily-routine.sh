@@ -23,7 +23,7 @@ done
 
 # data/ reports/ は dailybuild-private への symlink。未設定のまま走らせると
 # 各スクリプトが public 側にディレクトリを作り、既存データを見失う。
-for d in data reports; do
+for d in data reports config/private; do
   if [ ! -L "$d" ] || [ ! -d "$d" ]; then
     echo "エラー: $d が dailybuild-private にマウントされていません" >&2
     echo "  ./scripts/setup_private_links.sh を実行してください" >&2

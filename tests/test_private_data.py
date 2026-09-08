@@ -49,3 +49,16 @@ def test_リポジトリ外のパスは対象外(tmp_path, monkeypatch):
 def test_data_reports_以外は素通りする(tmp_path, monkeypatch):
     repo = _unmounted_repo(tmp_path, monkeypatch)
     assert require_private_write(repo / 'config' / 'creds.json')
+
+
+def test_config_private_は未マウントなら落ちる(tmp_path, monkeypatch):
+    """習慣名のような非公開設定を public 側へ書かない"""
+    repo = _unmounted_repo(tmp_path, monkeypatch)
+    with pytest.raises(FileNotFoundError):
+        require_private_write(repo / 'config' / 'private' / 'habits.yaml')
+
+
+def test_config_直下の公開設定は落とさない(tmp_path, monkeypatch):
+    """config/ 全体ではなく config/private だけが非公開。巻き添えにしない"""
+    repo = _unmounted_repo(tmp_path, monkeypatch)
+    assert require_private_write(repo / 'config' / 'toggl_push.yaml')
