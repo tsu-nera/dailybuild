@@ -397,9 +397,6 @@ def habit_table(hist: pd.DataFrame, periods: list, roster: dict,
     table = counts.reindex([t['id'] for t in picked]).fillna(0).astype(int)
     table.index = [t.get('text', '') for t in picked]
     table.index.name = 'habit'
-    if direction == 'up':
-        # 「減らす」は評価の対象にしないので目標も持たせない
-        table['weekly target'] = [roster[name].get('target_per_week') or '-' for name in table.index]
     return table
 
 
@@ -424,7 +421,7 @@ def last_pressed(hist: pd.DataFrame, tasks: list, today: dt.date) -> list:
 
 
 def daily_table(hist: pd.DataFrame, periods: list, tasks: list,
-                roster: dict | None = None, unit: str = 'week') -> pd.DataFrame:
+                unit: str = 'week') -> pd.DataFrame:
     """Daily は 完了/due。**分母は is_due の行数**で、記録が無い日は欠測。
 
     Habitica の Daily は「週x回」を表現できない（frequency は曜日か everyX のみ）。
@@ -448,9 +445,6 @@ def daily_table(hist: pd.DataFrame, periods: list, tasks: list,
     table = cell.where(total > 0, '-')
     table.index = [t.get('text', '') for t in tasks]
     table.index.name = 'habit'
-    if roster:
-        table['weekly target'] = [(roster.get(name) or {}).get('target_per_week') or '-'
-                           for name in table.index]
     return table
 
 
@@ -562,7 +556,7 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
         out += ['']
 
     out += section('Daily (completed / due days)',
-                   daily_table(hist, periods, picked_dailys, roster, unit))
+                   daily_table(hist, periods, picked_dailys, unit))
     out += section('Rhythm (whole window)',
                    rhythm_table(hist, periods, tracked + picked_dailys, unit))
 

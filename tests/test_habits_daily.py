@@ -134,7 +134,7 @@ def test_daily_tableは週ごとの達成率を出しis_due合計0の週はハ�
          'completed': False, 'scored_up': None, 'scored_down': None},
     ])
     weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 2)
-    table = habitica.daily_table(hist, weeks, TASKS['dailys'], ROSTER)
+    table = habitica.daily_table(hist, weeks, TASKS['dailys'])
     # is_due 2件・completed 1件 -> 1/2 (50%)
     cur_week = habitica._bucket(pd.Series(['2026-09-01']), 'week').iloc[0]
     assert '50%' in table.loc['筋トレ', cur_week]
@@ -283,6 +283,6 @@ def test_月単位では暦月で畳まれる():
          'completed': False, 'scored_up': None, 'scored_down': None},
     ])
     periods = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'month', 2)
-    table = habitica.daily_table(hist, periods, TASKS['dailys'], ROSTER, 'month')
+    table = habitica.daily_table(hist, periods, TASKS['dailys'], 'month')
     assert table.loc['筋トレ', '2026-08'] == '1/1 (100%)'
     assert table.loc['筋トレ', '2026-09'] == '0/1 (0%)'
