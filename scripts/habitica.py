@@ -576,7 +576,7 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
     cov = coverage(periods, unit)
     cov_row = pd.DataFrame([[f'{cov[p]}/{period_days(p, unit)}' for p in periods]],
                            columns=labels)
-    out += ['## 記録の被覆（cron を走らせた日数 / 暦日数）', '',
+    out += ['## 記録日数（cron を走らせた日 / 暦日）', '',
             cov_row.to_markdown(index=False), '']
 
     if done:
