@@ -188,9 +188,9 @@ def test_一度も押していない習慣が0として表に出る():
     assert '筋トレ' in table.index          # history が1件も無い
     assert table.loc['筋トレ', '2026-W37'] == 0
 
-    daily = habitica.daily_table(_hist(), WEEKS, TASKS['dailys'])
+    daily = habitica.daily_table(_hist(), WEEKS, ROSTER, TASKS['dailys'])
     assert '新しい日課' in daily.index
-    assert daily.loc['新しい日課', '2026-W37'] == '-'
+    assert daily.loc['新しい日課', '2026-W37'] == '-'   # 行が1件も無い
 
 
 def test_減らす習慣はscored_downで数える():
@@ -209,7 +209,7 @@ def test_Dailyもrosterで絞る():
 
     assert [t['text'] for t in picked] == ['冷水シャワー']
 
-    table = habitica.daily_table(_hist(), WEEKS, picked)
+    table = habitica.daily_table(_hist(), WEEKS, roster, picked)
     assert '冷水シャワー' in table.index
     assert '新しい日課' not in table.index
 
