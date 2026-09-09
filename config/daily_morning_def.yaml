@@ -8,6 +8,11 @@
 # Issue #157 で朝の記録スクリプトを改名（daily.py morning）。form_id は維持
 # （questionId が変わると過去回答が読めなくなるため）。画面タイトルのみ
 # 「日次記録」→「朝の記録」に変更（questionId は保たれる）。
+#
+# Issue #167 で questions を「順序付きリスト1本」に統合した（旧
+# questions/grid_rows/grid_required の3箇所複製を廃止）。
+# src/lib/daily/store.py がここから列・型・グリッド行・表示ラベルを
+# すべて導出する（コード側に複製を持たない）。
 
 # setup-form が書き戻す。空なら未作成
 form_id: 1fqyTh4Yr7dsXdStt0L4228SfGrzuVa18jkZ1LAR4WeQ
@@ -17,30 +22,68 @@ form_title: 朝の記録
 # 見出しとしてのみ使う）
 grid_title: 今日はどうだった？
 
-# 質問タイトル。回答は questionId で引くので、ここを変えたら
-# setup-form --update でフォーム側も合わせること。
-# mind/body/sleep はグリッド（1つの questionGroupItem）の行になる
+# 質問の順序付きリスト。**この並びが questionId の対応付けそのもの
+# （出現順=FIFO。grid item がまとめて先頭、続けて active な text/number
+# の設問が1 item ずつ続く）。並び替えたり削除したりすると既存回答の
+# questionId が別の設問に付け替わる（詳細は docs/forms.md）。
+# 設問を足すのは末尾に追加するだけでよい。**
+#
+# 各エントリのキー:
+#   key:         内部id（テストのフィクスチャ組み立てにのみ使う）
+#   label:       質問タイトル。回答は questionId で引くので、ここを
+#                変えたら setup-form --update でフォーム側も合わせること
+#   short:       表・入力率のヘッダに使う短いラベル（省略時は label）。
+#                label は設問文なので表ヘッダには長すぎることがある
+#   column:      CSV の列名
+#   type:        grid | number | text
+#     - grid:   1〜5 のグリッド行（下の score 参照）
+#     - number: 数値入力。Forms API の TextQuestion に数値バリデーションは
+#               無いため、フォーム上はただの自由記述。数値化は fetch 側
+#               （scripts/daily.py build_dataframe）が
+#               pd.to_numeric(errors='coerce') で行い、パース不能値は
+#               0 ではなく NA にする（0 は EDA responses のように
+#               正当な実測値でありうるため、欠測と区別する）
+#     - text:   自由記述（comment）
+#   required:    省略時 false。記録コストを上げないため mind だけ true
+#   active:      省略時 true。false にすると生きたフォームからは外れるが
+#                CSV の列は残り、過去データは読める（退役）。false にする
+#                ときは description に退役理由・最終日を書くこと
+#   description: 退役理由など（任意）
 questions:
-  mind:    気分
-  body:    身体の軽さ
-  head:    頭の軽さ
-  sleep:   昨夜の眠り
-  comment: コメント
-
-# グリッドの行タイトル（questions のキー）の並び順。
-# **この並びが questionId の対応付けそのもの（出現順=FIFO）。並び替えたり
-# 削除したりすると既存回答の questionId が別の行に付け替わる（詳細は
-# docs/forms.md）。行を足すのは末尾に追加するだけでよい**
-grid_rows: [mind, body, head, sleep]
-
-# グリッドの行ごとの必須/任意。grid_rows と同じキーで指定する。
-# 全行必須にすると毎回すべて答える必要が生じ、記録コストが上がるため
-# mind だけ必須にしてある
-grid_required:
-  mind: true
-  body: false
-  head: false
-  sleep: false
+  - key: mind
+    label: 気分
+    column: mind_score
+    type: grid
+    required: true
+  - key: body
+    label: 身体の軽さ
+    short: 身体
+    column: body_score
+    type: grid
+  - key: head
+    label: 頭の軽さ
+    short: 頭
+    column: head_score
+    type: grid
+  - key: sleep
+    label: 昨夜の眠り
+    short: 睡眠
+    column: sleep_score
+    type: grid
+  - key: comment
+    label: コメント
+    column: comment
+    type: text
+  - key: hrv_rmssd
+    label: 朝のHRV (RMSSD, ms)
+    short: HRV
+    column: hrv_rmssd
+    type: number
+  - key: eda_responses
+    label: EDA responses (回)
+    short: EDA
+    column: eda_responses
+    type: number
 
 # グリッドの列（1〜5）。全行共通で、向きは全行「高=良好」（グリッドの列見出しが
 # 行共通のため構造的に強制される）。だから body の設問文は「身体の重さ」でなく

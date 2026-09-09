@@ -3,6 +3,11 @@
 # フォームは scripts/daily.py evening setup-form がこの定義から生成する。
 # 朝（daily_morning_def.yaml）と対をなす新規フォーム。朝は「前夜の帰結」、
 # 夜は「一日の評価」を測るため分けている（背景は docs/forms.md）。
+#
+# Issue #167 で questions を「順序付きリスト1本」に統合した（旧
+# questions/grid_rows/grid_required の3箇所複製を廃止）。
+# src/lib/daily/store.py がここから列・型・グリッド行・表示ラベルを
+# すべて導出する（コード側に複製を持たない）。
 
 # setup-form が新規作成時に書き戻す。空なら未作成（merge 後に対話で作成する）
 form_id: 1mhdKDisv_kqanSG8KyIx2jt8Rlfo82f8Ip1ohGnOTI8
@@ -16,27 +21,72 @@ grid_title: 今日一日はどうだった？
 # 2026-09-07 に廃止したので、現状これが唯一のチャネル。**行動活性化を
 # 再開しても、この2問を高解像度チャネルの代用にしない**（1日1点の粗い
 # 常時チャネルで母集団が違う。詳細は docs/batdr.md と docs/forms.md）。
+#
+# 質問の順序付きリスト。**この並びが questionId の対応付けそのもの
+# （出現順=FIFO。grid item がまとめて先頭、続けて active な text/number
+# の設問が1 item ずつ続く）。並び替えたり削除したりすると既存回答の
+# questionId が別の設問に付け替わる（詳細は docs/forms.md）。
+# 設問を足すのは末尾に追加するだけでよい。**
+#
+# 各エントリのキー:
+#   key:         内部id（テストのフィクスチャ組み立てにのみ使う）
+#   label:       質問タイトル。回答は questionId で引くので、ここを
+#                変えたら setup-form --update でフォーム側も合わせること
+#   short:       表・入力率のヘッダに使う短いラベル（省略時は label）。
+#                label は設問文なので表ヘッダには長すぎることがある
+#   column:      CSV の列名
+#   type:        grid | number | text
+#     - grid:   1〜5 のグリッド行（下の score 参照）
+#     - number: 数値入力。Forms API の TextQuestion に数値バリデーションは
+#               無いため、フォーム上はただの自由記述。数値化は fetch 側
+#               （scripts/daily.py build_dataframe）が
+#               pd.to_numeric(errors='coerce') で行い、パース不能値は
+#               0 ではなく NA にする（0 は EDA responses のように
+#               正当な実測値でありうるため、欠測と区別する）
+#     - text:   自由記述（comment）
+#   required:    省略時 false。記録コストを上げないため mind だけ true
+#   active:      省略時 true。false にすると生きたフォームからは外れるが
+#                CSV の列は残り、過去データは読める（退役）。false にする
+#                ときは description に退役理由・最終日を書くこと
+#   description: 退役理由など（任意）
 questions:
-  mind:         気分
-  body:         身体の軽さ
-  head:         頭の軽さ
-  satisfaction: 満足感
-  achievement:  達成感
-  comment:      コメント
-
-# グリッドの行タイトル（questions のキー）の並び順。
-# **この並びが questionId の対応付けそのもの（出現順=FIFO）。並び替えたり
-# 削除したりすると既存回答の questionId が別の行に付け替わる。
-# 行を足すのは末尾に追加するだけでよい**
-grid_rows: [mind, body, head, satisfaction, achievement]
-
-# mind だけ必須（記録コストを上げないため、朝と同じ方針）
-grid_required:
-  mind: true
-  body: false
-  head: false
-  satisfaction: false
-  achievement: false
+  - key: mind
+    label: 気分
+    column: mind_score
+    type: grid
+    required: true
+  - key: body
+    label: 身体の軽さ
+    short: 身体
+    column: body_score
+    type: grid
+  - key: head
+    label: 頭の軽さ
+    short: 頭
+    column: head_score
+    type: grid
+  - key: satisfaction
+    label: 満足感
+    column: satisfaction
+    type: grid
+  - key: achievement
+    label: 達成感
+    column: achievement
+    type: grid
+  - key: comment
+    label: コメント
+    column: comment
+    type: text
+  - key: hrv_rmssd
+    label: 夜のHRV (RMSSD, ms)
+    short: HRV
+    column: hrv_rmssd
+    type: number
+  - key: eda_responses
+    label: EDA responses (回)
+    short: EDA
+    column: eda_responses
+    type: number
 
 # グリッドの列（1〜5）。5行とも「高=良好」で揃える
 score:

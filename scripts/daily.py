@@ -32,22 +32,17 @@ from lib.utils.private_data import ensure_dir, require_private_path
 BASE_DIR = Path(__file__).parent.parent
 MANUAL_FILE = require_private_path(BASE_DIR / 'data' / 'manual.csv')
 
-DEF_FILES = {
-    'morning': BASE_DIR / 'config/daily_morning_def.yaml',
-    'evening': BASE_DIR / 'config/daily_evening_def.yaml',
-}
-
 TZ = 'Asia/Tokyo'
 
-
-def load_def(slot):
-    with open(DEF_FILES[slot]) as f:
-        return yaml.safe_load(f)
+# スキーマの唯一の正本は config/daily_{slot}_def.yaml（store.load_def が読む）。
+# モジュール global のエイリアスにしておくことで、テストの
+# monkeypatch.setattr(daily, 'load_def', fake_load_def) がそのまま効く
+load_def = store.load_def
 
 
 def save_form_id(slot, form_id):
     """yaml のコメントを壊さないよう form_id の行だけ置換する"""
-    def_file = DEF_FILES[slot]
+    def_file = store.DEF_FILES[slot]
     text = def_file.read_text()
     new_text, n = re.subn(r'^form_id:.*$', f'form_id: {form_id}', text,
                           count=1, flags=re.MULTILINE)
@@ -61,18 +56,23 @@ def responder_uri(form):
 
 
 def build_items(conf):
-    """yaml の定義からフォームの item spec リストを組み立てる"""
-    q, s = conf['questions'], conf['score']
-    grid_rows = conf['grid_rows']
-    rows = [q[key] for key in grid_rows]
-    grid_required = conf.get('grid_required', {})
-    # 未指定の行は required 扱い（既定は安全側）
-    required = [grid_required.get(key, True) for key in grid_rows]
-    return [
-        gforms_client.grid_item(conf['grid_title'], rows, s['low'], s['high'],
-                             s['low_label'], s['high_label'], required=required),
-        gforms_client.text_item(q['comment'], required=False),
-    ]
+    """yaml の定義からフォームの item spec リストを組み立てる
+
+    grid item がまとめて先頭、続けて active な text/number の設問が
+    yaml の並び順で1 item ずつ続く（number は textQuestion として作る。
+    Forms API の TextQuestion に数値バリデーションは無いため、数値化は
+    fetch 側 build_dataframe() が pd.to_numeric(errors='coerce') で行う）。
+    """
+    s = conf['score']
+    grid_entries = store.grid_rows(conf)
+    rows = [e['label'] for e in grid_entries]
+    required = [e.get('required', False) for e in grid_entries]
+    items = [gforms_client.grid_item(conf['grid_title'], rows, s['low'], s['high'],
+                                  s['low_label'], s['high_label'], required=required)]
+    for e in store.active_questions(conf):
+        if e['type'] in ('text', 'number'):
+            items.append(gforms_client.text_item(e['label'], required=e.get('required', False)))
+    return items
 
 
 def _grid_row_titles(form):
@@ -186,6 +186,19 @@ def cmd_setup_form(args):
     print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
 
 
+def _with_retired_columns(df, slot, conf):
+    """退役（active: false）した設問の列を欠測として補い、CSV の列順に揃える
+
+    行の組み立ては active な設問だけを見るが、CSV の列は退役分も残す
+    （過去データを読めなくしないため）。補わずに列選択すると、設問を
+    退役させた次の fetch が KeyError で落ちる。
+    """
+    for col in store.columns(slot, conf):
+        if col not in df.columns:
+            df[col] = pd.NA
+    return df[store.columns(slot, conf)]
+
+
 def build_dataframe(form, responses, conf, slot):
     """回答リストを CSV スキーマの DataFrame にする
 
@@ -197,9 +210,11 @@ def build_dataframe(form, responses, conf, slot):
     """
     slot_conf = store.SLOTS[slot]
     by_title = gforms_client.question_id_by_title(form)
-    q = conf['questions']
-    grid_rows = conf['grid_rows']
-    required_titles = [q[key] for key in grid_rows] + [q['comment']]
+    grid_entries = store.grid_rows(conf)
+    text_like_entries = [e for e in store.active_questions(conf) if e['type'] in ('text', 'number')]
+    number_cols = [e['column'] for e in text_like_entries if e['type'] == 'number']
+
+    required_titles = [e['label'] for e in grid_entries] + [e['label'] for e in text_like_entries]
     missing = [t for t in required_titles if t not in by_title]
     if missing:
         raise ValueError(
@@ -208,27 +223,24 @@ def build_dataframe(form, responses, conf, slot):
 
     rows = []
     for res in responses:
-        grid_values = {}
-        for key in grid_rows:
-            v = gforms_client.answer_values(res, by_title[q[key]])
-            grid_values[key] = v[0] if v else pd.NA
-        comment = gforms_client.answer_values(res, by_title[q['comment']])
-        row = {
-            'updated_at': res.get('lastSubmittedTime') or res.get('createTime'),
-            'comment': comment[0] if comment and comment[0] else pd.NA,
-        }
+        row = {'updated_at': res.get('lastSubmittedTime') or res.get('createTime')}
         if slot_conf['has_source']:
             row['source'] = 'form'
-        row.update(grid_values)
+        for e in grid_entries:
+            v = gforms_client.answer_values(res, by_title[e['label']])
+            row[e['column']] = v[0] if v else pd.NA
+        for e in text_like_entries:
+            v = gforms_client.answer_values(res, by_title[e['label']])
+            row[e['column']] = v[0] if v and v[0] else pd.NA
         rows.append(row)
 
     base_columns = (['updated_at'] + (['source'] if slot_conf['has_source'] else [])
-                    + grid_rows + ['comment'])
+                    + [e['column'] for e in grid_entries]
+                    + [e['column'] for e in text_like_entries])
     df = pd.DataFrame(rows, columns=base_columns)
     if df.empty:
         df = df.assign(date=pd.Series(dtype='object'))
-        df = df.rename(columns=slot_conf['grid_column_map'])
-        return df[slot_conf['columns']]
+        return _with_retired_columns(df, slot, conf)
 
     # API は RFC3339 の UTC を返す。他データと揃えて JST の naive にする
     ts = pd.to_datetime(df['updated_at'], format='ISO8601', utc=True)
@@ -236,19 +248,17 @@ def build_dataframe(form, responses, conf, slot):
     day_start_hour = slot_conf['day_start_hour']
     df['date'] = df['updated_at'].apply(
         lambda t: store.response_date(t, day_start_hour))
-    for key in grid_rows:
-        df[key] = pd.to_numeric(df[key], errors='coerce').astype('Int64')
+    for e in grid_entries:
+        df[e['column']] = pd.to_numeric(df[e['column']], errors='coerce').astype('Int64')
+    for col in number_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce').astype('Float64')
 
     # 同一 date に複数回答があれば最後（updated_at 昇順で最後）を採る。
     # date が主キーなので複数行を残さない
     df = df.sort_values('updated_at').drop_duplicates(subset=['date'], keep='last')
 
-    # スコアの列名を CSV 列名に合わせる（grid_rows キー -> CSV 列名。
-    # f'{k}_score' の決め打ちにしない。夜の satisfaction/achievement には
-    # 接尾辞が無いため）
-    df = df.rename(columns=slot_conf['grid_column_map'])
-    columns = slot_conf['columns']
-    return df.sort_values('date').reset_index(drop=True)[columns]
+    df = _with_retired_columns(df, slot, conf)
+    return df.sort_values('date').reset_index(drop=True)
 
 
 def cmd_fetch(args, out=None):
@@ -263,7 +273,7 @@ def cmd_fetch(args, out=None):
         # 夜フォームは merge 後に対話で作成する運用（Issue #157）。form_id が
         # 空のうちに daily-routine.sh から毎日呼ばれても、失敗し続けて
         # ステップが赤く出るのを避けるため正常終了する
-        print(f'{slot}: form_id が未設定のためスキップ（{DEF_FILES[slot]}。'
+        print(f'{slot}: form_id が未設定のためスキップ（{store.DEF_FILES[slot]}。'
               'setup-form で作成すること）', file=sys.stderr)
         return
 
@@ -316,8 +326,9 @@ def cmd_migrate_manual(args):
 
     実行は #136 が行うが、コードとガードはここで用意する（本 Issue の範囲）。
     """
+    conf = store.load_def('morning')
     out_file = store.SLOTS['morning']['csv_file']
-    columns = store.SLOTS['morning']['columns']
+    columns = store.columns('morning', conf)
 
     manual = pd.read_csv(MANUAL_FILE, usecols=[
         'date', 'mind_score', 'body_score', 'sleep_score', 'comment'])
@@ -355,6 +366,9 @@ def cmd_migrate_manual(args):
     to_migrate['updated_at'] = pd.NA  # Sheets は入力時刻を記録していない（復元不能）
     to_migrate['source'] = 'sheet'
     to_migrate['head_score'] = pd.NA  # manual.csv に頭の記録は無い（0で埋めない）
+    for col in columns:
+        if col not in to_migrate.columns:
+            to_migrate[col] = pd.NA  # HRV/EDA など manual.csv に無い列も欠測として補う
     to_migrate = to_migrate[columns]
 
     ensure_dir(out_file.parent)
@@ -388,6 +402,8 @@ def cmd_show(args):
     print(render.render_scores(df, slot))
     print('\n## コメント\n')
     print(render.render_comments(df))
+    print('\n## 入力率\n')
+    print(render.render_fill_rates(df, slot, args.days))
 
 
 def _add_action_subparsers(slot_parser, slot):
