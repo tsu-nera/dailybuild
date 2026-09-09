@@ -272,26 +272,6 @@ def test_最終押下は窓の外でも拾う():
     assert got['筋トレ'] == (None, None)     # 一度も押していない
 
 
-def test_減らす習慣は卒業候補に出さない():
-    """down の value は「押していない期間」で上がり、押し忘れと区別できない。
-
-    しかも up/down 両方が立つ Habit は放置しても減衰しない（実測: NoFap が
-    660日で 8.18→8.995）。一度候補に出ると再発時にしか外れない。
-    """
-    tasks = {
-        'habits': [{'id': 'h-both', 'text': 'NoFap', 'up': True, 'down': True,
-                    'value': 7.4}],
-        'dailys': [{'id': 'daily-1', 'text': '冷水シャワー', 'value': 26.9}],
-        'tags': [],
-    }
-    config = {'habits': {'NoFap': {'track': 'down'}}, 'graduate': {'value_min': 5}}
-    out = habitica.render_show(_hist(), tasks, config, WEEKS, dt.date(2026, 9, 10))
-
-    grad = out.split('## 卒業候補')[1]
-    assert 'NoFap' not in grad
-    assert '冷水シャワー' in grad       # Daily は対象のまま
-
-
 def test_卒業タグの付いたタスクだけを除外する():
     tasks = dict(TASKS,
                  habits=[dict(TASKS['habits'][1], tags=['tag-grad'])] + TASKS['habits'][::2],

@@ -519,34 +519,14 @@ def coverage(periods: list, unit: str = 'week') -> pd.Series:
     return log.groupby('period')['date'].nunique().reindex(periods, fill_value=0)
 
 
-def graduation_candidates(habits: list, dailys: list, value_min: float) -> list:
-    """レビュー対象のものだけを候補にする。対象外の習慣は卒業もしない。
-
-    **`track: down` の Habit は渡さない。** down の value は「押していない期間」で
-    上がるが、押していない理由が「起きていない」か「押し忘れ」か区別できない。
-    それを評価に使わないと決めておきながら卒業判定にだけ使うのは筋が通らない。
-    しかも up/down 両方が立つ Habit は放置しても減衰しないので（実測: NoFap が
-    660日で 8.18→8.995）、一度候補に出ると再発時にしか外れない。
-    """
-    rows = []
-    for kind, group in (('habit', habits), ('daily', dailys)):
-        for t in group:
-            value = float(t.get('value', 0))
-            if value >= value_min:
-                rows.append((t.get('text', ''), kind, value))
-    return sorted(rows, key=lambda r: -r[2])
-
-
 def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
                 today: dt.date, unit: str = 'week') -> str:
     roster = {k: (v or {}) for k, v in (config.get('habits') or {}).items()}
-    grad = config.get('graduate') or {}
     done = graduated_ids(tasks)
     habits = [t for t in tasks.get('habits', []) if t['id'] not in done]
     dailys = [t for t in tasks.get('dailys', []) if t['id'] not in done]
     tracked = tracked_habits(roster, habits, 'up') + tracked_habits(roster, habits, 'down')
     picked_dailys = tracked_dailys(roster, dailys)
-    tracked_ids = {t['id'] for t in tracked} | {t['id'] for t in picked_dailys}
 
     current = today.strftime(UNIT_FORMAT[unit])
     labels = [f'{p} (途中)' if p == current else p for p in periods]
@@ -599,23 +579,10 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
     out += ['## 記録の被覆（cron を走らせた日数 / 暦日数）', '',
             cov_row.to_markdown(index=False), '']
 
-    cands = graduation_candidates(tracked_habits(roster, habits, 'up'), picked_dailys,
-                                  float(grad.get('value_min', 5)))
-    out += ['## 卒業候補', '']
-    if cands:
-        out += [f'- {name}（{kind} / value {value:.1f}）' for name, kind, value in cands]
-    else:
-        out += ['なし']
-
-    untracked = [t.get('text', '') for t in habits + dailys if t['id'] not in tracked_ids]
-    if untracked:
-        out += ['', f'## 対象外（{len(untracked)}件）', '',
-                '- ' + ' / '.join(untracked)]
-
     if done:
         names = [t.get('text', '') for t in tasks.get('habits', []) + tasks.get('dailys', [])
                  if t['id'] in done]
-        out += ['', f'## 卒業済み（{len(names)}件・対象外）', '',
+        out += [f'## 卒業済み（{len(names)}件・対象外）', '',
                 '\n'.join(f'- {n}' for n in sorted(names))]
     return '\n'.join(out) + '\n'
 
