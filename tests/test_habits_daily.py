@@ -1,4 +1,4 @@
-"""reports/habits_daily.csv の生成と show の3指標（達成率・時刻の変動性・IRT）のテスト
+"""reports/habits_daily.csv の生成と show の指標（達成率・IRT）のテスト
 
 このリポジトリで最も危険な故障形態は「欠測の捏造」。history に行が無い日を
 0埋め/False埋めしないこと、Habit の行に分母を捏造しないことを中心に検証する。
@@ -188,51 +188,6 @@ def test_進行中の期間だけpartialになる():
                                pd.Timestamp('2026-09-30').date()) is False
 
 
-def test_minutes_since_day_startは深夜またぎの距離を圧縮する():
-    ts_raw = pd.Series(['2026-09-01T23:50:00', '2026-09-02T00:10:00'])
-    raw_minutes = pd.to_datetime(ts_raw).dt.hour * 60 + pd.to_datetime(ts_raw).dt.minute
-    shifted = habitica.minutes_since_day_start(ts_raw, day_start_hour=5)
-    assert raw_minutes.std() > shifted.std()
-
-
-def test_変動性はdayStart起点で計算され深夜またぎで小さくなる():
-    """23:50 と 00:10 が最大距離にならないこと。素の HH:MM 換算と突き合わせる。"""
-    times = ['23:50', '00:10'] * 4          # 8点（VARIABILITY_MIN_POINTS ちょうど）
-    rows = []
-    for i, hhmm in enumerate(times):
-        # 00:10 の押下は暦日が翌日になる
-        day = 20 + i // 2 + (1 if hhmm == '00:10' else 0)
-        date = f'2026-08-{day:02d}'
-        rows.append({'date': date, 'ts': f'{date}T{hhmm}:00',
-                     'task_id': 'h1', 'task_type': 'habit', 'task_name': '瞑想',
-                     'value': 1, 'is_due': None, 'completed': None,
-                     'scored_up': 1, 'scored_down': 0})
-    hist = _history(rows)
-    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
-    table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
-
-    raw = pd.Series([r['ts'] for r in rows])
-    raw_std = round((pd.to_datetime(raw).dt.hour * 60 + pd.to_datetime(raw).dt.minute).std())
-    shifted_std = round(habitica.minutes_since_day_start(raw).std())
-    assert table.loc['瞑想', 'n'] == 8
-    assert table.loc['瞑想', 'time SD'] == f'{shifted_std}min'
-    assert shifted_std < raw_std
-
-
-def test_rhythm_tableは点数8未満で変動性がハイフン():
-    rows = []
-    for i in range(5):
-        rows.append({'date': f'2026-08-{20+i:02d}', 'ts': f'2026-08-{20+i:02d}T08:00:00',
-                     'task_id': 'h1', 'task_type': 'habit', 'task_name': '瞑想',
-                     'value': 1, 'is_due': None, 'completed': None,
-                     'scored_up': 1, 'scored_down': 0})
-    hist = _history(rows)
-    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
-    table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
-    assert table.loc['瞑想', 'n'] == 5
-    assert table.loc['瞑想', 'time SD'] == '-'
-
-
 def test_rhythm_tableはIRTの中央値と最大を出す():
     # 間隔: 1日, 1日, 3日 -> 中央値1.0日、最大3.0日
     dates = ['2026-08-20', '2026-08-21', '2026-08-22', '2026-08-25']
@@ -245,8 +200,30 @@ def test_rhythm_tableはIRTの中央値と最大を出す():
     hist = _history(rows)
     weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
     table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
-    assert table.loc['瞑想', 'IRT median'] == '1.0d'
-    assert table.loc['瞑想', 'IRT max'] == '3.0d'
+    assert table.loc['瞑想', 'n'] == 4
+    assert table.loc['瞑想', 'IRT median'] == '1d'
+    assert table.loc['瞑想', 'IRT max'] == '3d'
+
+
+def test_IRTは押した時刻に影響されない():
+    """朝やって夜押した日があっても、日付が同じなら間隔は変わらない。
+
+    Habitica の timestamp は押した時刻で、編集もできない。時刻を使うと
+    「忙しい朝ほど押し忘れて遅くなる」偏りを間隔として拾ってしまう。
+    """
+    def _rows(times):
+        return _history([
+            {'date': d, 'ts': f'{d}T{t}:00', 'task_id': 'h1', 'task_type': 'habit',
+             'task_name': '瞑想', 'value': 1, 'is_due': None, 'completed': None,
+             'scored_up': 1, 'scored_down': 0}
+            for d, t in zip(['2026-08-20', '2026-08-21', '2026-08-24'], times)])
+
+    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
+    morning = habitica.rhythm_table(_rows(['07:00', '07:05', '07:10']), weeks, TASKS['habits'])
+    mixed = habitica.rhythm_table(_rows(['07:00', '23:50', '06:10']), weeks, TASKS['habits'])
+
+    assert morning.loc['瞑想', 'IRT median'] == mixed.loc['瞑想', 'IRT median'] == '2d'
+    assert morning.loc['瞑想', 'IRT max'] == mixed.loc['瞑想', 'IRT max'] == '3d'
 
 
 def test_render_showの出力にstreakや連続日数が含まれない(monkeypatch, tmp_path):

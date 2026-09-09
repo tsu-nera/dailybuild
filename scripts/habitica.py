@@ -54,9 +54,6 @@ HISTORY_KEY = ['date', 'task_id']
 HABITS_DAILY_CSV = BASE_DIR / 'reports' / 'habits_daily.csv'
 HABITS_DAILY_COLUMNS = ['date', 'habit', 'task_type', 'is_due', 'completed']
 
-DAY_START_HOUR = 5          # Habitica の dayStart。0時またぎを畳まないための起点
-VARIABILITY_MIN_POINTS = 8  # これ未満の点数では変動性を出さない
-
 # 習慣名そのものが非公開なので private 側に置く（dailybuild は public）
 HABITS_YAML = require_private_path(BASE_DIR / 'config' / 'private' / 'habits.yaml')
 GRADUATED_TAG = '卒業'
@@ -491,17 +488,17 @@ def press_rows(hist: pd.DataFrame) -> pd.DataFrame:
     return hist[pressed_habit | pressed_daily]
 
 
-def minutes_since_day_start(ts: pd.Series, day_start_hour: int = DAY_START_HOUR) -> pd.Series:
-    """押下時刻を dayStart 起点の経過分に直す。23:50 と 00:10 を最大距離にしないため。"""
-    t = pd.to_datetime(ts)
-    return ((t.dt.hour * 60 + t.dt.minute) - day_start_hour * 60) % 1440
-
-
 def rhythm_table(hist: pd.DataFrame, periods: list, tasks: list,
                  unit: str = 'week') -> pd.DataFrame:
-    """窓全体（periods の範囲）で1つずつ出す、時刻の変動性と IRT のテーブル。
+    """窓全体（periods の範囲）の IRT（実施した日の間隔）。
 
-    行は tasks 起点（押下ゼロの習慣を消さない）。
+    行は tasks 起点（実施ゼロの習慣を消さない）。
+
+    **時刻ではなく日付で数える。** Habitica の timestamp は「押した時刻」であって
+    「やった時刻」ではなく、後から編集もできない。朝やって夜押した日は夜として
+    残り、忙しい朝ほど押し忘れて遅い方へ偏るので、系統誤差であってノイズではない。
+    そもそも時間帯は融通を利かせる前提なので（朝に無理なら夜にやる）、時刻の
+    ばらつきが小さいことが良いことでもない。
     """
     if not tasks:
         return pd.DataFrame()
@@ -511,23 +508,19 @@ def rhythm_table(hist: pd.DataFrame, periods: list, tasks: list,
 
     rows = []
     for t in tasks:
-        own = pressed[pressed['task_id'] == t['id']].sort_values('ts') if not pressed.empty else pressed
-        n = len(own)
-        if n >= VARIABILITY_MIN_POINTS:
-            minutes = minutes_since_day_start(own['ts'])
-            variability = f'{round(minutes.std())}min'
-        else:
-            variability = '-'
+        own = pressed[pressed['task_id'] == t['id']] if not pressed.empty else pressed
+        days = sorted(set(own['date'])) if len(own) else []
+        n = len(days)
         if n >= 2:
-            gaps = pd.to_datetime(own['ts']).diff().dropna().dt.total_seconds() / 86400
-            irt_median = f'{gaps.median():.1f}d'
-            irt_max = f'{gaps.max():.1f}d'
+            gaps = pd.Series(pd.to_datetime(pd.Series(days)).diff().dropna().dt.days)
+            irt_median = f'{gaps.median():.0f}d'
+            irt_max = f'{gaps.max():.0f}d'
         else:
             irt_median = '-'
             irt_max = '-'
-        rows.append((t.get('text', ''), n, variability, irt_median, irt_max))
+        rows.append((t.get('text', ''), n, irt_median, irt_max))
 
-    table = pd.DataFrame(rows, columns=['habit', 'n', 'time SD', 'IRT median', 'IRT max'])
+    table = pd.DataFrame(rows, columns=['habit', 'n', 'IRT median', 'IRT max'])
     table = table.set_index('habit')
     return table
 
@@ -577,7 +570,7 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
 
     out += section('Daily (done days / calendar days)',
                    daily_table(hist, periods, roster, picked_dailys, unit))
-    out += section('Rhythm (whole window)',
+    out += section('IRT (whole window)',
                    rhythm_table(hist, periods, tracked + picked_dailys, unit))
 
     if done:
