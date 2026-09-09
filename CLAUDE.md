@@ -160,6 +160,7 @@ uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_de
 uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-routine.sh が実行）
 uv run scripts/habitica.py fetch     # Habit / Daily の history を CSV に落とす
 uv run scripts/habitica.py show --weeks 4  # 週ごとの回数・達成（/habits-review が使う）
+uv run scripts/habitica.py show --unit month --months 3  # 月ごと（長期の傾向を見るとき）
 uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）

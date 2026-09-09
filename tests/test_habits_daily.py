@@ -133,10 +133,10 @@ def test_daily_tableは週ごとの達成率を出しis_due合計0の週はハ�
          'task_type': 'daily', 'task_name': '筋トレ', 'value': 0, 'is_due': True,
          'completed': False, 'scored_up': None, 'scored_down': None},
     ])
-    weeks = habitica.week_keys(pd.Timestamp('2026-09-06').date(), 2)
+    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 2)
     table = habitica.daily_table(hist, weeks, TASKS['dailys'], ROSTER)
     # is_due 2件・completed 1件 -> 1/2 (50%)
-    cur_week = habitica._iso_week(pd.Series(['2026-09-01'])).iloc[0]
+    cur_week = habitica._bucket(pd.Series(['2026-09-01']), 'week').iloc[0]
     assert '50%' in table.loc['筋トレ', cur_week]
     other_week = [w for w in weeks if w != cur_week][0]
     assert table.loc['筋トレ', other_week] == '-'
@@ -162,7 +162,7 @@ def test_変動性はdayStart起点で計算され深夜またぎで小さくな
                      'value': 1, 'is_due': None, 'completed': None,
                      'scored_up': 1, 'scored_down': 0})
     hist = _history(rows)
-    weeks = habitica.week_keys(pd.Timestamp('2026-09-06').date(), 4)
+    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
     table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
 
     raw = pd.Series([r['ts'] for r in rows])
@@ -181,7 +181,7 @@ def test_rhythm_tableは点数8未満で変動性がハイフン():
                      'value': 1, 'is_due': None, 'completed': None,
                      'scored_up': 1, 'scored_down': 0})
     hist = _history(rows)
-    weeks = habitica.week_keys(pd.Timestamp('2026-09-06').date(), 4)
+    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
     table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
     assert table.loc['瞑想', '点数'] == 5
     assert table.loc['瞑想', '時刻の変動性'] == '-'
@@ -197,7 +197,7 @@ def test_rhythm_tableはIRTの中央値と最大を出す():
                      'value': 1, 'is_due': None, 'completed': None,
                      'scored_up': 1, 'scored_down': 0})
     hist = _history(rows)
-    weeks = habitica.week_keys(pd.Timestamp('2026-09-06').date(), 4)
+    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
     table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
     assert table.loc['瞑想', 'IRT中央値'] == '1.0日'
     assert table.loc['瞑想', 'IRT最大'] == '3.0日'
@@ -211,7 +211,7 @@ def test_render_showの出力にstreakや連続日数が含まれない(monkeypa
     ])
     monkeypatch.setattr(habitica, 'CRON_LOG', tmp_path / 'cron_log.csv')
     config = {'habits': ROSTER}
-    weeks = habitica.week_keys(pd.Timestamp('2026-09-06').date(), 2)
+    weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 2)
     out = habitica.render_show(hist, TASKS, config, weeks, pd.Timestamp('2026-09-06').date())
     assert 'streak' not in out
     assert '連続日数' not in out
@@ -256,3 +256,33 @@ def test_HABITS_DAILY_CSVはreports配下でありdata配下ではない():
     parts = REAL_HABITS_DAILY_CSV.relative_to(BASE_DIR).parts
     assert parts[0] == 'reports'
     assert 'data' not in parts
+
+
+# --- 期間キー（週 / 月） ---
+
+def test_period_keysは月単位で年をまたいでも正しく遡る():
+    keys = habitica.period_keys(pd.Timestamp('2026-01-15').date(), 'month', 3)
+    assert keys == ['2025-11', '2025-12', '2026-01']
+
+
+def test_period_daysは暦日数を返す():
+    """被覆の分母。月ごとに違うので 7 固定にできない"""
+    assert habitica.period_days('2026-W37', 'week') == 7
+    assert habitica.period_days('2026-02', 'month') == 28
+    assert habitica.period_days('2024-02', 'month') == 29
+    assert habitica.period_days('2026-09', 'month') == 30
+
+
+def test_月単位では暦月で畳まれる():
+    hist = _history([
+        {'date': '2026-08-31', 'ts': '2026-08-31T08:00:00', 'task_id': 'd1',
+         'task_type': 'daily', 'task_name': '筋トレ', 'value': 1, 'is_due': True,
+         'completed': True, 'scored_up': None, 'scored_down': None},
+        {'date': '2026-09-01', 'ts': '2026-09-01T08:00:00', 'task_id': 'd1',
+         'task_type': 'daily', 'task_name': '筋トレ', 'value': 0, 'is_due': True,
+         'completed': False, 'scored_up': None, 'scored_down': None},
+    ])
+    periods = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'month', 2)
+    table = habitica.daily_table(hist, periods, TASKS['dailys'], ROSTER, 'month')
+    assert table.loc['筋トレ', '2026-08'] == '1/1 (100%)'
+    assert table.loc['筋トレ', '2026-09'] == '0/1 (0%)'

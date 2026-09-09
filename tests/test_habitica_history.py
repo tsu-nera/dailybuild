@@ -207,10 +207,10 @@ def test_Dailyの目標はyamlが持つ():
     roster = {'冷水シャワー': {'target_per_week': 4}}
     table = habitica.daily_table(_hist(), WEEKS, TASKS['dailys'], roster)
 
-    assert table.loc['冷水シャワー', '目標'] == 4
-    assert table.loc['新しい日課', '目標'] == '-'      # 目標なしは判定しない
+    assert table.loc['冷水シャワー', '週目標'] == 4
+    assert table.loc['新しい日課', '週目標'] == '-'      # 目標なしは判定しない
     # 目標を渡さなければ列自体を作らない（従来どおりの表）
-    assert '目標' not in habitica.daily_table(_hist(), WEEKS, TASKS['dailys']).columns
+    assert '週目標' not in habitica.daily_table(_hist(), WEEKS, TASKS['dailys']).columns
 
 
 def test_Dailyもrosterで絞る():
@@ -221,7 +221,7 @@ def test_Dailyもrosterで絞る():
     assert [t['text'] for t in picked] == ['冷水シャワー']
 
     table = habitica.daily_table(_hist(), WEEKS, picked, roster)
-    assert table.loc['冷水シャワー', '目標'] == 4
+    assert table.loc['冷水シャワー', '週目標'] == 4
     assert '新しい日課' not in table.index
 
 
@@ -229,7 +229,7 @@ def test_目標が空のDailyは判定しない():
     roster = {'冷水シャワー': {'target_per_week': None}}
     table = habitica.daily_table(_hist(), WEEKS,
                                  habitica.tracked_dailys(roster, TASKS['dailys']), roster)
-    assert table.loc['冷水シャワー', '目標'] == '-'
+    assert table.loc['冷水シャワー', '週目標'] == '-'
 
 
 def test_対象に指定した名前はHabitとDailyの両方から探す():

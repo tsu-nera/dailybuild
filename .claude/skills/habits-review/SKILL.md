@@ -23,7 +23,9 @@ uv run scripts/habitica.py fetch
 uv run scripts/habitica.py show --weeks 4
 ```
 
-`--weeks` は既定4。長期の傾向を見るときだけ増やす。
+`--weeks` は既定4。長期の傾向を見るときだけ増やすか、`--unit month --months 3`
+に切り替える。**達成率を判定に使うなら28日を下限にする**（7日窓では達成率が
+14pp 刻みでしか動かず、90% のような閾値が「1回でも落としたか」に潰れる）。
 
 `show` が非ゼロで終わったら、`config/habits.yaml` が対象に指定した習慣が
 Habitica から消えている（リネームか削除）。**直すまでその習慣はレビューされない。**

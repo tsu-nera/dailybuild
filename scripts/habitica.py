@@ -9,7 +9,7 @@
 Usage:
     python scripts/habitica.py cron     # cron を確定させ、実行を記録する
     python scripts/habitica.py fetch    # Habit / Daily の history を CSV に落とす
-    python scripts/habitica.py show     # 週ごとの回数・達成をまとめて出す
+    python scripts/habitica.py show     # 期間ごとの回数・達成をまとめて出す（--unit week|month）
     python scripts/habitica.py status   # 現在の状態を表示（何も変更しない）
 
 詳細と落とし穴は docs/habitica.md を参照。
@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import argparse
+import calendar
 import datetime as dt
 import json
 import logging
@@ -316,23 +317,42 @@ def graduated_ids(tasks: dict) -> set:
     }
 
 
-def week_keys(end: dt.date, weeks: int) -> list:
-    """新しい順に ISO 週キーを返す"""
-    mondays = [end - dt.timedelta(days=end.weekday() + 7 * i) for i in range(weeks)]
-    return [m.strftime('%G-W%V') for m in reversed(mondays)]
+UNIT_FORMAT = {'week': '%G-W%V', 'month': '%Y-%m'}
+UNIT_DEFAULT_COUNT = {'week': 4, 'month': 3}
 
 
-def _iso_week(series: pd.Series) -> pd.Series:
-    return pd.to_datetime(series).dt.strftime('%G-W%V')
+def period_keys(end: dt.date, unit: str, count: int) -> list:
+    """古い順に期間キーを返す（週は ISO 週、月は暦月）"""
+    if unit == 'week':
+        starts = [end - dt.timedelta(days=end.weekday() + 7 * i) for i in range(count)]
+    else:
+        starts = []
+        y, m = end.year, end.month
+        for _ in range(count):
+            starts.append(dt.date(y, m, 1))
+            y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+    return [d.strftime(UNIT_FORMAT[unit]) for d in reversed(starts)]
 
 
-def _weekly(hist: pd.DataFrame, weeks: list, column: str) -> pd.DataFrame:
-    """task_id × 週の合計。行が無い週は 0"""
+def _bucket(series: pd.Series, unit: str) -> pd.Series:
+    return pd.to_datetime(series).dt.strftime(UNIT_FORMAT[unit])
+
+
+def period_days(key: str, unit: str) -> int:
+    """その期間の暦日数。達成率の分母ではなく、被覆（cron を走らせた日数）の分母。"""
+    if unit == 'week':
+        return 7
+    year, month = (int(x) for x in key.split('-'))
+    return calendar.monthrange(year, month)[1]
+
+
+def _bucketed(hist: pd.DataFrame, periods: list, column: str, unit: str) -> pd.DataFrame:
+    """task_id × 期間の合計。行が無い期間は 0"""
     if hist.empty:
-        return pd.DataFrame(columns=weeks)
-    df = hist.assign(week=_iso_week(hist['date']))
-    return (df.pivot_table(index='task_id', columns='week', values=column, aggfunc='sum')
-            .reindex(columns=weeks).fillna(0).astype(int))
+        return pd.DataFrame(columns=periods)
+    df = hist.assign(period=_bucket(hist['date'], unit))
+    return (df.pivot_table(index='task_id', columns='period', values=column, aggfunc='sum')
+            .reindex(columns=periods).fillna(0).astype(int))
 
 
 def tracked_habits(roster: dict, tasks: list, direction: str) -> list:
@@ -366,20 +386,20 @@ def tracked_dailys(roster: dict, tasks: list) -> list:
     return [t for t in tasks if t.get('text', '') in roster]
 
 
-def habit_table(hist: pd.DataFrame, weeks: list, roster: dict,
-                tasks: list, direction: str) -> pd.DataFrame:
+def habit_table(hist: pd.DataFrame, periods: list, roster: dict,
+                tasks: list, direction: str, unit: str = 'week') -> pd.DataFrame:
     """Habit は回数。scored_up / scored_down が1日の押下回数（実測で最大4）。"""
     picked = tracked_habits(roster, tasks, direction)
     if not picked:
         return pd.DataFrame()
     column = 'scored_up' if direction == 'up' else 'scored_down'
-    counts = _weekly(hist[hist['task_type'] == 'habit'], weeks, column)
+    counts = _bucketed(hist[hist['task_type'] == 'habit'], periods, column, unit)
     table = counts.reindex([t['id'] for t in picked]).fillna(0).astype(int)
     table.index = [t.get('text', '') for t in picked]
     table.index.name = '習慣'
     if direction == 'up':
         # 「減らす」は評価の対象にしないので目標も持たせない
-        table['目標'] = [roster[name].get('target_per_week') or '-' for name in table.index]
+        table['週目標'] = [roster[name].get('target_per_week') or '-' for name in table.index]
     return table
 
 
@@ -403,8 +423,8 @@ def last_pressed(hist: pd.DataFrame, tasks: list, today: dt.date) -> list:
     return rows
 
 
-def daily_table(hist: pd.DataFrame, weeks: list, tasks: list,
-                roster: dict | None = None) -> pd.DataFrame:
+def daily_table(hist: pd.DataFrame, periods: list, tasks: list,
+                roster: dict | None = None, unit: str = 'week') -> pd.DataFrame:
     """Daily は 完了/due。**分母は is_due の行数**で、記録が無い日は欠測。
 
     Habitica の Daily は「週x回」を表現できない（frequency は曜日か everyX のみ）。
@@ -415,8 +435,9 @@ def daily_table(hist: pd.DataFrame, weeks: list, tasks: list,
     if not tasks:
         return pd.DataFrame()
     due = hist[(hist['task_type'] == 'daily') & (hist['is_due'].astype(str) == 'True')]
-    done = _weekly(due.assign(done=due['completed'].astype(str) == 'True'), weeks, 'done')
-    total = _weekly(due.assign(n=1), weeks, 'n')
+    done = _bucketed(due.assign(done=due['completed'].astype(str) == 'True'),
+                     periods, 'done', unit)
+    total = _bucketed(due.assign(n=1), periods, 'n', unit)
 
     ids = [t['id'] for t in tasks]
     done = done.reindex(ids).fillna(0).astype(int)
@@ -428,8 +449,8 @@ def daily_table(hist: pd.DataFrame, weeks: list, tasks: list,
     table.index = [t.get('text', '') for t in tasks]
     table.index.name = '習慣'
     if roster:
-        table['目標'] = [(roster.get(name) or {}).get('target_per_week') or '-'
-                         for name in table.index]
+        table['週目標'] = [(roster.get(name) or {}).get('target_per_week') or '-'
+                           for name in table.index]
     return table
 
 
@@ -454,15 +475,16 @@ def minutes_since_day_start(ts: pd.Series, day_start_hour: int = DAY_START_HOUR)
     return ((t.dt.hour * 60 + t.dt.minute) - day_start_hour * 60) % 1440
 
 
-def rhythm_table(hist: pd.DataFrame, weeks: list, tasks: list) -> pd.DataFrame:
-    """窓全体（weeks の範囲）で1つずつ出す、時刻の変動性と IRT のテーブル。
+def rhythm_table(hist: pd.DataFrame, periods: list, tasks: list,
+                 unit: str = 'week') -> pd.DataFrame:
+    """窓全体（periods の範囲）で1つずつ出す、時刻の変動性と IRT のテーブル。
 
     行は tasks 起点（押下ゼロの習慣を消さない）。
     """
     if not tasks:
         return pd.DataFrame()
 
-    windowed = hist[_iso_week(hist['date']).isin(weeks)] if not hist.empty else hist
+    windowed = hist[_bucket(hist['date'], unit).isin(periods)] if not hist.empty else hist
     pressed = press_rows(windowed)
 
     rows = []
@@ -488,13 +510,13 @@ def rhythm_table(hist: pd.DataFrame, weeks: list, tasks: list) -> pd.DataFrame:
     return table
 
 
-def coverage(weeks: list) -> pd.Series:
+def coverage(periods: list, unit: str = 'week') -> pd.Series:
     """cron を走らせた日数。走らなかった日は「未達」ではなく欠測"""
     log = load_cron_log()
     if log.empty:
-        return pd.Series({w: 0 for w in weeks})
-    log = log.assign(week=_iso_week(log['date']))
-    return log.groupby('week')['date'].nunique().reindex(weeks, fill_value=0)
+        return pd.Series({p: 0 for p in periods})
+    log = log.assign(period=_bucket(log['date'], unit))
+    return log.groupby('period')['date'].nunique().reindex(periods, fill_value=0)
 
 
 def graduation_candidates(habits: list, dailys: list, value_min: float) -> list:
@@ -515,8 +537,8 @@ def graduation_candidates(habits: list, dailys: list, value_min: float) -> list:
     return sorted(rows, key=lambda r: -r[2])
 
 
-def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
-                today: dt.date) -> str:
+def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
+                today: dt.date, unit: str = 'week') -> str:
     roster = {k: (v or {}) for k, v in (config.get('habits') or {}).items()}
     grad = config.get('graduate') or {}
     done = graduated_ids(tasks)
@@ -526,11 +548,11 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
     picked_dailys = tracked_dailys(roster, dailys)
     tracked_ids = {t['id'] for t in tracked} | {t['id'] for t in picked_dailys}
 
-    current = today.strftime('%G-W%V')
-    labels = [f'{w} (途中)' if w == current else w for w in weeks]
+    current = today.strftime(UNIT_FORMAT[unit])
+    labels = [f'{p} (途中)' if p == current else p for p in periods]
 
     def relabel(table):
-        return table.rename(columns=dict(zip(weeks, labels))) if not table.empty else table
+        return table.rename(columns=dict(zip(periods, labels))) if not table.empty else table
 
     def section(title, table):
         """表だけを出す。**注記は書かない。**
@@ -551,10 +573,11 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
         out += ['> **対象に指定した習慣が Habitica にありません**: ' + ' / '.join(absent),
                 '> リネームか削除。yaml を直すまでこの習慣はレビューされない。', '']
 
-    out += section('Habit / 増やす（週あたりの回数）',
-                   habit_table(hist, weeks, roster, habits, 'up'))
-    out += section('Habit / 減らす（週あたりの回数）',
-                   habit_table(hist, weeks, roster, habits, 'down'))
+    per = '週' if unit == 'week' else '月'
+    out += section(f'Habit / 増やす（{per}あたりの回数）',
+                   habit_table(hist, periods, roster, habits, 'up', unit))
+    out += section(f'Habit / 減らす（{per}あたりの回数）',
+                   habit_table(hist, periods, roster, habits, 'down', unit))
 
     if tracked:
         out += ['## Habit / 最後に記録された日', '']
@@ -564,15 +587,15 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
         out += ['']
 
     out += section('Daily（完了 / due日数）',
-                   daily_table(hist, weeks, picked_dailys, roster))
+                   daily_table(hist, periods, picked_dailys, roster, unit))
     out += section('習慣のリズム（窓全体）',
-                   rhythm_table(hist, weeks, tracked + picked_dailys))
+                   rhythm_table(hist, periods, tracked + picked_dailys, unit))
 
-    cov = coverage(weeks)
-    out += ['## 記録の被覆（cron を走らせた日数 / 7）', '',
+    cov = coverage(periods, unit)
+    out += ['## 記録の被覆（cron を走らせた日数 / 暦日数）', '',
             '| ' + ' | '.join(labels) + ' |',
-            '|' + '---|' * len(weeks),
-            '| ' + ' | '.join(f'{cov[w]}/7' for w in weeks) + ' |',
+            '|' + '---|' * len(periods),
+            '| ' + ' | '.join(f'{cov[p]}/{period_days(p, unit)}' for p in periods) + ' |',
             '']
 
     cands = graduation_candidates(tracked_habits(roster, habits, 'up'), picked_dailys,
@@ -604,9 +627,12 @@ def cmd_show(args) -> int:
         return 1
     tasks = json.loads(TASKS_JSON.read_text()) if TASKS_JSON.exists() else {}
     today = dt.date.today()
-    weeks = week_keys(today, args.weeks)
+    count = args.weeks if args.unit == 'week' else args.months
+    if count is None:
+        count = UNIT_DEFAULT_COUNT[args.unit]
+    periods = period_keys(today, args.unit, count)
     config = load_config()
-    print(render_show(hist, tasks, config, weeks, today), end='')
+    print(render_show(hist, tasks, config, periods, today, args.unit), end='')
 
     # yaml が指す習慣が Habitica から消えていたら、レポートは出したうえで落とす。
     # 黙って対象から抜けるのが一番困る。
@@ -645,8 +671,13 @@ def main() -> int:
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('cron', help='cron を確定させ、実行を記録する')
     sub.add_parser('fetch', help='Habit / Daily の history を CSV に落とす')
-    p_show = sub.add_parser('show', help='週ごとの回数・達成をまとめて出す')
-    p_show.add_argument('--weeks', type=int, default=4, help='さかのぼる週数（既定4）')
+    p_show = sub.add_parser('show', help='期間ごとの回数・達成をまとめて出す')
+    p_show.add_argument('--unit', choices=['week', 'month'], default='week',
+                        help='集計の単位（既定 week）')
+    p_show.add_argument('--weeks', type=int, default=None,
+                        help='さかのぼる週数（--unit week のとき。既定4）')
+    p_show.add_argument('--months', type=int, default=None,
+                        help='さかのぼる月数（--unit month のとき。既定3）')
     sub.add_parser('status', help='現在の状態を表示する')
     args = parser.parse_args()
 
