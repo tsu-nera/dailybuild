@@ -168,8 +168,8 @@ def test_変動性はdayStart起点で計算され深夜またぎで小さくな
     raw = pd.Series([r['ts'] for r in rows])
     raw_std = round((pd.to_datetime(raw).dt.hour * 60 + pd.to_datetime(raw).dt.minute).std())
     shifted_std = round(habitica.minutes_since_day_start(raw).std())
-    assert table.loc['瞑想', '点数'] == 8
-    assert table.loc['瞑想', '時刻の変動性'] == f'{shifted_std}分'
+    assert table.loc['瞑想', 'n'] == 8
+    assert table.loc['瞑想', 'time SD'] == f'{shifted_std}min'
     assert shifted_std < raw_std
 
 
@@ -183,8 +183,8 @@ def test_rhythm_tableは点数8未満で変動性がハイフン():
     hist = _history(rows)
     weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
     table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
-    assert table.loc['瞑想', '点数'] == 5
-    assert table.loc['瞑想', '時刻の変動性'] == '-'
+    assert table.loc['瞑想', 'n'] == 5
+    assert table.loc['瞑想', 'time SD'] == '-'
 
 
 def test_rhythm_tableはIRTの中央値と最大を出す():
@@ -199,8 +199,8 @@ def test_rhythm_tableはIRTの中央値と最大を出す():
     hist = _history(rows)
     weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 4)
     table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
-    assert table.loc['瞑想', 'IRT中央値'] == '1.0日'
-    assert table.loc['瞑想', 'IRT最大'] == '3.0日'
+    assert table.loc['瞑想', 'IRT median'] == '1.0d'
+    assert table.loc['瞑想', 'IRT max'] == '3.0d'
 
 
 def test_render_showの出力にstreakや連続日数が含まれない(monkeypatch, tmp_path):

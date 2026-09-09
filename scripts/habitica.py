@@ -396,10 +396,10 @@ def habit_table(hist: pd.DataFrame, periods: list, roster: dict,
     counts = _bucketed(hist[hist['task_type'] == 'habit'], periods, column, unit)
     table = counts.reindex([t['id'] for t in picked]).fillna(0).astype(int)
     table.index = [t.get('text', '') for t in picked]
-    table.index.name = '習慣'
+    table.index.name = 'habit'
     if direction == 'up':
         # 「減らす」は評価の対象にしないので目標も持たせない
-        table['週目標'] = [roster[name].get('target_per_week') or '-' for name in table.index]
+        table['weekly target'] = [roster[name].get('target_per_week') or '-' for name in table.index]
     return table
 
 
@@ -447,9 +447,9 @@ def daily_table(hist: pd.DataFrame, periods: list, tasks: list,
     cell = done.astype(str) + '/' + total.astype(str) + ' (' + pct.astype(str) + '%)'
     table = cell.where(total > 0, '-')
     table.index = [t.get('text', '') for t in tasks]
-    table.index.name = '習慣'
+    table.index.name = 'habit'
     if roster:
-        table['週目標'] = [(roster.get(name) or {}).get('target_per_week') or '-'
+        table['weekly target'] = [(roster.get(name) or {}).get('target_per_week') or '-'
                            for name in table.index]
     return table
 
@@ -493,20 +493,20 @@ def rhythm_table(hist: pd.DataFrame, periods: list, tasks: list,
         n = len(own)
         if n >= VARIABILITY_MIN_POINTS:
             minutes = minutes_since_day_start(own['ts'])
-            variability = f'{round(minutes.std())}分'
+            variability = f'{round(minutes.std())}min'
         else:
             variability = '-'
         if n >= 2:
             gaps = pd.to_datetime(own['ts']).diff().dropna().dt.total_seconds() / 86400
-            irt_median = f'{gaps.median():.1f}日'
-            irt_max = f'{gaps.max():.1f}日'
+            irt_median = f'{gaps.median():.1f}d'
+            irt_max = f'{gaps.max():.1f}d'
         else:
             irt_median = '-'
             irt_max = '-'
         rows.append((t.get('text', ''), n, variability, irt_median, irt_max))
 
-    table = pd.DataFrame(rows, columns=['習慣', '点数', '時刻の変動性', 'IRT中央値', 'IRT最大'])
-    table = table.set_index('習慣')
+    table = pd.DataFrame(rows, columns=['habit', 'n', 'time SD', 'IRT median', 'IRT max'])
+    table = table.set_index('habit')
     return table
 
 
@@ -542,29 +542,28 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
             return []
         return [f'## {title}', '', table.to_markdown(), '']
 
-    out = [f'# 習慣レビュー {current}', '']
+    out = [f'# Habits {current}', '']
 
     absent = missing_from_habitica(roster, habits + dailys)
     if absent:
-        out += ['> **対象に指定した習慣が Habitica にありません**: ' + ' / '.join(absent),
-                '> リネームか削除。yaml を直すまでこの習慣はレビューされない。', '']
+        out += ['> **Missing in Habitica**: ' + ' / '.join(absent),
+                '> Renamed or deleted. Not reviewed until the yaml is fixed.', '']
 
-    per = '週' if unit == 'week' else '月'
-    out += section(f'Habit / 増やす（{per}あたりの回数）',
+    out += section(f'Habit / up (per {unit})',
                    habit_table(hist, periods, roster, habits, 'up', unit))
-    out += section(f'Habit / 減らす（{per}あたりの回数）',
+    out += section(f'Habit / down (per {unit})',
                    habit_table(hist, periods, roster, habits, 'down', unit))
 
     if tracked:
-        out += ['## Habit / 最後に記録された日', '']
+        out += ['## Habit / last recorded', '']
         for name, day, days in last_pressed(hist, tracked, today):
-            when = f'{day}（{days}日前）' if day else '記録なし'
+            when = f'{day} ({days}d ago)' if day else 'no record'
             out += [f'- {name}: {when}']
         out += ['']
 
-    out += section('Daily（完了 / due日数）',
+    out += section('Daily (completed / due days)',
                    daily_table(hist, periods, picked_dailys, roster, unit))
-    out += section('習慣のリズム（窓全体）',
+    out += section('Rhythm (whole window)',
                    rhythm_table(hist, periods, tracked + picked_dailys, unit))
 
     # 表は手で組まずに to_markdown へ通す（lib/toggl・lib/mf と同じ）。
@@ -572,13 +571,13 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
     cov = coverage(periods, unit)
     cov_row = pd.DataFrame([[f'{cov[p]}/{period_days(p, unit)}' for p in periods]],
                            columns=periods)
-    out += ['## 記録日数（日付処理が走った日 / 暦日）', '',
+    out += ['## Recorded days (cron days / calendar days)', '',
             cov_row.to_markdown(index=False), '']
 
     if done:
         names = [t.get('text', '') for t in tasks.get('habits', []) + tasks.get('dailys', [])
                  if t['id'] in done]
-        out += [f'## 卒業済み（{len(names)}件・対象外）', '',
+        out += [f'## Graduated ({len(names)}, excluded)', '',
                 '\n'.join(f'- {n}' for n in sorted(names))]
     return '\n'.join(out) + '\n'
 
