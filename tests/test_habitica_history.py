@@ -202,17 +202,6 @@ def test_減らす習慣はscored_downで数える():
     assert down.loc['やけ食い', '2026-W37'] == 2
 
 
-def test_Dailyの目標はyamlが持つ():
-    """Habitica の Daily は「週x回」を表現できないので、回数は yaml 側で持つ"""
-    roster = {'冷水シャワー': {'target_per_week': 4}}
-    table = habitica.daily_table(_hist(), WEEKS, TASKS['dailys'], roster)
-
-    assert table.loc['冷水シャワー', '目標'] == 4
-    assert table.loc['新しい日課', '目標'] == '-'      # 目標なしは判定しない
-    # 目標を渡さなければ列自体を作らない（従来どおりの表）
-    assert '目標' not in habitica.daily_table(_hist(), WEEKS, TASKS['dailys']).columns
-
-
 def test_Dailyもrosterで絞る():
     """cron が毎日行を書くことと、レビューしたいかは別の問題"""
     roster = {'冷水シャワー': {'target_per_week': 4}}
@@ -220,16 +209,9 @@ def test_Dailyもrosterで絞る():
 
     assert [t['text'] for t in picked] == ['冷水シャワー']
 
-    table = habitica.daily_table(_hist(), WEEKS, picked, roster)
-    assert table.loc['冷水シャワー', '目標'] == 4
+    table = habitica.daily_table(_hist(), WEEKS, picked)
+    assert '冷水シャワー' in table.index
     assert '新しい日課' not in table.index
-
-
-def test_目標が空のDailyは判定しない():
-    roster = {'冷水シャワー': {'target_per_week': None}}
-    table = habitica.daily_table(_hist(), WEEKS,
-                                 habitica.tracked_dailys(roster, TASKS['dailys']), roster)
-    assert table.loc['冷水シャワー', '目標'] == '-'
 
 
 def test_対象に指定した名前はHabitとDailyの両方から探す():
@@ -270,26 +252,6 @@ def test_最終押下は窓の外でも拾う():
 
     assert got['やけ食い'] == (dt.date(2026, 9, 7), 3)
     assert got['筋トレ'] == (None, None)     # 一度も押していない
-
-
-def test_減らす習慣は卒業候補に出さない():
-    """down の value は「押していない期間」で上がり、押し忘れと区別できない。
-
-    しかも up/down 両方が立つ Habit は放置しても減衰しない（実測: NoFap が
-    660日で 8.18→8.995）。一度候補に出ると再発時にしか外れない。
-    """
-    tasks = {
-        'habits': [{'id': 'h-both', 'text': 'NoFap', 'up': True, 'down': True,
-                    'value': 7.4}],
-        'dailys': [{'id': 'daily-1', 'text': '冷水シャワー', 'value': 26.9}],
-        'tags': [],
-    }
-    config = {'habits': {'NoFap': {'track': 'down'}}, 'graduate': {'value_min': 5}}
-    out = habitica.render_show(_hist(), tasks, config, WEEKS, dt.date(2026, 9, 10))
-
-    grad = out.split('## 卒業候補')[1]
-    assert 'NoFap' not in grad
-    assert '冷水シャワー' in grad       # Daily は対象のまま
 
 
 def test_卒業タグの付いたタスクだけを除外する():

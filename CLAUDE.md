@@ -116,6 +116,13 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 後者は睡眠0hとして計上）、相関では実データとして扱われてしまう。0埋めは
 STATE.md のストリーク用途に閉じ込めてある。**「便利だから」と足さないこと。**
 
+`scripts/habitica.py fetch` は `reports/habits_daily.csv` も毎日**全上書き**で
+生成する。列は `date, habit, task_type, is_due, completed` の縦持ちで、習慣の
+増減で列が動かないようにしてある。`history` に行が無い日の行は作らない（cron が
+走らなかった日は不生起ではなく欠測）。`metrics_daily.csv` の横持ちには**混ぜない**
+（`is_due=False` と欠測を0埋めで潰す事故を持ち込むため）。こちらも**`data/` には
+置かない**（あちらは取得の正本）。
+
 ストリーク（連続日数）・鮮度・未解決アクションは STATE.md が毎日計算し直すので、
 **散文に書かない**。以前は週の rollup を agent が毎日書き直しており、事実が
 変わっていないのに表現だけが毎日漂流していた。恒久的に効く知見は
@@ -153,6 +160,7 @@ uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_de
 uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-routine.sh が実行）
 uv run scripts/habitica.py fetch     # Habit / Daily の history を CSV に落とす
 uv run scripts/habitica.py show --weeks 4  # 週ごとの回数・達成（/habits-review が使う）
+uv run scripts/habitica.py show --unit month --months 3  # 月ごと（長期の傾向を見るとき）
 uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）
