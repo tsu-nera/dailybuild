@@ -124,7 +124,8 @@ def test_空入力では空のDataFrameを返す():
 
 # --- show の3指標 ---
 
-def test_daily_tableは週ごとの達成率を出しis_due合計0の週はハイフン():
+def _two_weeks():
+    """2026-08-31(月) と 2026-09-01(火) は同じ ISO 週。前の週には行が無い"""
     hist = _history([
         {'date': '2026-08-31', 'ts': '2026-08-31T08:00:00', 'task_id': 'd1',
          'task_type': 'daily', 'task_name': '筋トレ', 'value': 1, 'is_due': True,
@@ -134,12 +135,57 @@ def test_daily_tableは週ごとの達成率を出しis_due合計0の週はハ�
          'completed': False, 'scored_up': None, 'scored_down': None},
     ])
     weeks = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'week', 2)
-    table = habitica.daily_table(hist, weeks, TASKS['dailys'])
-    # is_due 2件・completed 1件 -> 1/2 (50%)
-    cur_week = habitica._bucket(pd.Series(['2026-09-01']), 'week').iloc[0]
-    assert '50%' in table.loc['筋トレ', cur_week]
-    other_week = [w for w in weeks if w != cur_week][0]
-    assert table.loc['筋トレ', other_week] == '-'
+    cur = habitica._bucket(pd.Series(['2026-09-01']), 'week').iloc[0]
+    return hist, weeks, cur, [w for w in weeks if w != cur][0]
+
+
+def test_daily_tableの分母は暦日数でis_dueではない():
+    """週x回の目標でも分母は7。is_due を分母にすると期間どうしを比較できない"""
+    hist, weeks, cur, _ = _two_weeks()
+    roster = {'筋トレ': {'target_per_week': 4, 'phase': 'acquisition'}}
+    table = habitica.daily_table(hist, weeks, roster, TASKS['dailys'])
+
+    # is_due は2件しかないが、分母は暦の7日
+    assert table.loc['筋トレ', cur] == '1/7'
+    assert table.loc['筋トレ', 'target'] == 4
+    assert table.loc['筋トレ', 'phase'] == 'acquisition'
+
+
+def test_目標が無い習慣のtargetとphaseはハイフン():
+    """CLI は判定しない。yaml が空なら空のまま出す"""
+    hist, weeks, cur, _ = _two_weeks()
+    table = habitica.daily_table(hist, weeks, {}, TASKS['dailys'])
+
+    assert table.loc['筋トレ', 'target'] == '-'
+    assert table.loc['筋トレ', 'phase'] == '-'
+
+
+def test_行が1件も無い習慣の期間はハイフン():
+    """まだ作っていない習慣を 0/7 と書くと「やらなかった」に化ける"""
+    hist, weeks, cur, prev = _two_weeks()
+    table = habitica.daily_table(hist, weeks, {}, TASKS['dailys'])
+
+    assert table.loc['筋トレ', prev] == '-'
+
+
+def test_行があって未完了なら0埋めしてよい():
+    """行が無い(欠測)と、行があって未完了(不生起)は別物"""
+    hist, weeks, cur, _ = _two_weeks()
+    hist = hist[hist['date'] == '2026-09-01']  # completed=False の行だけ残す
+    table = habitica.daily_table(hist, weeks, {}, TASKS['dailys'])
+
+    assert table.loc['筋トレ', cur] == '0/7'
+
+
+def test_進行中の期間だけpartialになる():
+    sunday = pd.Timestamp('2026-09-06').date()      # 日曜 = 週の最終日
+    wednesday = pd.Timestamp('2026-09-09').date()
+    assert habitica.is_partial('2026-W37', 'week', wednesday) is True
+    assert habitica.is_partial('2026-W36', 'week', sunday) is False   # 当該週の最終日
+    assert habitica.is_partial('2026-W35', 'week', wednesday) is False  # 過去の週
+    assert habitica.is_partial('2026-09', 'month', wednesday) is True
+    assert habitica.is_partial('2026-09', 'month',
+                               pd.Timestamp('2026-09-30').date()) is False
 
 
 def test_minutes_since_day_startは深夜またぎの距離を圧縮する():
@@ -283,6 +329,6 @@ def test_月単位では暦月で畳まれる():
          'completed': False, 'scored_up': None, 'scored_down': None},
     ])
     periods = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'month', 2)
-    table = habitica.daily_table(hist, periods, TASKS['dailys'], 'month')
-    assert table.loc['筋トレ', '2026-08'] == '1/1 (100%)'
-    assert table.loc['筋トレ', '2026-09'] == '0/1 (0%)'
+    table = habitica.daily_table(hist, periods, {}, TASKS['dailys'], 'month')
+    assert table.loc['筋トレ', '2026-08'] == '1/31'
+    assert table.loc['筋トレ', '2026-09'] == '0/30'

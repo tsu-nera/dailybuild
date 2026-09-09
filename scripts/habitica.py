@@ -338,8 +338,21 @@ def _bucket(series: pd.Series, unit: str) -> pd.Series:
     return pd.to_datetime(series).dt.strftime(UNIT_FORMAT[unit])
 
 
+def is_partial(key: str, unit: str, today: dt.date) -> bool:
+    """その期間がまだ終わっていないか。
+
+    進行中の期間は経過日数ぶんしか無いので、完了した期間と必ず差が出る。
+    移行の判定に使えるのは完了した期間だけ（`docs/habits.md`）。
+    """
+    if key != today.strftime(UNIT_FORMAT[unit]):
+        return False
+    if unit == 'week':
+        return today.weekday() != 6
+    return today.day != calendar.monthrange(today.year, today.month)[1]
+
+
 def period_days(key: str, unit: str) -> int:
-    """その期間の暦日数。達成率の分母ではなく、被覆（cron を走らせた日数）の分母。"""
+    """その期間の暦日数。達成率の分母であり、被覆（cron を走らせた日数）の分母。"""
     if unit == 'week':
         return 7
     year, month = (int(x) for x in key.split('-'))
@@ -420,30 +433,45 @@ def last_pressed(hist: pd.DataFrame, tasks: list, today: dt.date) -> list:
     return rows
 
 
-def daily_table(hist: pd.DataFrame, periods: list, tasks: list,
+def daily_table(hist: pd.DataFrame, periods: list, roster: dict, tasks: list,
                 unit: str = 'week') -> pd.DataFrame:
-    """Daily は 完了/due。**分母は is_due の行数**で、記録が無い日は欠測。
+    """Daily は 実施日数/暦日数。**分母は暦の日数（週なら7）で、`is_due` ではない。**
 
-    Habitica の Daily は「週x回」を表現できない（frequency は曜日か everyX のみ）。
-    そこで repeat を全曜日にして毎日 due にし、**週何回を目標にするかは
-    `config/habits.yaml` の target_per_week で持つ**。曜日固定にすると、動けない
-    日に未達が確定して融通が利かない。
+    `is_due` は `repeat` の設定と cron の被覆で習慣ごと・期間ごとに動くので、
+    分母にすると期間どうしも習慣どうしも比較できない。`is_due` が持つのは分母では
+    なく被覆。
+
+    目標（週x回）は `target` 列に並べて出すだけで、クリアかどうかは判定しない。
+    **閾値と窓のルールはコードに持たせない**（`docs/habits.md` とスキルが持つ）。
+    実測と目標が隣り合っていれば、期間ぶん数えるだけで判定できる。
+
+    **その習慣の行が1件も無い期間は `-`**（まだ作っていない、または一度も観測して
+    いない）。`0/7` と書くと欠測の捏造になる。行があって未完了なら `0/7` でよい。
+    **欠測（行が無い）と不生起（行があって未完了）は別物。**
+
+    cron の被覆は見ない。**完了の記録は cron に依存しない**（タップした時点で
+    エントリが立ち、cron が書くのは未完了のプレースホルダだけ）ので、分母を暦日数に
+    した時点で被覆はどの数字にも効かなくなった。
     """
     if not tasks:
         return pd.DataFrame()
-    due = hist[(hist['task_type'] == 'daily') & (hist['is_due'].astype(str) == 'True')]
-    done = _bucketed(due.assign(done=due['completed'].astype(str) == 'True'),
+    daily = hist[hist['task_type'] == 'daily']
+    done = _bucketed(daily.assign(done=daily['completed'].astype(str) == 'True'),
                      periods, 'done', unit)
-    total = _bucketed(due.assign(n=1), periods, 'n', unit)
-
+    seen = _bucketed(daily.assign(n=1), periods, 'n', unit)
     ids = [t['id'] for t in tasks]
+    names = [t.get('text', '') for t in tasks]
     done = done.reindex(ids).fillna(0).astype(int)
-    total = total.reindex(ids).fillna(0).astype(int)
-    # 0除算を避けるため分母0の行は1に逃がす（値は捨てる。セルは直後に '-' で上書きされる）
-    pct = (100 * done / total.mask(total == 0, 1)).round().astype(int)
-    cell = done.astype(str) + '/' + total.astype(str) + ' (' + pct.astype(str) + '%)'
-    table = cell.where(total > 0, '-')
-    table.index = [t.get('text', '') for t in tasks]
+    seen = seen.reindex(ids).fillna(0).astype(int)
+
+    cells = {}
+    for period in periods:
+        cell = done[period].astype(str) + '/' + str(period_days(period, unit))
+        cells[period] = cell.where(seen[period] > 0, '-')
+    table = pd.DataFrame(cells, index=done.index)
+    table.insert(0, 'target', [roster.get(n, {}).get('target_per_week', '-') for n in names])
+    table.insert(0, 'phase', [roster.get(n, {}).get('phase', '-') for n in names])
+    table.index = names
     table.index.name = 'habit'
     return table
 
@@ -504,15 +532,6 @@ def rhythm_table(hist: pd.DataFrame, periods: list, tasks: list,
     return table
 
 
-def coverage(periods: list, unit: str = 'week') -> pd.Series:
-    """cron を走らせた日数。走らなかった日は「未達」ではなく欠測"""
-    log = load_cron_log()
-    if log.empty:
-        return pd.Series({p: 0 for p in periods})
-    log = log.assign(period=_bucket(log['date'], unit))
-    return log.groupby('period')['date'].nunique().reindex(periods, fill_value=0)
-
-
 def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
                 today: dt.date, unit: str = 'week') -> str:
     roster = {k: (v or {}) for k, v in (config.get('habits') or {}).items()}
@@ -523,6 +542,7 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
     picked_dailys = tracked_dailys(roster, dailys)
 
     current = today.strftime(UNIT_FORMAT[unit])
+    labels = {p: (f'{p} (partial)' if is_partial(p, unit, today) else p) for p in periods}
 
     def section(title, table):
         """表だけを出す。**注記は書かない。**
@@ -534,7 +554,7 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
         """
         if table.empty:
             return []
-        return [f'## {title}', '', table.to_markdown(), '']
+        return [f'## {title}', '', table.rename(columns=labels).to_markdown(), '']
 
     out = [f'# Habits {current}', '']
 
@@ -555,18 +575,10 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
             out += [f'- {name}: {when}']
         out += ['']
 
-    out += section('Daily (completed / due days)',
-                   daily_table(hist, periods, picked_dailys, unit))
+    out += section('Daily (done days / calendar days)',
+                   daily_table(hist, periods, roster, picked_dailys, unit))
     out += section('Rhythm (whole window)',
                    rhythm_table(hist, periods, tracked + picked_dailys, unit))
-
-    # 表は手で組まずに to_markdown へ通す（lib/toggl・lib/mf と同じ）。
-    # パイプを自前で並べると全角の桁が合わず、この表だけ崩れる
-    cov = coverage(periods, unit)
-    cov_row = pd.DataFrame([[f'{cov[p]}/{period_days(p, unit)}' for p in periods]],
-                           columns=periods)
-    out += ['## Recorded days (cron days / calendar days)', '',
-            cov_row.to_markdown(index=False), '']
 
     if done:
         names = [t.get('text', '') for t in tasks.get('habits', []) + tasks.get('dailys', [])
