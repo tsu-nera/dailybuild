@@ -27,6 +27,9 @@ def _load_script():
 
 habitica = _load_script()
 
+# monkeypatch される前の実体を控えておく（置き場の検証用）
+REAL_HABITS_DAILY_CSV = habitica.HABITS_DAILY_CSV
+
 
 def _history(rows):
     return pd.DataFrame(rows, columns=habitica.HISTORY_COLUMNS)
@@ -146,6 +149,30 @@ def test_minutes_since_day_startは深夜またぎの距離を圧縮する():
     assert raw_minutes.std() > shifted.std()
 
 
+def test_変動性はdayStart起点で計算され深夜またぎで小さくなる():
+    """23:50 と 00:10 が最大距離にならないこと。素の HH:MM 換算と突き合わせる。"""
+    times = ['23:50', '00:10'] * 4          # 8点（VARIABILITY_MIN_POINTS ちょうど）
+    rows = []
+    for i, hhmm in enumerate(times):
+        # 00:10 の押下は暦日が翌日になる
+        day = 20 + i // 2 + (1 if hhmm == '00:10' else 0)
+        date = f'2026-08-{day:02d}'
+        rows.append({'date': date, 'ts': f'{date}T{hhmm}:00',
+                     'task_id': 'h1', 'task_type': 'habit', 'task_name': '瞑想',
+                     'value': 1, 'is_due': None, 'completed': None,
+                     'scored_up': 1, 'scored_down': 0})
+    hist = _history(rows)
+    weeks = habitica.week_keys(pd.Timestamp('2026-09-06').date(), 4)
+    table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
+
+    raw = pd.Series([r['ts'] for r in rows])
+    raw_std = round((pd.to_datetime(raw).dt.hour * 60 + pd.to_datetime(raw).dt.minute).std())
+    shifted_std = round(habitica.minutes_since_day_start(raw).std())
+    assert table.loc['瞑想', '点数'] == 8
+    assert table.loc['瞑想', '時刻の変動性'] == f'{shifted_std}分'
+    assert shifted_std < raw_std
+
+
 def test_rhythm_tableは点数8未満で変動性がハイフン():
     rows = []
     for i in range(5):
@@ -169,8 +196,6 @@ def test_rhythm_tableはIRTの中央値と最大を出す():
                      'task_id': 'h1', 'task_type': 'habit', 'task_name': '瞑想',
                      'value': 1, 'is_due': None, 'completed': None,
                      'scored_up': 1, 'scored_down': 0})
-    # 変動性の点数条件を満たすため、同じ時刻帯で押下数を8点まで水増しする追加分は不要
-    # (IRT だけ検証するので点数条件とは独立に中央値/最大が出ることを確認する)
     hist = _history(rows)
     weeks = habitica.week_keys(pd.Timestamp('2026-09-06').date(), 4)
     table = habitica.rhythm_table(hist, weeks, TASKS['habits'])
@@ -222,5 +247,12 @@ def test_cmd_fetchはHABITS_DAILY_CSVをreports配下に書きdata配下では�
     rc = habitica.cmd_fetch(None)
     assert rc == 0
     assert habits_daily_csv.exists()
-    assert habits_daily_csv.parts[-2] == 'reports'
-    assert habits_daily_csv.parts[-2] != 'data'
+    # data/ 配下に派生を落としていないこと（あちらは取得の正本）
+    assert not list((tmp_path / 'data').rglob('habits_daily.csv'))
+
+
+def test_HABITS_DAILY_CSVはreports配下でありdata配下ではない():
+    """monkeypatch されていない実定数で置き場を検証する（派生は data/ に置かない）"""
+    parts = REAL_HABITS_DAILY_CSV.relative_to(BASE_DIR).parts
+    assert parts[0] == 'reports'
+    assert 'data' not in parts
