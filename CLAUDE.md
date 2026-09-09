@@ -107,7 +107,7 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 | `JOURNAL.md` | agent | 毎日1行更新 | 索引 |
 
 同じスクリプトが `reports/metrics_daily.csv` も毎日**全上書き**で生成する。
-日付 index × 15指標の横持ちで、相関分析はこれ1本を読めばよい
+日付 index の横持ちで、相関分析はこれ1本を読めばよい
 （`pd.read_csv(..., index_col='date').corr()`）。**`data/` には置かない**
 （あちらは取得の正本で、派生を混ぜると意味が壊れる）。
 
@@ -202,6 +202,7 @@ stdout）。
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
+| 習慣の phase / 目標値 / 移行判断を扱うとき | [docs/habits.md](docs/habits.md) — 達成率の分母は `target_per_week` であって `is_due` ではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | 行動活性化（BATD-R）を再開・再設計するとき | [docs/batdr.md](docs/batdr.md) — 日次帳票の実装は2026-09-07に廃止済み。同じ形を作り直す前に廃案の節を読む |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
