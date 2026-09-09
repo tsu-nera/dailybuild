@@ -124,6 +124,9 @@ def test_空入力では空のDataFrameを返す():
 
 # --- show の3指標 ---
 
+TODAY = pd.Timestamp('2026-09-06').date()   # 日曜 = 週の最終日
+
+
 def _two_weeks():
     """2026-08-31(月) と 2026-09-01(火) は同じ ISO 週。前の週には行が無い"""
     hist = _history([
@@ -139,14 +142,11 @@ def _two_weeks():
     return hist, weeks, cur, [w for w in weeks if w != cur][0]
 
 
-def test_daily_tableの分母は暦日数でis_dueではない():
-    """週x回の目標でも分母は7。is_due を分母にすると期間どうしを比較できない"""
+def test_targetとphaseはyamlの値をそのまま出す():
     hist, weeks, cur, _ = _two_weeks()
     roster = {'筋トレ': {'target_per_week': 4, 'phase': 'acquisition'}}
-    table = habitica.daily_table(hist, weeks, roster, TASKS['dailys'])
+    table = habitica.daily_table(hist, weeks, roster, TASKS['dailys'], TODAY)
 
-    # is_due は2件しかないが、分母は暦の7日
-    assert table.loc['筋トレ', cur] == '1/7'
     assert table.loc['筋トレ', 'target'] == 4
     assert table.loc['筋トレ', 'phase'] == 'acquisition'
 
@@ -154,27 +154,31 @@ def test_daily_tableの分母は暦日数でis_dueではない():
 def test_目標が無い習慣のtargetとphaseはハイフン():
     """CLI は判定しない。yaml が空なら空のまま出す"""
     hist, weeks, cur, _ = _two_weeks()
-    table = habitica.daily_table(hist, weeks, {}, TASKS['dailys'])
+    table = habitica.daily_table(hist, weeks, {}, TASKS['dailys'], TODAY)
 
     assert table.loc['筋トレ', 'target'] == '-'
     assert table.loc['筋トレ', 'phase'] == '-'
+    assert table.loc['筋トレ', 'clear'] == '-'
 
 
-def test_行が1件も無い習慣の期間はハイフン():
-    """まだ作っていない習慣を 0/7 と書くと「やらなかった」に化ける"""
+def test_行が1件も無い期間はclearの分母に入らない():
+    """まだ作っていない期間を 0 として数えると欠測の捏造になる"""
     hist, weeks, cur, prev = _two_weeks()
-    table = habitica.daily_table(hist, weeks, {}, TASKS['dailys'])
+    roster = {'筋トレ': {'target_per_week': 1}}
+    table = habitica.daily_table(hist, weeks, roster, TASKS['dailys'], TODAY)
 
-    assert table.loc['筋トレ', prev] == '-'
+    # 2週の窓だが、行があるのは1週だけ
+    assert table.loc['筋トレ', 'clear'] == '1/1'
 
 
-def test_行があって未完了なら0埋めしてよい():
+def test_行があって未完了なら分母に入って分子に入らない():
     """行が無い(欠測)と、行があって未完了(不生起)は別物"""
     hist, weeks, cur, _ = _two_weeks()
     hist = hist[hist['date'] == '2026-09-01']  # completed=False の行だけ残す
-    table = habitica.daily_table(hist, weeks, {}, TASKS['dailys'])
+    roster = {'筋トレ': {'target_per_week': 1}}
+    table = habitica.daily_table(hist, weeks, roster, TASKS['dailys'], TODAY)
 
-    assert table.loc['筋トレ', cur] == '0/7'
+    assert table.loc['筋トレ', 'clear'] == '0/1'
 
 
 def test_進行中の期間だけpartialになる():
@@ -306,6 +310,42 @@ def test_月単位では暦月で畳まれる():
          'completed': False, 'scored_up': None, 'scored_down': None},
     ])
     periods = habitica.period_keys(pd.Timestamp('2026-09-06').date(), 'month', 2)
-    table = habitica.daily_table(hist, periods, {}, TASKS['dailys'], 'month')
-    assert table.loc['筋トレ', '2026-08'] == '1/31'
-    assert table.loc['筋トレ', '2026-09'] == '0/30'
+    roster = {'筋トレ': {'target_per_week': 1}}
+    table = habitica.daily_table(hist, periods, roster, TASKS['dailys'], TODAY, 'month')
+    # 08 は1日実施でクリア、09 は進行中なので数えない
+    assert table.loc['筋トレ', 'clear'] == '1/1'
+
+
+def test_目標を満たした完了期間がclearに数えられる():
+    """CLI がするのは実測と目標の比較まで。何期間そろえば昇格かは docs が持つ"""
+    hist = _history([
+        {'date': '2026-08-31', 'ts': '2026-08-31T08:00:00', 'task_id': 'd1',
+         'task_type': 'daily', 'task_name': '筋トレ', 'value': 1, 'is_due': True,
+         'completed': True, 'scored_up': None, 'scored_down': None},
+        {'date': '2026-09-01', 'ts': '2026-09-01T08:00:00', 'task_id': 'd1',
+         'task_type': 'daily', 'task_name': '筋トレ', 'value': 1, 'is_due': True,
+         'completed': True, 'scored_up': None, 'scored_down': None},
+    ])
+    weeks = habitica.period_keys(TODAY, 'week', 2)
+    cur = habitica._bucket(pd.Series(['2026-09-01']), 'week').iloc[0]
+    roster = {'筋トレ': {'target_per_week': 2}}
+    table = habitica.daily_table(hist, weeks, roster, TASKS['dailys'], TODAY)
+
+    assert table.loc['筋トレ', 'clear'] == '1/1'    # 観測できた完了週1のうち1つクリア
+
+
+def test_進行中の期間はclearに数えない():
+    """経過日数ぶんしか無い期間を completed 扱いすると昇格が早まる"""
+    hist = _history([
+        {'date': '2026-09-07', 'ts': '2026-09-07T08:00:00', 'task_id': 'd1',
+         'task_type': 'daily', 'task_name': '筋トレ', 'value': 1, 'is_due': True,
+         'completed': True, 'scored_up': None, 'scored_down': None},
+    ])
+    wednesday = pd.Timestamp('2026-09-09').date()
+    weeks = habitica.period_keys(wednesday, 'week', 1)
+    roster = {'筋トレ': {'target_per_week': 1}}
+    table = habitica.daily_table(hist, weeks, roster, TASKS['dailys'], wednesday)
+
+    assert table.loc['筋トレ', 'clear'] == '0/0'      # 目標は満たしたが進行中なので数えない
+
+

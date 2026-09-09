@@ -431,24 +431,22 @@ def last_pressed(hist: pd.DataFrame, tasks: list, today: dt.date) -> list:
 
 
 def daily_table(hist: pd.DataFrame, periods: list, roster: dict, tasks: list,
-                unit: str = 'week') -> pd.DataFrame:
-    """Daily は 実施日数/暦日数。**分母は暦の日数（週なら7）で、`is_due` ではない。**
+                today: dt.date, unit: str = 'week') -> pd.DataFrame:
+    """Daily は窓全体で1行。**期間ごとの列は出さない**（横に伸びて読めなくなる）。
 
-    `is_due` は `repeat` の設定と cron の被覆で習慣ごと・期間ごとに動くので、
-    分母にすると期間どうしも習慣どうしも比較できない。`is_due` が持つのは分母では
-    なく被覆。
+    実施日数が `target_per_week` 以上の期間を「クリア」とし、`clear` に
+    「クリアした完了期間 / 観測できた完了期間」を出す。**これは比較であって判定では
+    ない** — 何期間そろえば昇格かは `docs/habits.md` が持ち、コードは閾値も窓の長さも
+    知らない。
 
-    目標（週x回）は `target` 列に並べて出すだけで、クリアかどうかは判定しない。
-    **閾値と窓のルールはコードに持たせない**（`docs/habits.md` とスキルが持つ）。
-    実測と目標が隣り合っていれば、期間ぶん数えるだけで判定できる。
+    分母に入るのは**その習慣の行が1件でもあった完了期間だけ**。行が無い期間
+    （まだ作っていない、一度も観測していない）を 0 として数えると欠測の捏造になる。
+    行があって未完了なら分母に入って分子に入らない。**欠測と不生起は別物。**
 
-    **その習慣の行が1件も無い期間は `-`**（まだ作っていない、または一度も観測して
-    いない）。`0/7` と書くと欠測の捏造になる。行があって未完了なら `0/7` でよい。
-    **欠測（行が無い）と不生起（行があって未完了）は別物。**
+    進行中の期間は数えない（経過日数ぶんしか無いので昇格が早まる）。
 
     cron の被覆は見ない。**完了の記録は cron に依存しない**（タップした時点で
-    エントリが立ち、cron が書くのは未完了のプレースホルダだけ）ので、分母を暦日数に
-    した時点で被覆はどの数字にも効かなくなった。
+    エントリが立ち、cron が書くのは未完了のプレースホルダだけ）。
     """
     if not tasks:
         return pd.DataFrame()
@@ -461,13 +459,24 @@ def daily_table(hist: pd.DataFrame, periods: list, roster: dict, tasks: list,
     done = done.reindex(ids).fillna(0).astype(int)
     seen = seen.reindex(ids).fillna(0).astype(int)
 
-    cells = {}
+    targets = pd.Series([roster.get(n, {}).get('target_per_week') for n in names],
+                        index=done.index)
+    has_target = targets.notna()
+
+    cleared, judged = 0, 0
     for period in periods:
-        cell = done[period].astype(str) + '/' + str(period_days(period, unit))
-        cells[period] = cell.where(seen[period] > 0, '-')
-    table = pd.DataFrame(cells, index=done.index)
-    table.insert(0, 'target', [roster.get(n, {}).get('target_per_week', '-') for n in names])
-    table.insert(0, 'phase', [roster.get(n, {}).get('phase', '-') for n in names])
+        if is_partial(period, unit, today):
+            continue
+        observed = seen[period] > 0
+        cleared = cleared + (observed & has_target
+                             & (done[period] >= targets.where(has_target, 0))).astype(int)
+        judged = judged + observed.astype(int)
+
+    table = pd.DataFrame(index=done.index)
+    table['phase'] = [roster.get(n, {}).get('phase', '-') for n in names]
+    table['target'] = targets.fillna('-').tolist()
+    table['clear'] = (pd.Series(cleared, index=done.index).astype(str) + '/'
+                      + pd.Series(judged, index=done.index).astype(str)).where(has_target, '-')
     table.index = names
     table.index.name = 'habit'
     return table
@@ -568,8 +577,8 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
             out += [f'- {name}: {when}']
         out += ['']
 
-    out += section('Daily (done days / calendar days)',
-                   daily_table(hist, periods, roster, picked_dailys, unit))
+    out += section('Daily (whole window)',
+                   daily_table(hist, periods, roster, picked_dailys, today, unit))
     out += section('IRT (whole window)',
                    rhythm_table(hist, periods, tracked + picked_dailys, unit))
 
