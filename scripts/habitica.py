@@ -50,6 +50,12 @@ HISTORY_COLUMNS = [
 ]
 HISTORY_KEY = ['date', 'task_id']
 
+HABITS_DAILY_CSV = BASE_DIR / 'reports' / 'habits_daily.csv'
+HABITS_DAILY_COLUMNS = ['date', 'habit', 'task_type', 'is_due', 'completed']
+
+DAY_START_HOUR = 5          # Habitica の dayStart。0時またぎを畳まないための起点
+VARIABILITY_MIN_POINTS = 8  # これ未満の点数では変動性を出さない
+
 # 習慣名そのものが非公開なので private 側に置く（dailybuild は public）
 HABITS_YAML = require_private_path(BASE_DIR / 'config' / 'private' / 'habits.yaml')
 GRADUATED_TAG = '卒業'
@@ -203,9 +209,52 @@ def fetch_history(client: HabiticaClient) -> tuple:
     return merge_history(load_history(), new), tasks, new
 
 
+def habits_daily(hist: pd.DataFrame, roster: dict, tasks: dict) -> pd.DataFrame:
+    """日次グレインの派生（`reports/habits_daily.csv` の中身）。
+
+    roster（`config/private/habits.yaml` の `habits`）に載っている名前だけを対象にし、
+    出力の `habit` 列には roster 側の名前（＝現在の Habitica 上の名前）を入れる。
+    history 側の `task_name` は使わない（リネームで割れるため）。
+
+    **`history` に行が無い日の行を作らない。** cron が走らなかった日は「不生起」
+    ではなく欠測なので、日付の穴埋め・reindex を一切しない。
+    """
+    by_name = {t.get('text', ''): t for t in tasks.get('habits', []) + tasks.get('dailys', [])}
+    id_to_name = {by_name[name]['id']: name for name in roster if name in by_name}
+    if hist.empty or not id_to_name:
+        return pd.DataFrame(columns=HABITS_DAILY_COLUMNS)
+
+    df = hist[hist['task_id'].isin(id_to_name)].copy()
+    if df.empty:
+        return pd.DataFrame(columns=HABITS_DAILY_COLUMNS)
+
+    # (date, task_id) で最後の ts を採って畳む（merge_history と同じ規則。
+    # cron 行 completed=False と完了行 completed=True が同日に並ぶことがある）
+    df = (df.sort_values(['date', 'task_id', 'ts'])
+            .drop_duplicates(['date', 'task_id'], keep='last'))
+
+    is_daily = df['task_type'] == 'daily'
+    is_due = pd.Series(None, index=df.index, dtype=object)
+    completed = pd.Series(None, index=df.index, dtype=object)
+    # habit の行は分母が原理的に無いので is_due/completed を空のままにする（0埋め禁止）
+    is_due[is_daily] = df.loc[is_daily, 'is_due'].astype(str) == 'True'
+    completed[is_daily] = df.loc[is_daily, 'completed'].astype(str) == 'True'
+
+    out = pd.DataFrame({
+        'date': df['date'],
+        'habit': df['task_id'].map(id_to_name),
+        'task_type': df['task_type'],
+        'is_due': is_due,
+        'completed': completed,
+    })
+    return (out.sort_values(['date', 'habit'])
+               .reset_index(drop=True))[HABITS_DAILY_COLUMNS]
+
+
 def cmd_fetch(_args) -> int:
     require_private_path(HISTORY_CSV)
     require_private_path(TASKS_JSON)
+    require_private_path(HABITS_DAILY_CSV)
     client = HabiticaClient.from_config(CREDS_FILE)
 
     old = load_history()
@@ -216,6 +265,11 @@ def cmd_fetch(_args) -> int:
     # 全上書きのスナップショット。削除されたタスクの復元用（private の git が世代を持つ）
     TASKS_JSON.write_text(json.dumps(tasks, ensure_ascii=False, indent=1))
 
+    roster = load_config().get('habits') or {}
+    daily = habits_daily(merged, roster, tasks)
+    ensure_dir(HABITS_DAILY_CSV.parent)
+    daily.to_csv(HABITS_DAILY_CSV, index=False)
+
     added = len(merged) - len(old)
     live = set(new['task_id']) if not new.empty else set()
     gone = sorted(set(merged['task_id']) - live) if not merged.empty else []
@@ -223,6 +277,7 @@ def cmd_fetch(_args) -> int:
     print(f"Habit {len(tasks['habits'])}件 / Daily {len(tasks['dailys'])}件 を取得しました")
     print(f"history: {len(merged)}行（新規 {added}行）  {HISTORY_CSV}")
     print(f"tasks  : {TASKS_JSON}")
+    print(f"habits : {len(daily)}行  {HABITS_DAILY_CSV}")
     if gone:
         # Habitica 上には無いが CSV には残っている＝削除されたタスク。消さずに残す
         names = merged[merged['task_id'].isin(gone)].groupby('task_id')['task_name'].last()
@@ -366,13 +421,70 @@ def daily_table(hist: pd.DataFrame, weeks: list, tasks: list,
     ids = [t['id'] for t in tasks]
     done = done.reindex(ids).fillna(0).astype(int)
     total = total.reindex(ids).fillna(0).astype(int)
-    cell = done.astype(str) + '/' + total.astype(str)
+    # 0除算を避けるため分母0の行は1に逃がす（値は捨てる。セルは直後に '-' で上書きされる）
+    pct = (100 * done / total.mask(total == 0, 1)).round().astype(int)
+    cell = done.astype(str) + '/' + total.astype(str) + ' (' + pct.astype(str) + '%)'
     table = cell.where(total > 0, '-')
     table.index = [t.get('text', '') for t in tasks]
     table.index.name = '習慣'
     if roster:
         table['目標'] = [(roster.get(name) or {}).get('target_per_week') or '-'
                          for name in table.index]
+    return table
+
+
+def press_rows(hist: pd.DataFrame) -> pd.DataFrame:
+    """『押下』とみなす行だけを取り出す。
+
+    habit: `scored_up` または `scored_down` が 0 より大きい行。
+    daily: `completed` が True の行（cron が書く completed=False は押下ではない）。
+    """
+    if hist.empty:
+        return hist
+    is_habit = hist['task_type'] == 'habit'
+    is_daily = hist['task_type'] == 'daily'
+    pressed_habit = is_habit & ((hist['scored_up'].fillna(0) > 0) | (hist['scored_down'].fillna(0) > 0))
+    pressed_daily = is_daily & (hist['completed'].astype(str) == 'True')
+    return hist[pressed_habit | pressed_daily]
+
+
+def minutes_since_day_start(ts: pd.Series, day_start_hour: int = DAY_START_HOUR) -> pd.Series:
+    """押下時刻を dayStart 起点の経過分に直す。23:50 と 00:10 を最大距離にしないため。"""
+    t = pd.to_datetime(ts)
+    return ((t.dt.hour * 60 + t.dt.minute) - day_start_hour * 60) % 1440
+
+
+def rhythm_table(hist: pd.DataFrame, weeks: list, tasks: list) -> pd.DataFrame:
+    """窓全体（weeks の範囲）で1つずつ出す、時刻の変動性と IRT のテーブル。
+
+    行は tasks 起点（押下ゼロの習慣を消さない）。
+    """
+    if not tasks:
+        return pd.DataFrame()
+
+    windowed = hist[_iso_week(hist['date']).isin(weeks)] if not hist.empty else hist
+    pressed = press_rows(windowed)
+
+    rows = []
+    for t in tasks:
+        own = pressed[pressed['task_id'] == t['id']].sort_values('ts') if not pressed.empty else pressed
+        n = len(own)
+        if n >= VARIABILITY_MIN_POINTS:
+            minutes = minutes_since_day_start(own['ts'])
+            variability = f'{round(minutes.std())}分'
+        else:
+            variability = '-'
+        if n >= 2:
+            gaps = pd.to_datetime(own['ts']).diff().dropna().dt.total_seconds() / 86400
+            irt_median = f'{gaps.median():.1f}日'
+            irt_max = f'{gaps.max():.1f}日'
+        else:
+            irt_median = '-'
+            irt_max = '-'
+        rows.append((t.get('text', ''), n, variability, irt_median, irt_max))
+
+    table = pd.DataFrame(rows, columns=['習慣', '点数', '時刻の変動性', 'IRT中央値', 'IRT最大'])
+    table = table.set_index('習慣')
     return table
 
 
@@ -454,6 +566,12 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
     out += section(
         'Daily（完了 / due日数）', daily_table(hist, weeks, picked_dailys, roster),
         '目標がある習慣は「4週の平均が目標に届いたか」で見る。単週で判定しない。')
+
+    out += section(
+        '習慣のリズム（窓全体）', rhythm_table(hist, weeks, tracked + picked_dailys),
+        '時刻の変動性は dayStart(5時) 起点の経過分。習慣化とは変動性の低下なので、'
+        '回数が横ばいでも下がっていれば前進。IRT の最大は空白の長さだが、'
+        'cron が走らなかった期間の欠測も含む。')
 
     cov = coverage(weeks)
     out += ['## 記録の被覆（cron を走らせた日数 / 7）', '',
