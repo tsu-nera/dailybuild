@@ -591,12 +591,13 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
     out += section('習慣のリズム（窓全体）',
                    rhythm_table(hist, periods, tracked + picked_dailys, unit))
 
+    # 表は手で組まずに to_markdown へ通す（lib/toggl・lib/mf と同じ）。
+    # パイプを自前で並べると全角の桁が合わず、この表だけ崩れる
     cov = coverage(periods, unit)
+    cov_row = pd.DataFrame([[f'{cov[p]}/{period_days(p, unit)}' for p in periods]],
+                           columns=labels)
     out += ['## 記録の被覆（cron を走らせた日数 / 暦日数）', '',
-            '| ' + ' | '.join(labels) + ' |',
-            '|' + '---|' * len(periods),
-            '| ' + ' | '.join(f'{cov[p]}/{period_days(p, unit)}' for p in periods) + ' |',
-            '']
+            cov_row.to_markdown(index=False), '']
 
     cands = graduation_candidates(tracked_habits(roster, habits, 'up'), picked_dailys,
                                   float(grad.get('value_min', 5)))
