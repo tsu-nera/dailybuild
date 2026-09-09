@@ -529,10 +529,6 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
     picked_dailys = tracked_dailys(roster, dailys)
 
     current = today.strftime(UNIT_FORMAT[unit])
-    labels = [f'{p} (途中)' if p == current else p for p in periods]
-
-    def relabel(table):
-        return table.rename(columns=dict(zip(periods, labels))) if not table.empty else table
 
     def section(title, table):
         """表だけを出す。**注記は書かない。**
@@ -544,7 +540,7 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
         """
         if table.empty:
             return []
-        return [f'## {title}', '', relabel(table).to_markdown(), '']
+        return [f'## {title}', '', table.to_markdown(), '']
 
     out = [f'# 習慣レビュー {current}', '']
 
@@ -575,7 +571,7 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, periods: list,
     # パイプを自前で並べると全角の桁が合わず、この表だけ崩れる
     cov = coverage(periods, unit)
     cov_row = pd.DataFrame([[f'{cov[p]}/{period_days(p, unit)}' for p in periods]],
-                           columns=labels)
+                           columns=periods)
     out += ['## 記録日数（日付処理が走った日 / 暦日）', '',
             cov_row.to_markdown(index=False), '']
 
