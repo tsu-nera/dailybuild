@@ -532,12 +532,17 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
     def relabel(table):
         return table.rename(columns=dict(zip(weeks, labels))) if not table.empty else table
 
-    def section(title, table, note=None):
-        body = [f'## {title}', '']
-        body += [relabel(table).to_markdown() if not table.empty else '対象なし', '']
-        if note:
-            body += [note, '']
-        return body
+    def section(title, table):
+        """表だけを出す。**注記は書かない。**
+
+        読み方（0 を未実行と読まない、単週で判定しない等）は
+        `.claude/skills/habits-review/SKILL.md` が持つ。両方に置くと片方だけが
+        更新されて漂流するので、CLI は数字だけを出す。
+        対象が0件の節は見出しごと出さない。
+        """
+        if table.empty:
+            return []
+        return [f'## {title}', '', relabel(table).to_markdown(), '']
 
     out = [f'# 習慣レビュー {current}', '']
 
@@ -546,56 +551,42 @@ def render_show(hist: pd.DataFrame, tasks: dict, config: dict, weeks: list,
         out += ['> **対象に指定した習慣が Habitica にありません**: ' + ' / '.join(absent),
                 '> リネームか削除。yaml を直すまでこの習慣はレビューされない。', '']
 
-    out += section(
-        'Habit / 増やす（週あたりの回数）',
-        habit_table(hist, weeks, roster, habits, 'up'),
-        '押した回数であって、やった回数ではない。**0 を「やらなかった」と読まない**。')
-    out += section(
-        'Habit / 減らす（週あたりの回数）',
-        habit_table(hist, weeks, roster, habits, 'down'),
-        '押し忘れると過少に出るうえ機械で裏が取れない。**評価の対象にしない**。')
+    out += section('Habit / 増やす（週あたりの回数）',
+                   habit_table(hist, weeks, roster, habits, 'up'))
+    out += section('Habit / 減らす（週あたりの回数）',
+                   habit_table(hist, weeks, roster, habits, 'down'))
 
     if tracked:
         out += ['## Habit / 最後に記録された日', '']
         for name, day, days in last_pressed(hist, tracked, today):
             when = f'{day}（{days}日前）' if day else '記録なし'
             out += [f'- {name}: {when}']
-        out += ['', '窓の外の空白を見るための行。記録についての文で、'
-                '「N日やっていない」とは読まない。', '']
+        out += ['']
 
-    out += section(
-        'Daily（完了 / due日数）', daily_table(hist, weeks, picked_dailys, roster),
-        '目標がある習慣は「4週の平均が目標に届いたか」で見る。単週で判定しない。')
-
-    out += section(
-        '習慣のリズム（窓全体）', rhythm_table(hist, weeks, tracked + picked_dailys),
-        '時刻の変動性は dayStart(5時) 起点の経過分。習慣化とは変動性の低下なので、'
-        '回数が横ばいでも下がっていれば前進。IRT の最大は空白の長さだが、'
-        'cron が走らなかった期間の欠測も含む。')
+    out += section('Daily（完了 / due日数）',
+                   daily_table(hist, weeks, picked_dailys, roster))
+    out += section('習慣のリズム（窓全体）',
+                   rhythm_table(hist, weeks, tracked + picked_dailys))
 
     cov = coverage(weeks)
     out += ['## 記録の被覆（cron を走らせた日数 / 7）', '',
             '| ' + ' | '.join(labels) + ' |',
             '|' + '---|' * len(weeks),
             '| ' + ' | '.join(f'{cov[w]}/7' for w in weeks) + ' |',
-            '', 'Daily の分母はこの日数。走らなかった日は未達ではなく欠測。'
-            ' (途中) の週は経過日数ぶんしか無いので、完了した週と比べない。', '']
+            '']
 
     cands = graduation_candidates(tracked_habits(roster, habits, 'up'), picked_dailys,
                                   float(grad.get('value_min', 5)))
     out += ['## 卒業候補', '']
     if cands:
         out += [f'- {name}（{kind} / value {value:.1f}）' for name, kind, value in cands]
-        out += ['', 'Tag「卒業」を付けて `repeat` を空にすると対象から外れる（手動）。']
     else:
         out += ['なし']
 
     untracked = [t.get('text', '') for t in habits + dailys if t['id'] not in tracked_ids]
     if untracked:
         out += ['', f'## 対象外（{len(untracked)}件）', '',
-                '- ' + ' / '.join(untracked),
-                '', 'Habitica には残っているがレビューしない。'
-                '戻すには `config/habits.yaml` に足す。']
+                '- ' + ' / '.join(untracked)]
 
     if done:
         names = [t.get('text', '') for t in tasks.get('habits', []) + tasks.get('dailys', [])
