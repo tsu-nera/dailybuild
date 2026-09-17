@@ -13,7 +13,7 @@ import pytest
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR / 'src'))
 
-from lib.bowel import store
+from lib.bowel import render, store
 from lib.utils import csv_utils
 from lib.utils.private_data import require_private_path
 
@@ -32,7 +32,7 @@ bowel = _load_script()
 
 
 CONF = {
-    'questions': {'bristol': '便の形（ブリストル）'},
+    'questions': {'bristol': '便の形（ブリストル）', 'comment': 'メモ（任意）'},
     'choices': [
         {'code': 1, 'label': 'コロコロ（硬い塊）'},
         {'code': 2, 'label': 'ゴツゴツ（塊が集まった硬便）'},
@@ -59,14 +59,30 @@ def _form():
                     },
                 }},
             },
+            {
+                'title': 'メモ（任意）',
+                'questionItem': {'question': {
+                    'questionId': 'q_comment',
+                    'textQuestion': {'paragraph': False},
+                }},
+            },
         ],
     }
 
 
-def _response(timestamp, bristol=None):
+def _form_without_comment():
+    """comment を足す前のフォーム（既存フォームのまま fetch した状態）"""
+    form = _form()
+    form['items'] = form['items'][:1]
+    return form
+
+
+def _response(timestamp, bristol=None, comment=None):
     answers = {}
     if bristol is not None:
         answers['q_bristol'] = {'textAnswers': {'answers': [{'value': bristol}]}}
+    if comment is not None:
+        answers['q_comment'] = {'textAnswers': {'answers': [{'value': comment}]}}
     return {'lastSubmittedTime': timestamp, 'answers': answers}
 
 
@@ -101,7 +117,33 @@ def test_build_dataframe_bristol_is_nullable_int():
 
 def test_build_dataframe_column_order():
     df = bowel.build_dataframe(_form(), [], CONF)
-    assert list(df.columns) == ['timestamp', 'date', 'bristol']
+    assert list(df.columns) == ['timestamp', 'date', 'bristol', 'comment']
+
+
+def test_build_dataframe_missing_comment_is_empty_string_not_na():
+    """未入力のメモを NA にしない
+
+    fetch は preserve_existing_on_nan=True でマージするので、NA にすると
+    フォーム側で消したメモが CSV に残り続ける（daily.py が同じ理由で
+    セル単位マージを切っている）。
+    """
+    responses = [
+        _response('2026-08-20T10:00:00Z', bristol='4 なめらかなソーセージ状',
+                  comment='前夜に牛乳'),
+        _response('2026-08-21T10:00:00Z', bristol='6 泥状'),
+    ]
+    df = bowel.build_dataframe(_form(), responses, CONF)
+    assert df['comment'].tolist() == ['前夜に牛乳', '']
+    assert not df['comment'].isna().any()
+
+
+def test_build_dataframe_without_comment_question():
+    """comment を足す前のフォームでも落ちず、空文字で埋まる"""
+    responses = [_response('2026-08-20T10:00:00Z',
+                           bristol='4 なめらかなソーセージ状')]
+    df = bowel.build_dataframe(_form_without_comment(), responses, CONF)
+    assert df['comment'].tolist() == ['']
+    assert df['bristol'].iloc[0] == 4
 
 
 def test_build_dataframe_empty_has_bristol_column():
@@ -141,9 +183,9 @@ def test_fetch_merge_is_idempotent(tmp_path):
 def test_load_entries_keeps_missing_bristol_as_na(tmp_path, monkeypatch):
     csv = tmp_path / 'bowel.csv'
     csv.write_text(
-        'timestamp,date,bristol\n'
-        '2026-08-25 22:02:09,2026-08-25,\n'
-        '2026-08-26 07:42:15,2026-08-26,4\n'
+        'timestamp,date,bristol,comment\n'
+        '2026-08-25 22:02:09,2026-08-25,,\n'
+        '2026-08-26 07:42:15,2026-08-26,4,\n'
     )
     monkeypatch.setattr(store, 'CSV_FILE', csv)
 
@@ -162,7 +204,7 @@ def test_load_entries_on_header_only_csv(tmp_path, monkeypatch):
     落ちて show が使えなくなる（実機で踏んだ）。
     """
     csv = tmp_path / 'bowel.csv'
-    csv.write_text('timestamp,date,bristol\n')
+    csv.write_text('timestamp,date,bristol,comment\n')
     monkeypatch.setattr(store, 'CSV_FILE', csv)
 
     df = store.load_entries()
@@ -172,6 +214,43 @@ def test_load_entries_on_header_only_csv(tmp_path, monkeypatch):
     assert str(df['bristol'].dtype) == 'Int64'
     # show の被覆表示が nunique を呼ぶので date 列も引けている必要がある
     assert df['date'].nunique() == 0
+
+
+def test_load_entries_on_csv_without_comment_column(tmp_path, monkeypatch):
+    """comment 列を足す前に書かれた CSV でも show が落ちない"""
+    csv = tmp_path / 'bowel.csv'
+    csv.write_text(
+        'timestamp,date,bristol\n'
+        '2026-08-26 07:42:15,2026-08-26,4\n'
+    )
+    monkeypatch.setattr(store, 'CSV_FILE', csv)
+
+    df = store.load_entries()
+
+    assert df['comment'].tolist() == ['']
+
+
+# --- render ---
+
+def test_render_comments_skips_empty(tmp_path):
+    df = pd.DataFrame({
+        'timestamp': pd.to_datetime(['2026-08-20 07:00:00',
+                                     '2026-08-21 08:00:00']),
+        'bristol': pd.array([4, 6], dtype='Int64'),
+        'comment': ['前夜に牛乳', ''],
+    })
+    out = render.render_comments(df)
+    assert '前夜に牛乳' in out
+    assert '08-21' not in out
+
+
+def test_render_comments_all_empty():
+    df = pd.DataFrame({
+        'timestamp': pd.to_datetime(['2026-08-20 07:00:00']),
+        'bristol': pd.array([4], dtype='Int64'),
+        'comment': [''],
+    })
+    assert render.render_comments(df) == '（メモの入力はありません）'
 
 
 # --- data/bowel.csv が private symlink 配下であることの検証 ---

@@ -30,6 +30,11 @@ def load_entries() -> pd.DataFrame:
     df = pd.read_csv(CSV_FILE)
     df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
     df['bristol'] = pd.to_numeric(df['bristol'], errors='coerce').astype('Int64')
+    # comment は後から足した列。それ以前に書かれた行には存在しないので、
+    # 欠けていたら空文字で埋める（未入力と区別しない。どちらも「書いていない」）
+    if 'comment' not in df.columns:
+        df['comment'] = ''
+    df['comment'] = df['comment'].fillna('').astype(str)
     # CSV の date 列は文字列。フィルタに使うので timestamp から引き直す
     # （日境界の補正はしない。深夜の記録もその日付のまま）
     df['date'] = df['timestamp'].dt.normalize()

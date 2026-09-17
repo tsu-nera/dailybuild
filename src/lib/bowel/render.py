@@ -59,3 +59,23 @@ def render_daily(df: pd.DataFrame) -> str:
         '型': ['-' if pd.isna(v) else str(int(v)) for v in df['bristol']],
     })
     return out.to_markdown(index=False)
+
+
+def render_comments(df: pd.DataFrame) -> str:
+    """任意入力のメモ。入力のある行だけを時系列で並べる
+
+    空行は出さない。記入率は被覆と違って但し書きにもしない
+    （入れたい日だけ入れる項目で、率を出すと目標に見える）。
+    """
+    if df.empty:
+        return '（この期間に記録がありません）'
+    rows = df[df['comment'].astype(str).str.strip() != '']
+    if rows.empty:
+        return '（メモの入力はありません）'
+    out = pd.DataFrame({
+        '日': [_day_label(t) for t in rows['timestamp']],
+        '時刻': [t.strftime('%H:%M') for t in rows['timestamp']],
+        '型': ['-' if pd.isna(v) else str(int(v)) for v in rows['bristol']],
+        'メモ': list(rows['comment']),
+    })
+    return out.to_markdown(index=False)
