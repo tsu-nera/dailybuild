@@ -57,6 +57,7 @@ def build_items(conf):
     q = conf['questions']
     return [
         gforms_client.radio_item(q['bristol'], choice_strings(conf), required=True),
+        gforms_client.text_item(q['comment'], required=False),
     ]
 
 
@@ -83,16 +84,24 @@ def build_dataframe(form, responses, conf):
             f"フォームに質問がない: {q['bristol']} / 実際: {list(by_title)}。"
             'setup-form --update で合わせること')
 
+    # comment はフォームに後から足した任意項目。古いフォーム定義のまま
+    # fetch しても落ちないよう、無ければ全行を空文字にする
+    comment_qid = by_title.get(q.get('comment'))
+
     rows = []
     for res in responses:
         v = gforms_client.answer_values(res, by_title[q['bristol']])
+        c = gforms_client.answer_values(res, comment_qid) if comment_qid else []
         rows.append({
             'timestamp': res.get('lastSubmittedTime') or res.get('createTime'),
             'bristol': v[0] if v else pd.NA,
+            # 未入力は NA ではなく空文字。fetch は preserve_existing_on_nan=True で
+            # マージするため、NA にすると後から消したコメントが CSV 側に残り続ける
+            'comment': c[0] if c else '',
         })
 
-    columns = ['timestamp', 'date', 'bristol']
-    df = pd.DataFrame(rows, columns=['timestamp', 'bristol'])
+    columns = ['timestamp', 'date', 'bristol', 'comment']
+    df = pd.DataFrame(rows, columns=['timestamp', 'bristol', 'comment'])
     if df.empty:
         return df.assign(date=pd.Series(dtype='object'))[columns]
 
@@ -104,6 +113,7 @@ def build_dataframe(form, responses, conf):
     # 日境界の補正はしない（深夜の記録もその日付のまま）
     df['date'] = df['timestamp'].dt.date
     df['bristol'] = df['bristol'].apply(parse_bristol_value).astype('Int64')
+    df['comment'] = df['comment'].fillna('').astype(str)
     return df[columns]
 
 
@@ -200,6 +210,8 @@ def cmd_show(args):
     print(render.render_category(df))
     print('\n## 日別の一覧\n')
     print(render.render_daily(df))
+    print('\n## メモ\n')
+    print(render.render_comments(df))
 
 
 def main():

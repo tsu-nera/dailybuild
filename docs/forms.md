@@ -161,8 +161,10 @@ questionId は一度削除すると復元できないため、`--allow-kind-repl
 - 気分グリッドの `score`（いまの気分）が必須行のため、行を足すと排便の
   たびに気分も答えることになり、1回あたりの記録コストが上がる
 
-ラジオ1問（`便の形（ブリストル）`）・7択・必須。色・量・時刻は入れていない
-（色は交絡と再現性の低さ、量は見送り、時刻は回答 timestamp で代用）。
+ラジオ1問（`便の形（ブリストル）`）・7択・必須＋記述式1問（`メモ（任意）`）。
+色・量・時刻は入れていない（色は交絡と再現性の低さ、量は見送り、時刻は回答
+timestamp で代用）。メモは任意なので、未入力なら1タップで送信完了する記録
+コストは変わらない。
 
 - **選択肢の表示文字列は `"{code} {label}"` で組み立てる**
   （例: `"3 ひび割れのあるソーセージ状"`）。回答のパースは表示文字列全体
@@ -182,6 +184,16 @@ questionId は一度削除すると復元できないため、`--allow-kind-repl
 - マージ・欠測の扱いは気分記録と同じ（`merge_csv_by_columns(...,
   preserve_existing_on_nan=True)` で実質追記のみ、`bristol` は nullable
   `Int64`）
+- **`comment` の未入力は `pd.NA` ではなく空文字にする。** マージが
+  `preserve_existing_on_nan=True` なので、NA にするとフォーム側で消した
+  メモが CSV 側に残り続ける（日次記録がセル単位マージを切っているのと
+  同じ理由）。`bristol` の欠測とは扱いが逆になるが、`bristol` は測った値の
+  不在で、`comment` は書かなかったこと自体が値なので矛盾しない
+- comment はフォームに後から足した項目なので、`build_dataframe()` は
+  questionId が引けないフォーム、`store.load_entries()` は列の無い CSV でも
+  落ちずに空文字で埋める。`sync_questions` は kind（`textQuestion`）で
+  突き合わせるため、追加は createItem になり **既存 `bristol` の
+  questionId は再採番されない**
 
 ## PHQ-9（週次）
 
