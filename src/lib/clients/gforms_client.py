@@ -130,9 +130,18 @@ def radio_item(title: str, choices: list, required: bool = True) -> dict:
     }
 
 
-def text_item(title: str, required: bool = False) -> dict:
-    """記述式（textQuestion）の item spec"""
-    return {
+def text_item(title: str, required: bool = False,
+             question_id: str | None = None) -> dict:
+    """記述式（textQuestion）の item spec
+
+    question_id を渡すと questionItem.question.questionId に明示する
+    （Issue #176）。yaml 側に questionId の台帳（backfill 済みの値）が
+    あるとき、sync_questions の突き合わせを出現順（FIFO）でなく id で
+    直接標的にできるようにするためのフック。None なら questionId を
+    持たない spec になり、_match_specs_to_existing() は従来どおり
+    kind-FIFO で突き合わせる。
+    """
+    item = {
         'title': title,
         'questionItem': {
             'question': {
@@ -141,6 +150,9 @@ def text_item(title: str, required: bool = False) -> dict:
             },
         },
     }
+    if question_id is not None:
+        item['questionItem']['question']['questionId'] = question_id
+    return item
 
 
 def grid_item(title: str, rows: list, low: int, high: int, low_label: str,
@@ -205,29 +217,111 @@ def _question_kind(item: dict) -> str | None:
     return None
 
 
+def _spec_question_id(spec: dict) -> str | None:
+    """spec が明示している questionId。無ければ None（grid は対象外）"""
+    return spec.get('questionItem', {}).get('question', {}).get('questionId')
+
+
+def _existing_question_id(item: dict) -> str | None:
+    """既存 item 自身の questionId。無ければ None（grid の group 自体には無い）"""
+    return item.get('questionItem', {}).get('question', {}).get('questionId')
+
+
+def _strip_question_id(spec: dict) -> dict:
+    """createItem に渡す前に spec から questionId を取り除く（浅いコピー）
+
+    元の spec dict は破壊的に変更しない。questionId を明示したまま
+    createItem に送ると stale な id を新規 item に押しつけることになり、
+    API が拒否するか、拒否されなくても意図しない対応付けが残る事故になる。
+    """
+    if 'questionItem' not in spec:
+        return spec
+    question = spec['questionItem']['question']
+    if 'questionId' not in question:
+        return spec
+    new_question = dict(question)
+    del new_question['questionId']
+    return {**spec, 'questionItem': {**spec['questionItem'], 'question': new_question}}
+
+
+def _match_specs_to_existing(items: list, existing_form: dict) -> tuple:
+    """spec と既存 item の対応付け。(matched, leftover) を返す
+
+    matched は items と同じ長さのリストで、各要素は対応する既存 item
+    （無ければ None）。leftover はどの spec にも対応しなかった既存 item。
+
+    preview_kind_mismatch() と sync_questions() の両方がこの関数に乗る
+    （突き合わせ規則を1箇所にする。以前は2箇所に同じロジックが複製されて
+    いた）。
+
+    突き合わせは2パス（Issue #176）:
+      パス1（id 明示）: spec が questionItem.question.questionId を持つ
+        ものについて、既存 item から同じ questionId を持つものを探し、
+        並び順を見ずに確定する。見つからなければ確定しない（= None のまま。
+        パス2の kind-FIFO にもフォールバックしない）。yaml の questionId が
+        古い／誤っているときに FIFO で無関係な item を誤って標的にすると
+        silent に破損するため、そのような spec は createItem 行きにして
+        既定のガード（対応しない既存 item が leftover として残り
+        GoogleFormsError で止まる）に委ねる。
+      パス2（kind-FIFO、現行踏襲）: パス1で id を明示していない spec に
+        ついて、パス1で確定済みの item を除いた残りを kind ごとの
+        バケットに入れ、出現順（フォーム側の並び順）に消費する。
+    """
+    existing_items = [i for i in existing_form.get('items', [])
+                      if 'questionItem' in i or 'questionGroupItem' in i]
+
+    id_to_existing = {}
+    for item in existing_items:
+        qid = _existing_question_id(item)
+        if qid is not None:
+            id_to_existing[qid] = item
+
+    matched = [None] * len(items)
+    used_item_ids = set()
+    fifo_indices = []
+
+    # パス1: id 明示
+    for idx, spec in enumerate(items):
+        spec_id = _spec_question_id(spec)
+        if spec_id is None:
+            fifo_indices.append(idx)
+            continue
+        existing_item = id_to_existing.get(spec_id)
+        if existing_item is not None and existing_item.get('itemId') not in used_item_ids:
+            matched[idx] = existing_item
+            used_item_ids.add(existing_item.get('itemId'))
+        # 見つからない／既に使用済みなら matched は None のまま（create 行き）
+
+    # パス2: kind-FIFO（パス1で確定済みの item を除いた残りだけを消費する）
+    existing_by_kind = {}
+    for item in existing_items:
+        if item.get('itemId') in used_item_ids:
+            continue
+        kind = _question_kind(item)
+        existing_by_kind.setdefault(kind, []).append(item)
+
+    for idx in fifo_indices:
+        kind = _question_kind(items[idx])
+        bucket = existing_by_kind.get(kind, [])
+        if bucket:
+            existing_item = bucket.pop(0)
+            matched[idx] = existing_item
+            used_item_ids.add(existing_item.get('itemId'))
+
+    leftover = [i for i in existing_items if i.get('itemId') not in used_item_ids]
+    return matched, leftover
+
+
 def preview_kind_mismatch(items: list, existing_form: dict) -> list:
     """sync_questions が leftover と判定する既存 item を事前に返す
 
     sync_questions を allow_kind_replace=True で呼ぶ前に、削除される質問を
     人間が確認できるようにする用途（CLI 側で使う）。マッチングのロジックは
-    sync_questions と同じ（kind ごとの出現順で消費し、余った既存 item を
-    返す）。ここでは createItem/updateItem のリクエストは組み立てない。
+    _match_specs_to_existing() に一本化してある。ここでは
+    createItem/updateItem のリクエストは組み立てない。
     """
-    existing_items = [i for i in existing_form.get('items', [])
-                      if 'questionItem' in i or 'questionGroupItem' in i]
-    existing_by_kind = {}
-    for item in existing_items:
-        kind = _question_kind(item)
-        existing_by_kind.setdefault(kind, []).append(item)
-
-    used_item_ids = set()
-    for spec in items:
-        kind = _question_kind(spec)
-        bucket = existing_by_kind.get(kind, [])
-        if bucket:
-            used_item_ids.add(bucket.pop(0).get('itemId'))
-
-    return [i for i in existing_items if i.get('itemId') not in used_item_ids]
+    _, leftover = _match_specs_to_existing(items, existing_form)
+    return leftover
 
 
 def sync_questions(service, form_id: str, items: list,
@@ -236,8 +330,17 @@ def sync_questions(service, form_id: str, items: list,
     """フォームの質問を items（望ましい item spec のリスト）に合わせる
 
     existing_form が None なら全 item を新規作成する。
-    existing_form があれば、既存 item と items を「質問の種類」で
-    突き合わせて createItem / updateItem に振り分ける。
+    existing_form があれば、既存 item と items を突き合わせて
+    createItem / updateItem に振り分ける（マッチングは
+    _match_specs_to_existing() に一本化してある）。
+
+    突き合わせは spec が questionItem.question.questionId を明示している
+    かどうかで優先度が変わる（Issue #176）。明示があればそれを最優先し、
+    フォーム側の並び順に関係なくその id を持つ item を標的にする。明示が
+    無い spec は従来どおり「質問の種類」ごとの出現順（kind-FIFO）で
+    対応付く。id を明示した spec がフォーム側に見つからない場合は
+    kind-FIFO にフォールバックせず createItem 行きにする（詳細は
+    _match_specs_to_existing() の docstring）。
 
     index で突き合わせてはいけない。questionId は item に紐づいて保持される
     ため、既存 item の型を作り変える（= 別の質問として updateItem する）と、
@@ -277,29 +380,20 @@ def sync_questions(service, form_id: str, items: list,
     """
     if existing_form is None:
         requests = [
-            {'createItem': {'item': item, 'location': {'index': i}}}
+            {'createItem': {'item': _strip_question_id(item), 'location': {'index': i}}}
             for i, item in enumerate(items)
         ]
         return service.forms().batchUpdate(
             formId=form_id, body={'requests': requests}).execute()
 
-    existing_items = [i for i in existing_form.get('items', [])
-                      if 'questionItem' in i or 'questionGroupItem' in i]
-    existing_by_kind = {}
-    for item in existing_items:
-        kind = _question_kind(item)
-        existing_by_kind.setdefault(kind, []).append(item)
+    matched, leftover = _match_specs_to_existing(items, existing_form)
 
     create_requests = []
     update_requests = []
     final_index = 0
-    used_item_ids = set()
-    for spec in items:
-        kind = _question_kind(spec)
-        bucket = existing_by_kind.get(kind, [])
-        if bucket:
-            existing_item = bucket.pop(0)
-            used_item_ids.add(existing_item.get('itemId'))
+    for spec, existing_item in zip(items, matched):
+        if existing_item is not None:
+            kind = _question_kind(existing_item)
             if kind == 'questionGroupItem':
                 existing_questions = existing_item.get(
                     'questionGroupItem', {}).get('questions', [])
@@ -346,11 +440,10 @@ def sync_questions(service, form_id: str, items: list,
                 })
         else:
             create_requests.append({
-                'createItem': {'item': spec, 'location': {'index': final_index}},
+                'createItem': {'item': _strip_question_id(spec), 'location': {'index': final_index}},
             })
         final_index += 1
 
-    leftover = [i for i in existing_items if i.get('itemId') not in used_item_ids]
     delete_requests = []
     if leftover:
         if not allow_kind_replace:

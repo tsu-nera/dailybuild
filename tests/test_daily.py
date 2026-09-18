@@ -5,10 +5,13 @@
 config/ は public な通常ファイルなので、テストからも実物の yaml をそのまま読む。
 """
 
+import argparse
 import copy
 import importlib.util
+import shutil
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
@@ -569,3 +572,258 @@ def test_retired_question_empty_response_list_keeps_column():
     form = _build_fake_form(conf)
     df = daily.build_dataframe(form, [], conf, 'evening')
     assert list(df.columns) == store.columns('evening', conf)
+
+
+# --- gforms_client.sync_questions: question_id 明示（Issue #176） ---
+
+def _conf_with_question_ids(slot, ids_by_key, active_overrides=None):
+    """conf の複製に question_id（と任意で active）を差し込む"""
+    conf = copy.deepcopy(CONFS[slot])
+    active_overrides = active_overrides or {}
+    for q in conf['questions']:
+        if q['key'] in ids_by_key:
+            q['question_id'] = ids_by_key[q['key']]
+        if q['key'] in active_overrides:
+            q['active'] = active_overrides[q['key']]
+    return conf
+
+
+def _existing_form_with_text_ids(conf, text_id_by_key):
+    """conf の active な設問から、text_id_by_key で指定した questionId を
+    持つ既存フォームを作る（grid 行の questionId は連番で適当に振る）"""
+    grid_entries = store.grid_rows(conf)
+    text_like = store.text_like_questions(conf)
+    items = [{
+        'title': conf['grid_title'],
+        'questionGroupItem': {
+            'questions': [
+                {'questionId': f'q_grid_{i}', 'required': e.get('required', False),
+                 'rowQuestion': {'title': e['label']}}
+                for i, e in enumerate(grid_entries)
+            ],
+            'grid': {'columns': {'type': 'RADIO',
+                                 'options': [{'value': str(n)} for n in range(1, 6)]}},
+        },
+    }]
+    for i, e in enumerate(text_like):
+        items.append({
+            'itemId': f'item_{e["key"]}',
+            'title': e['label'],
+            'questionItem': {'question': {
+                'questionId': text_id_by_key[e['key']],
+                'textQuestion': {'paragraph': False},
+            }},
+        })
+    return {'items': items}
+
+
+def _run_sync(items, existing_form, allow_kind_replace=False):
+    service = MagicMock()
+    captured = {}
+
+    def fake_batch_update(formId, body):
+        captured['body'] = body
+        m = MagicMock()
+        m.execute.return_value = {}
+        return m
+
+    service.forms.return_value.batchUpdate.side_effect = fake_batch_update
+    daily.gforms_client.sync_questions(service, 'form1', items,
+                                       existing_form=existing_form,
+                                       allow_kind_replace=allow_kind_replace)
+    return service, captured.get('body', {}).get('requests', [])
+
+
+def test_sync_questions_targets_explicit_question_id_regardless_of_order():
+    """spec が questionId を明示していれば、フォーム側の並び順に関係なく
+    その id を持つ item が updateItem の標的になる（Issue #176）"""
+    existing_form = {
+        'items': [
+            {'itemId': 'i_b', 'title': 'B',
+             'questionItem': {'question': {'questionId': 'q_b',
+                                          'textQuestion': {'paragraph': False}}}},
+            {'itemId': 'i_a', 'title': 'A',
+             'questionItem': {'question': {'questionId': 'q_a',
+                                          'textQuestion': {'paragraph': False}}}},
+        ],
+    }
+    items = [
+        daily.gforms_client.text_item('A', question_id='q_a'),
+        daily.gforms_client.text_item('B', question_id='q_b'),
+    ]
+
+    _, requests = _run_sync(items, existing_form)
+    updates = {r['updateItem']['item']['title']: r['updateItem']
+              for r in requests if 'updateItem' in r}
+
+    assert updates['A']['item']['questionItem']['question']['questionId'] == 'q_a'
+    assert updates['B']['item']['questionItem']['question']['questionId'] == 'q_b'
+
+
+def test_retiring_middle_text_question_does_not_reassign_question_ids():
+    """この issue の核。question_id 明示なら中間の設問を退役させても
+    後続の questionId は付け替わらない。question_id が無い（従来の
+    kind-FIFO）同じ状況では付け替わってしまうことも合わせて固定する
+    （この修正が何を直したのかをテストが記録する）。
+    """
+    text_ids = {'comment': 'q_comment', 'hrv_rmssd': 'q_hrv', 'eda_responses': 'q_eda'}
+
+    # --- question_id 明示あり: 退役後も eda_responses は自分の id を保つ ---
+    conf_full = _conf_with_question_ids('morning', text_ids)
+    existing_form = _existing_form_with_text_ids(conf_full, text_ids)
+    conf_retired = _conf_with_question_ids(
+        'morning', text_ids, active_overrides={'hrv_rmssd': False})
+    items = daily.build_items(conf_retired)
+
+    _, requests = _run_sync(items, existing_form, allow_kind_replace=True)
+    updates = {r['updateItem']['item']['title']: r['updateItem']['item']
+              for r in requests if 'updateItem' in r}
+    eda_label = next(q['label'] for q in conf_retired['questions']
+                     if q['key'] == 'eda_responses')
+    assert updates[eda_label]['questionItem']['question']['questionId'] == 'q_eda'
+
+    # --- question_id 無し（従来の kind-FIFO）: 同じ操作で付け替わる ---
+    conf_full_fifo = CONFS['morning']
+    existing_form_fifo = _build_fake_form(conf_full_fifo)  # q_text_0=comment, 1=hrv, 2=eda
+    conf_retired_fifo = _conf_with_retired('morning', 'hrv_rmssd')
+    items_fifo = daily.build_items(conf_retired_fifo)
+
+    _, requests_fifo = _run_sync(items_fifo, existing_form_fifo, allow_kind_replace=True)
+    updates_fifo = {r['updateItem']['item']['title']: r['updateItem']['item']
+                   for r in requests_fifo if 'updateItem' in r}
+    assert updates_fifo[eda_label]['questionItem']['question']['questionId'] == 'q_text_1'  # = 旧hrvのid
+    assert updates_fifo[eda_label]['questionItem']['question']['questionId'] != 'q_text_2'  # 自分の元id
+
+
+def _retirement_fixture():
+    """question_id 明示ありで hrv_rmssd を退役させた spec/existing_form の組
+
+    question_id が無い（kind-FIFO）状態だと、退役対象でない eda_responses が
+    誤って leftover になってしまう（test_retiring_middle_text_question_...
+    が固定している問題）ため、削除対象そのものを検証するこの2テストは
+    question_id 明示ありの状態を使う。
+    """
+    text_ids = {'comment': 'q_comment', 'hrv_rmssd': 'q_hrv', 'eda_responses': 'q_eda'}
+    conf_full = _conf_with_question_ids('morning', text_ids)
+    existing_form = _existing_form_with_text_ids(conf_full, text_ids)
+    conf_retired = _conf_with_question_ids(
+        'morning', text_ids, active_overrides={'hrv_rmssd': False})
+    items = daily.build_items(conf_retired)
+    return items, existing_form
+
+
+def test_retire_without_flag_raises_and_issues_no_delete():
+    items, existing_form = _retirement_fixture()
+
+    service = MagicMock()
+    with pytest.raises(daily.gforms_client.GoogleFormsError):
+        daily.gforms_client.sync_questions(service, 'form1', items,
+                                           existing_form=existing_form)
+    service.forms.return_value.batchUpdate.assert_not_called()
+
+
+def test_retire_with_flag_deletes_only_retired_item():
+    items, existing_form = _retirement_fixture()
+
+    _, requests = _run_sync(items, existing_form, allow_kind_replace=True)
+    deletes = [r['deleteItem'] for r in requests if 'deleteItem' in r]
+
+    assert len(deletes) == 1
+    assert 'itemId' not in deletes[0]
+    assert 'location' in deletes[0] and 'index' in deletes[0]['location']
+    # 退役対象（hrv_rmssd, item_hrv_rmssd）だけが消えること
+    hrv_index = next(i for i, item in enumerate(existing_form['items'])
+                     if item.get('itemId') == 'item_hrv_rmssd')
+    assert deletes[0]['location']['index'] == hrv_index
+
+    # delete が create/update より前に来ること
+    delete_pos = next(i for i, r in enumerate(requests) if 'deleteItem' in r)
+    other_pos = [i for i, r in enumerate(requests)
+                if 'createItem' in r or 'updateItem' in r]
+    assert all(delete_pos < p for p in other_pos)
+
+
+# --- daily.save_question_ids ---
+
+def test_save_question_ids_writes_back_and_preserves_comments(tmp_path, monkeypatch):
+    src = store.DEF_FILES['morning']
+    dst = tmp_path / 'daily_morning_def.yaml'
+    shutil.copy(src, dst)
+    monkeypatch.setitem(store.DEF_FILES, 'morning', dst)
+
+    before_comment_lines = sum(1 for line in dst.read_text().splitlines()
+                               if line.strip().startswith('#'))
+
+    n = daily.save_question_ids('morning', {
+        'comment': 'q_comment', 'eda_responses': 'q_eda',
+    })
+    assert n == 2
+
+    text = dst.read_text()
+    after_comment_lines = sum(1 for line in text.splitlines()
+                              if line.strip().startswith('#'))
+    assert after_comment_lines == before_comment_lines
+
+    conf = store.load_def('morning')
+    by_key = {q['key']: q for q in conf['questions']}
+    assert by_key['comment']['question_id'] == 'q_comment'
+    assert by_key['eda_responses']['question_id'] == 'q_eda'  # 末尾のエントリ
+
+    # 再度呼んでも重複しない（既存行が置換される）
+    n2 = daily.save_question_ids('morning', {'comment': 'q_comment2'})
+    assert n2 == 1
+    text2 = dst.read_text()
+    assert 'question_id: q_comment\n' not in text2  # 置換前の値が残っていない
+    assert text2.count('question_id: q_comment2') == 1
+    conf2 = store.load_def('morning')
+    by_key2 = {q['key']: q for q in conf2['questions']}
+    assert by_key2['comment']['question_id'] == 'q_comment2'
+    assert by_key2['eda_responses']['question_id'] == 'q_eda'
+
+
+# --- cmd_setup_form: backfill してから使う（Issue #176） ---
+
+def test_setup_form_update_backfills_question_ids_then_uses_them(tmp_path, monkeypatch):
+    src = store.DEF_FILES['morning']
+    dst = tmp_path / 'daily_morning_def.yaml'
+    shutil.copy(src, dst)
+    monkeypatch.setitem(store.DEF_FILES, 'morning', dst)
+
+    fixed_form = _build_fake_form(CONFS['morning'])  # q_text_0=comment,1=hrv,2=eda
+    fixed_form['formId'] = 'FORM_TEST'
+
+    monkeypatch.setattr(daily.gforms_client, 'create_service', lambda: MagicMock())
+    monkeypatch.setattr(daily.gforms_client, 'get_form', lambda service, form_id: fixed_form)
+    monkeypatch.setattr(daily.gforms_client, 'sync_questions',
+                        lambda *a, **k: {})
+    captured_items = []
+    real_build_items = daily.build_items
+
+    def spying_build_items(conf):
+        items = real_build_items(conf)
+        captured_items.append(items)
+        return items
+
+    monkeypatch.setattr(daily, 'build_items', spying_build_items)
+
+    args = _ns(slot='morning', update=True, allow_kind_replace=False)
+
+    daily.cmd_setup_form(args)
+    first_items = captured_items[0]
+    first_text_items = [i for i in first_items if 'questionItem' in i]
+    assert all('questionId' not in i['questionItem']['question']
+              for i in first_text_items)
+
+    conf_after = store.load_def('morning')
+    by_key = {q['key']: q for q in conf_after['questions']}
+    assert by_key['comment']['question_id'] == 'q_text_0'
+    assert by_key['hrv_rmssd']['question_id'] == 'q_text_1'
+    assert by_key['eda_responses']['question_id'] == 'q_text_2'
+
+    daily.cmd_setup_form(args)
+    second_items = captured_items[1]
+    second_text_items = [i for i in second_items if 'questionItem' in i]
+    ids = {i['title']: i['questionItem']['question'].get('questionId')
+          for i in second_text_items}
+    assert ids['コメント'] == 'q_text_0'
+    assert ids['EDA responses (回)'] == 'q_text_2'

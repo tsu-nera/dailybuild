@@ -323,3 +323,33 @@ Issue #157 で朝・夜の2フォームに分割し、旧スクリプト名（�
   ファイル名）は create のときしか設定できず、後から送ると 400
   `document_title is read-only in subsequent requests` になる。日次記録を
   「朝の記録」へ改名したときも Drive 上の名前は「日次記録」のまま残っている
+- **kind-FIFO から `question_id` 明示へ移した（Issue #176）。**
+  `comment` / `hrv_rmssd` / `eda_responses` は Forms API 上すべて同じ
+  `textQuestion` kind で、`sync_questions()` の突き合わせは既定では
+  kind ごとの出現順（FIFO）だった。中間の設問（`hrv_rmssd`）を退役
+  させると、後続の `eda_responses` の questionId が繰り上がって
+  `hrv_rmssd` だったものに付け替わり、過去の回答が別の列に着地する。
+  値そのものは入るので欠測にもならず、目視でも検出できない。
+  `config/daily_{morning,evening}_def.yaml` の各設問が `question_id` を
+  持てるようにし、`sync_questions()` はこれを最優先で突き合わせる
+  ようにした（並び順・退役位置に依存しなくなる）
+- **`question_id` は手で書かない。** `setup-form --update` が既存フォームから
+  backfill して yaml へ書き戻す（`scripts/daily.py` の
+  `save_question_ids()`）。backfill 後はタイトル変更も並び替えも
+  questionId に影響しない
+- **`question_id` が空の設問は従来どおり kind-FIFO。** 新しい設問を足す
+  ときは末尾に追加し、追加したら `setup-form --update` を走らせて
+  backfill を済ませてから次の変更に進むこと
+- **退役手順**: (1) `daily.py <slot> fetch` で最新回答を CSV に落とす →
+  (2) yaml で対象設問を `active: false` にし `description` に退役理由・
+  最終日を書く → (3) `setup-form --update`（フラグ無し）で削除対象の
+  プレビューを確認 → (4) `setup-form --update --allow-kind-replace` で
+  実行 → (5) `daily.py <slot> fetch` で CSV の列が残っていることを確認。
+  気分記録の移行手順（バックアップ → fetch → プレビュー確認 → 実行 →
+  差分確認）と同じ流儀
+- **退役した設問の `question_id` は yaml に残す（消さない）。** フォーム
+  item を削除しても旧 questionId で生レスポンスから値を引けるので、
+  気分記録の移行で「旧 questionId を控えておけ」と手順書に書いていた
+  部分が構造で担保される
+- **グリッド行（`grid_rows` の並び替え）は #176 のスコープ外**で FIFO の
+  まま。既存の「行を足すなら必ず末尾に追加する」制約は生きている

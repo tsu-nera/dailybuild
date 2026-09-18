@@ -51,6 +51,59 @@ def save_form_id(slot, form_id):
     def_file.write_text(new_text)
 
 
+def save_question_ids(slot, ids_by_key):
+    """yaml のコメントを壊さないよう question_id だけ行編集で書き戻す（Issue #176）
+
+    save_form_id と同じ「yaml をテキストで読み、対象の値だけ置換する」流儀。
+    yaml.safe_dump で丸ごと書き直すとコメントが全部消えるため使わない。
+
+    questions: 配下の各エントリ（"  - key: <key>" で始まる行）を走査し、
+    ids_by_key（{key: question_id}）にある key のエントリへ question_id を
+    挿入・置換する。エントリの終端は「4スペース以上インデントされた
+    プロパティ行が続く間」で判定する（次のエントリ・次の設問群の前置き
+    コメント・ファイル末尾の空行より前に挿入するため）。既に
+    question_id: 行があれば値だけ置換し、無ければエントリの最後の
+    プロパティ行の直後に挿入する。
+    """
+    def_file = store.DEF_FILES[slot]
+    lines = def_file.read_text().splitlines(keepends=True)
+
+    entry_pattern = re.compile(r'^  - key: (\S+)\s*$')
+    entry_starts = [i for i, line in enumerate(lines) if entry_pattern.match(line)]
+
+    written = 0
+    # 後ろのエントリから書き換える（挿入で行数が増えても、まだ処理していない
+    # 前方のエントリの行インデックスに影響しない）
+    for i in reversed(entry_starts):
+        key = entry_pattern.match(lines[i]).group(1)
+        if key not in ids_by_key:
+            continue
+
+        content_end = i + 1
+        while content_end < len(lines) and re.match(r'^ {4}\S', lines[content_end]):
+            content_end += 1
+
+        qid_line_idx = None
+        for j in range(i + 1, content_end):
+            if re.match(r'^    question_id:', lines[j]):
+                qid_line_idx = j
+                break
+
+        new_line = f'    question_id: {ids_by_key[key]}\n'
+        if qid_line_idx is not None:
+            lines[qid_line_idx] = new_line
+        else:
+            lines.insert(content_end, new_line)
+        written += 1
+
+    if written == 0:
+        raise ValueError(f'question_id を書き込む対象の key が見つからない: '
+                         f'{list(ids_by_key)} / {def_file}')
+
+    def_file.write_text(''.join(lines))
+    return written
+
+
 def responder_uri(form):
     return form.get('responderUri', f"https://docs.google.com/forms/d/{form['formId']}/viewform")
 
@@ -62,6 +115,12 @@ def build_items(conf):
     yaml の並び順で1 item ずつ続く（number は textQuestion として作る。
     Forms API の TextQuestion に数値バリデーションは無いため、数値化は
     fetch 側 build_dataframe() が pd.to_numeric(errors='coerce') で行う）。
+
+    yaml に question_id があれば item spec へ明示する（Issue #176）。
+    sync_questions() 側でこれを優先して突き合わせることで、中間の設問を
+    退役させても後続の設問の questionId が付け替わらなくなる。
+    question_id が無い（backfill 前）設問は従来どおり kind-FIFO で
+    対応付く。
     """
     s = conf['score']
     grid_entries = store.grid_rows(conf)
@@ -69,9 +128,10 @@ def build_items(conf):
     required = [e.get('required', False) for e in grid_entries]
     items = [gforms_client.grid_item(conf['grid_title'], rows, s['low'], s['high'],
                                   s['low_label'], s['high_label'], required=required)]
-    for e in store.active_questions(conf):
-        if e['type'] in ('text', 'number'):
-            items.append(gforms_client.text_item(e['label'], required=e.get('required', False)))
+    for e in store.text_like_questions(conf):
+        items.append(gforms_client.text_item(
+            e['label'], required=e.get('required', False),
+            question_id=e.get('question_id')))
     return items
 
 
@@ -147,6 +207,23 @@ def _move_new_form_to_drive(form_id):
               file=sys.stderr)
 
 
+def _backfill_question_ids(slot, conf, form):
+    """sync 後の form から text/number 設問の questionId を yaml へ書き戻す
+
+    grid 行は対象外（この issue のスコープ外。grid 行は FIFO のまま）。
+    label がフォームに無い設問（退役済みなど）はスキップする。
+    """
+    by_title = gforms_client.question_id_by_title(form)
+    ids_by_key = {}
+    for e in store.text_like_questions(conf):
+        qid = by_title.get(e['label'])
+        if qid is not None:
+            ids_by_key[e['key']] = qid
+    if not ids_by_key:
+        return 0
+    return save_question_ids(slot, ids_by_key)
+
+
 def cmd_setup_form(args):
     slot = args.slot
     conf = load_def(slot)
@@ -160,8 +237,19 @@ def cmd_setup_form(args):
             print('選択肢や質問文を yaml に合わせ直すなら --update')
             return
         existing_form = gforms_client.get_form(service, conf['form_id'])
+        # フラグの有無にかかわらず、削除される可能性がある質問を先に列挙する
+        # （emotion.py の --allow-kind-replace の出力に倣う）。フラグ無しで
+        # leftover があっても自前で sys.exit はしない。sync_questions の
+        # 既定のガード（GoogleFormsError）が唯一の失敗経路になるほうが
+        # 分岐が増えない
+        leftover = gforms_client.preview_kind_mismatch(items, existing_form)
+        if leftover:
+            print('フォームから外れる（削除対象になりうる）既存の質問:')
+            for i in leftover:
+                print(f"  - {i.get('title')} ({gforms_client._question_kind(i)})")
         gforms_client.sync_questions(service, conf['form_id'], items,
-                                  existing_form=existing_form)
+                                  existing_form=existing_form,
+                                  allow_kind_replace=args.allow_kind_replace)
         # 画面タイトルは item ではないので sync_questions が触らない。
         # questionId には影響しないが、差分があるときだけ叩く
         current_title = existing_form.get('info', {}).get('title')
@@ -180,6 +268,14 @@ def cmd_setup_form(args):
         # 新規作成時のみ Drive フォルダへの移動を試みる。--update では移動しない
         _move_new_form_to_drive(form['formId'])
         form = gforms_client.get_form(service, form['formId'])
+
+    # sync 後に取り直した form から questionId を yaml へ backfill する。
+    # yaml に questionId が埋まると、以後の sync_questions は並び順ではなく
+    # id で突き合わせるようになる（Issue #176）
+    conf = load_def(slot)  # save_form_id 後の form_id を含む最新の yaml
+    n = _backfill_question_ids(slot, conf, form)
+    if n:
+        print(f'question_id を yaml へ書き戻した: {n}件')
 
     print(f"質問: {list(gforms_client.question_id_by_title(form))}")
     print(f"回答用URL: {responder_uri(form)}")
@@ -211,7 +307,7 @@ def build_dataframe(form, responses, conf, slot):
     slot_conf = store.SLOTS[slot]
     by_title = gforms_client.question_id_by_title(form)
     grid_entries = store.grid_rows(conf)
-    text_like_entries = [e for e in store.active_questions(conf) if e['type'] in ('text', 'number')]
+    text_like_entries = store.text_like_questions(conf)
     number_cols = [e['column'] for e in text_like_entries if e['type'] == 'number']
 
     required_titles = [e['label'] for e in grid_entries] + [e['label'] for e in text_like_entries]
@@ -412,6 +508,9 @@ def _add_action_subparsers(slot_parser, slot):
     p_setup = sub.add_parser('setup-form', help='フォームを生成する')
     p_setup.add_argument('--update', action='store_true',
                          help='既存フォームの質問文・選択肢を yaml に合わせる')
+    p_setup.add_argument('--allow-kind-replace', action='store_true',
+                         help='退役（active: false）でフォームから外れる設問を'
+                              '実際に削除する。既定では削除せずエラーで止まる')
     p_setup.set_defaults(func=cmd_setup_form)
 
     p_fetch = sub.add_parser('fetch', help='回答を取得して CSV に保存する')
