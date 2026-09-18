@@ -22,11 +22,12 @@ form_title: 朝の記録
 # 見出しとしてのみ使う）
 grid_title: 今日はどうだった？
 
-# 質問の順序付きリスト。**この並びが questionId の対応付けそのもの
-# （出現順=FIFO。grid item がまとめて先頭、続けて active な text/number
-# の設問が1 item ずつ続く）。並び替えたり削除したりすると既存回答の
-# questionId が別の設問に付け替わる（詳細は docs/forms.md）。
-# 設問を足すのは末尾に追加するだけでよい。**
+# 質問の順序付きリスト。**question_id が埋まっている設問は並び順に依存
+# しない**（Issue #176、kind-FIFO から questionId 明示への移行）。
+# question_id がまだ空の設問（新規追加分）は従来どおり kind-FIFO で
+# 対応付くので、**question_id の無い設問を足すときは末尾に追加し、
+# 追加後に setup-form --update を実行して backfill を済ませること**
+# （詳細は docs/forms.md）。
 #
 # 各エントリのキー:
 #   key:         内部id（テストのフィクスチャ組み立てにのみ使う）
@@ -47,8 +48,15 @@ grid_title: 今日はどうだった？
 #   required:    省略時 false。記録コストを上げないため mind だけ true
 #   active:      省略時 true。false にすると生きたフォームからは外れるが
 #                CSV の列は残り、過去データは読める（退役）。false にする
-#                ときは description に退役理由・最終日を書くこと
+#                ときは description に退役理由・最終日を書くこと。退役の
+#                実行には setup-form --update --allow-kind-replace が要る
+#                （フォーム item の削除を伴うため既定では実行されない）
 #   description: 退役理由など（任意）
+#   question_id: text/number 設問の Forms API 上の questionId。
+#                setup-form --update が既存フォームから backfill して
+#                書き戻す。これがあると questionId の対応付けが並び順に
+#                依存しなくなり、中間の設問を退役させても後続の
+#                questionId が付け替わらない（Issue #176）。手で書かない
 questions:
   - key: mind
     label: 気分

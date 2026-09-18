@@ -67,6 +67,11 @@ def grid_rows(conf: dict) -> list:
     return [q for q in active_questions(conf) if q['type'] == 'grid']
 
 
+def text_like_questions(conf: dict) -> list:
+    """active な text/number の設問（フォームの text item になるもの）"""
+    return [q for q in active_questions(conf) if q['type'] in ('text', 'number')]
+
+
 def columns(slot: str, conf: dict) -> list:
     """CSV の列順。active/inactive を問わず全設問の列を含む
     （退役した設問も過去データが読めるよう列は残す）
