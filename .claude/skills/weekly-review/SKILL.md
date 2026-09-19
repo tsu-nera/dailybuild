@@ -18,12 +18,15 @@ GTDのWeekly Reviewに合わせて**週末に実施する**（土日のどちら
 |------------|------|------------|
 | `--week N` | 対象ISO週を明示指定（例: `--week 17`） | current |
 | `--year YYYY` | 年を明示指定 | 今年 |
-| `--only body\|sleep\|mind` | 指定したレポートのみ生成・レビュー | 全3種 |
+| `--only body\|sleep\|mind\|workout` | 指定したレポートのみ生成・レビュー | 全4種 |
 
 例:
-- `/weekly-review` → 今週の全3種をレビュー
+- `/weekly-review` → 今週の全4種をレビュー
 - `/weekly-review --week 17` → ISO週17をレビュー
 - `/weekly-review --only mind` → メンタルのみ
+
+`--week` `--year` は `hevy.py show` に渡らない（`--weeks N` で直近N週を出す作りで、
+特定の週を切り出せない）。過去週を指定したときは筋トレだけ直近8週の表になる。
 
 ## Step 1: レポート生成
 
@@ -41,11 +44,13 @@ uv run python scripts/generate_sleep_report_daily.py --week current
 # メンタル
 uv run python scripts/generate_mind_report_daily.py --week current
 
-# 筋トレ・腹囲（Hevy の export を取り込む。`--only` 指定時はスキップ）
+# 筋トレ・腹囲（`--only` 指定時はスキップ）
 uv run scripts/hevy.py fetch
+uv run scripts/hevy.py show --weeks 8
 ```
 
-出力先: `reports/{body,sleep,mind}/weekly/YYYY-Wxx/REPORT.md`
+出力先: `reports/{body,sleep,mind}/weekly/YYYY-Wxx/REPORT.md`。`hevy.py show` は
+ファイルを書かず stdout に出すので、その出力をそのまま Step 3 で読む。
 
 エラーがあれば報告する。
 
@@ -112,7 +117,7 @@ uv run scripts/phq9.py url
 
 ## Step 3: AIレビュー
 
-生成された3つのREPORT.md（量的データ） + Step 2 のdaily journal（定性的データ）を統合してレビューする。
+生成された3つのREPORT.md と `hevy.py show` の出力（量的データ） + Step 2 のdaily journal（定性的データ）を統合してレビューする。
 
 ### レビュー観点（週次特化）
 
@@ -121,6 +126,23 @@ uv run scripts/phq9.py url
 - 週合計のカロリー収支とタンパク質摂取
 - 平日/週末の食事パターンの違い
 - 月間目標（+0.75kg/月）に対する週次進捗
+
+#### 筋トレ（Workout）
+
+`hevy.py show` の出力を読む。**ここは筋トレだけ**で、有酸素（通勤の自転車・Zone 分布）は
+Body / Mind 側が見る。混ぜない。
+
+**種目名を出さない**（環境が変われば存在しない種目になる。チョコザップ前提を書き写して
+腐らせた）。**数値目標を持ち出さない**（頻度も引く/押す比も `config/targets.yaml` 未設定。
+根拠となる実数がまだ無い）。
+
+- 部位別セット数の週次推移。**0セットの週は「やらなかった」と「まだ export していない」の
+  どちらでもありうる**（`fetch` の鮮度警告と合わせて読む）
+- 種目別 e1RM が伸びているか、停滞・後退しているか
+- **腹囲と Body の体重トレンドを並べて増量の質を見る**。体重が増えて腹囲が動かなければ
+  除脂肪寄り。体組成計の筋肉量は使わない（水分を追っており週次の解像度が無い）
+- 腹囲は週1回しか入らない。測定の無い週は空欄で、前週の値で埋めない。
+  **2点目が入るまで増量の質は判定しない**（1点では傾きが無い。毎週同じ空振りを書かない）
 
 #### 睡眠（Sleep）
 - **就寝・起床時刻の規則性**（週次レビューで最重要）
@@ -155,6 +177,11 @@ uv run scripts/phq9.py url
 
 ### Body（体組成）
 - 週内推移サマリー
+- 良い点 / 注意点
+
+### Workout（筋トレ）
+- 部位別セット数と e1RM の推移
+- 腹囲と体重トレンドから見た増量の質
 - 良い点 / 注意点
 
 ### Sleep（睡眠）
