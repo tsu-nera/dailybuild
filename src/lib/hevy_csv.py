@@ -7,15 +7,48 @@ Hevy fitness tracking appからエクスポートされたCSVファイルを読�
 標準化されたDataFrameに変換する。
 
 CSV Format (Hevy):
-- start_time: "13 Dec 2025, 15:11" 形式
+- start_time: "13 Dec 2025, 15:11" / "5 9月 2026, 20:39" 形式
 - exercise_title: エクササイズ名
 - weight_kg: 重量（kg、自重の場合は空）
 - reps: 回数
 - その他: set_index, set_type, rpe, etc.
+
+**日時の月名はアプリの表示言語で変わる**。英語表記と日本語表記（`9月`）の
+どちらも同じ列に入りうるので、月名を正規化してから1度だけパースする。
+パースできない値は NaT にせず例外にする（日付が欠けた行を黙って落とすと
+その週のセットが消え、欠測の捏造になる）。
 """
 
-import pandas as pd
+import re
 from pathlib import Path
+
+import pandas as pd
+
+# 日本語ロケールの月名 → pandas が解釈できる英語の月名略記
+_EN_MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+_JP_MONTH_RE = re.compile(r'(?<!\d)(1[0-2]|[1-9])月')
+
+_DATETIME_FORMAT = '%d %b %Y, %H:%M'
+
+
+def _to_datetime(series, column):
+    """Hevy の日時列を datetime に変換する（英語表記・日本語表記の両対応）"""
+    normalized = series.astype('string').str.replace(
+        _JP_MONTH_RE,
+        lambda m: _EN_MONTH_ABBR[int(m.group(1)) - 1],
+        regex=True,
+    )
+    parsed = pd.to_datetime(normalized, format=_DATETIME_FORMAT, errors='coerce')
+
+    failed = parsed.isna() & series.notna()
+    if failed.any():
+        samples = series[failed].unique()[:3].tolist()
+        raise ValueError(
+            f'{column} をパースできない値がある（{int(failed.sum())}件）: {samples}。'
+            f'期待する形式は "{_DATETIME_FORMAT}"（月名は英語表記か日本語表記）'
+        )
+    return parsed
 
 
 def parse_hevy_csv(csv_path):
@@ -55,9 +88,9 @@ def parse_hevy_csv(csv_path):
     df = pd.read_csv(csv_path)
 
     # Hevy特有の日時フォーマットを解析
-    # 例: "13 Dec 2025, 15:11" -> datetime
-    df['start_dt'] = pd.to_datetime(df['start_time'], format='%d %b %Y, %H:%M')
-    df['end_dt'] = pd.to_datetime(df['end_time'], format='%d %b %Y, %H:%M')
+    # 例: "13 Dec 2025, 15:11" / "5 9月 2026, 20:39" -> datetime
+    df['start_dt'] = _to_datetime(df['start_time'], 'start_time')
+    df['end_dt'] = _to_datetime(df['end_time'], 'end_time')
 
     # データ型を適切に変換
     df['weight_kg'] = pd.to_numeric(df['weight_kg'], errors='coerce')
@@ -73,3 +106,40 @@ def parse_hevy_csv(csv_path):
         df['rpe'] = pd.to_numeric(df['rpe'], errors='coerce')
 
     return df
+
+
+def parse_hevy_measurements(csv_path):
+    """
+    Hevy app の measurement CSV を読み込み、標準化された DataFrame に変換
+
+    列は `date` と測定値（`weight_kg` / `fat_percent` / 周囲径17項目）。
+    時刻は全行 00:00 なので日付だけを持つ。
+
+    **空欄は 0 ではなく未測定。** Hevy は測っていない項目を空で返すため
+    fillna しない（0 で埋めると「腹囲 0cm」を実測として集計する）。
+
+    Parameters
+    ----------
+    csv_path : str or Path
+        measurement_data.csv (Hevy形式) のパス
+
+    Returns
+    -------
+    DataFrame
+        - date: date 型（datetime の日付部分）
+        - 残りの列は float（未測定は NaN）
+    """
+    csv_path = Path(csv_path)
+
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+
+    df = pd.read_csv(csv_path)
+
+    df['date'] = _to_datetime(df['date'], 'date').dt.date
+
+    for column in df.columns:
+        if column != 'date':
+            df[column] = pd.to_numeric(df[column], errors='coerce')
+
+    return df.sort_values('date').reset_index(drop=True)
