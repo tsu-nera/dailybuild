@@ -28,6 +28,11 @@ Usage:
     python scripts/mf.py show --list                # 明細一覧
     python scripts/mf.py show --update              # 取得してから表示
 
+    python scripts/mf.py assets                     # 資産残高の推移（直近12ヶ月）
+    python scripts/mf.py assets --unit year         # 年次
+    python scripts/mf.py assets --unit day --days 30  # 日次（当月ぶんのみ日次で残る）
+    python scripts/mf.py assets --all               # 全期間（月次・2015-04 から）
+
 show は既定では MF に一切アクセスしないので、セッション切れの影響を受けない。
 """
 
@@ -62,6 +67,8 @@ PENDING_STATUS = '更新中'
 DEFAULT_FETCH_MONTHS = 3
 # show の既定表示月数
 DEFAULT_SHOW_MONTHS = 1
+# assets の既定表示月数。過去は月末1点しか無いので月単位で十分な幅を取る
+DEFAULT_ASSETS_MONTHS = 12
 
 # show のセクション。--sections で選ぶ。名前は ASCII に揃える（表の見出しは
 # 日本語だが、指定側に全角を要求するとタイプもエスケープも面倒になる）
@@ -134,12 +141,17 @@ def run_fetch(args, out: IO[str]) -> None:
             print(f"  {year}/{month:02d}: {len(df_month)}件", file=out)
             frames.append(df_month)
 
+        assets_text = session.fetch_assets_csv()
         accounts = session.account_status()
 
         if args.refresh:
             session.kick_refresh()
             print("\n一括更新をキックした（完了は待たない）。"
                   "取り込まれた明細は次回の取得に乗る", file=out)
+
+    df_assets = pd.read_csv(io.StringIO(assets_text), dtype=str)
+    print(f"  資産推移: {len(df_assets)}件", file=out)
+    store.save_assets(df_assets, out)
 
     df_new = pd.concat(frames, ignore_index=True)
 
@@ -349,6 +361,38 @@ def cmd_show(args) -> None:
         print()
 
 
+def cmd_assets(args) -> None:
+    if args.update:
+        # 取得ログは stderr に寄せて stdout を markdown 専用に保つ
+        run_fetch(fetch_args_for_update(), sys.stderr)
+
+    df = store.load_assets()
+    if df.empty:
+        print(f"エラー: {store.ASSETS_CSV} が存在しません"
+              "（uv run scripts/mf.py fetch で取得する）", file=sys.stderr)
+        sys.exit(1)
+
+    if args.all:
+        pass
+    elif args.days is not None:
+        start = pd.Timestamp.now().normalize() - pd.Timedelta(days=args.days - 1)
+        df = df[df['date'] >= start]
+    else:
+        # --unit year で直近12ヶ月だけ出しても年次の表にならない（show と同じ理由）
+        months = args.months if args.months is not None else (
+            None if args.unit == 'year' else DEFAULT_ASSETS_MONTHS)
+        if months is not None:
+            df = filter_recent_months(df, months)
+
+    if df.empty:
+        print('指定期間に資産の記録がありません', file=sys.stderr)
+        sys.exit(1)
+
+    print(f"# MoneyForward 資産推移（{render.unit_label(args.unit)}）\n")
+    print(render.render_assets(df, args.unit))
+    print()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='MoneyForward ME CLI（fetch / show）')
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -398,6 +442,23 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument('--update', action='store_true',
                              help='表示前に fetch で最新データを取得する')
     show_parser.set_defaults(func=cmd_show)
+
+    assets_parser = subparsers.add_parser(
+        'assets', help='MoneyForward ME 資産残高の推移を表示')
+    assets_parser.add_argument('--unit', choices=['day', 'week', 'month', 'year'],
+                               default='month',
+                               help='集計単位（デフォルト: month）。'
+                                    '残高は合算せず期末の値を取る')
+    assets_parser.add_argument('--months', type=int, default=None,
+                               help=f'直近Nヶ月（デフォルト: {DEFAULT_ASSETS_MONTHS}。'
+                                    '--unit year のときは全期間）')
+    assets_parser.add_argument('--days', type=int, default=None,
+                               help='直近N日（--months より優先。当月ぶんだけ日次で残っている）')
+    assets_parser.add_argument('--all', action='store_true',
+                               help='全期間（2015-04 から）。--months / --days より優先')
+    assets_parser.add_argument('--update', action='store_true',
+                               help='表示前に fetch で最新データを取得する')
+    assets_parser.set_defaults(func=cmd_assets)
 
     return parser
 

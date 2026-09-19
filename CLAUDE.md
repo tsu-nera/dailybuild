@@ -172,6 +172,10 @@ uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブ�
 uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
 uv run scripts/mf.py fetch --year 2025  # 指定年を丸ごと取り直す
 uv run scripts/mf.py fetch --refresh # 取得＋一括更新のキック（日次運用）
+uv run scripts/mf.py assets          # 資産残高の推移（直近12ヶ月・月末時点）
+uv run scripts/mf.py assets --unit year          # 年次（既定で全期間）
+uv run scripts/mf.py assets --unit day --days 30 # 日次（当月ぶんだけ日次で残る）
+uv run scripts/mf.py assets --all                # 全期間（月次・2015-04 から）
 
 # サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
 uv run scripts/toggl.py show --days 7        # Toggl 日次サマリ
@@ -191,6 +195,10 @@ uv run scripts/mf.py show --sections +merchant  # 既定に店舗別だけ足す
 uv run scripts/mf.py show --list             # 明細一覧
 uv run scripts/mf.py show --update           # 取得してから表示
 ```
+
+`mf.py fetch` は明細と一緒に資産推移（`data/mf/資産推移.csv`）も毎回取る。MF は
+**当月しか日次を返さない**ため、月をまたぐとその月の日次は永久に失われる。
+表示は `mf.py assets`。
 
 `scripts/toggl.py` と `scripts/mf.py` は time と money の対で、fetch/show の
 サブコマンド構成も markdown の形式も揃えてある（取得ログは stderr、markdown は
