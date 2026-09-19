@@ -97,6 +97,18 @@ def test_measurements_keep_unmeasured_columns_empty(tmp_path):
     assert df['waist_cm'].iloc[1] == 74.0
 
 
+def test_normalizes_fullwidth_and_halfwidth_variants_to_the_same_exercise(tmp_path):
+    # 全角括弧・全角スペースと半角の混在は同じ種目として集計しないと
+    # 週次のセット数が黙って2つに割れる（Issue #174）
+    path = write_workouts(tmp_path, (
+        '朝,"16 9月 2026, 18:48","16 9月 2026, 18:59",,ベンチプレス (ダンベル),,,0,normal,30,10,,,\n'
+        '朝,"16 9月 2026, 18:48","16 9月 2026, 18:59",,ベンチプレス　（ダンベル）,,,1,normal,30,10,,,\n'
+    ))
+    df = hevy_csv.parse_hevy_csv(path)
+    assert df['exercise_title'].nunique() == 1
+    assert df['exercise_title'].iloc[0] == 'ベンチプレス (ダンベル)'
+
+
 def test_measurements_are_sorted_by_date(tmp_path):
     path = write_measurements(tmp_path, (
         '"19 9月 2026, 00:00",61.9,15.7,74\n'

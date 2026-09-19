@@ -51,6 +51,31 @@ export は**毎回全件**なので取得は単純置換でよい。マージの
 **RPE は 2026-09-15 から。** それ以前のセットは全て空欄。空欄は 0 ではなく
 未記録なので、平均や推移に 0 として混ぜない。
 
+## 週次サマリ（`hevy.py show`）
+
+```bash
+uv run scripts/hevy.py show            # 既定 8週
+uv run scripts/hevy.py show --weeks 12
+```
+
+API は叩かず `data/hevy/` の CSV だけを読み、markdown を stdout・ログを stderr
+へ出す（`toggl.py show` / `mf.py show` と同じ体裁）。出す数値は3つ:
+部位別の週間セット数・種目別 e1RM・腹囲（`waist_cm`）の週次推移。
+
+**部位マッピングは `config/exercise_muscles.yaml` が正本。** 1種目につき
+primary の部位を1つだけ持たせる（複合種目の secondary は数えない）。
+コードには埋め込まない。**yaml に無い種目は集計から黙って落とさず**、
+種目名とセット数を warning として stderr へ出す（ジムを変えて種目が
+入れ替わったときの唯一の検出口）。
+
+**e1RM は Epley 固定**（`weight_kg * (1 + reps / 30)`）。1セットごとに算出し、
+週次は**その週の最大値**を取る（平均は軽いセットに引っ張られる）。
+`weight_kg` が空（自重）のセットは計算から除外する。
+
+記録が1セットも無い週も部位別セット数の表に0として行を出す（トレーニング
+しなかった週とまだ export していない週は別物）。腹囲は測定の無い週を
+空欄にし、前週の値で埋めない。
+
 ## measurement の使い分け
 
 `measurement_data.csv` は体重・体脂肪率と周囲径17項目を持つが、

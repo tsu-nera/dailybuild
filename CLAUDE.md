@@ -169,6 +169,8 @@ uv run scripts/food.py sync-sheet --candidates  # 候補を絞る（実績上位
 uv run scripts/food.py fetch         # シートを読んで entries.csv / daily.csv を作る
 uv run scripts/hevy.py fetch         # Hevy の export を Drive から取得（週1・/weekly-review が使う）
 uv run scripts/hevy.py fetch --force # 行数が減っていても上書きする
+uv run scripts/hevy.py show          # 部位別セット数・種目別e1RM・腹囲の週次推移（既定8週）
+uv run scripts/hevy.py show --weeks 12
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
 uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
