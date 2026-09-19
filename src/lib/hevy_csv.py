@@ -20,6 +20,7 @@ CSV Format (Hevy):
 """
 
 import re
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -30,6 +31,16 @@ _EN_MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
 _JP_MONTH_RE = re.compile(r'(?<!\d)(1[0-2]|[1-9])月')
 
 _DATETIME_FORMAT = '%d %b %Y, %H:%M'
+
+
+def _normalize_exercise(title):
+    """種目名の表記ゆれを畳む（NFKC 正規化 → 連続空白を1つに → 前後 strip）
+
+    全角括弧・全角スペースと半角の混在（`ベンチプレス (ダンベル)` /
+    `ベンチプレス　（ダンベル）`）が同じ種目として集計されるようにする。
+    正規化前の値は残さない（元データは data/hevy/workouts.csv に残る）。
+    """
+    return re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', title)).strip()
 
 
 def _to_datetime(series, column):
@@ -91,6 +102,9 @@ def parse_hevy_csv(csv_path):
     # 例: "13 Dec 2025, 15:11" / "5 9月 2026, 20:39" -> datetime
     df['start_dt'] = _to_datetime(df['start_time'], 'start_time')
     df['end_dt'] = _to_datetime(df['end_time'], 'end_time')
+
+    # 種目名の表記ゆれ（全角/半角の括弧・スペース）を畳む
+    df['exercise_title'] = df['exercise_title'].astype('string').map(_normalize_exercise)
 
     # データ型を適切に変換
     df['weight_kg'] = pd.to_numeric(df['weight_kg'], errors='coerce')

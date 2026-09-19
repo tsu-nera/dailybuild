@@ -3,371 +3,189 @@
 """
 ワークアウトデータ分析ライブラリ
 
-データソース非依存のtraining volume計算・週次集計・統計分析を提供。
-
-Training Volume:
-- 重量エクササイズ: weight_kg × reps
-- 自重エクササイズ: reps のみ
+`scripts/hevy.py show` が使う週次集計（部位別セット数 / 種目別 e1RM / 腹囲）を提供。
 """
 
+from pathlib import Path
+
 import pandas as pd
-import numpy as np
+import yaml
 
+EXERCISE_MUSCLES_YAML = Path(__file__).resolve().parents[3] / 'config' / 'exercise_muscles.yaml'
 
-# チョコザップマシン名マッピング（Hevy → チョコザップ）
-CHOCOZAP_MACHINE_MAPPING = {
-    'Seated Shoulder Press (Machine)': 'ショルダープレス',
-    'Lat Pulldown (Machine)': 'ラットプルダウン',
-    'Seated Dip Machine': 'ディップス',
-    'Preacher Curl (Machine)': 'バイセップスカール',
-    'Leg Press Horizontal (Machine)': 'レッグプレス',
-    'Chest Press (Machine)': 'チェストプレス',
+# 部位コード → 表示名。yaml に無い値が来たらコードのままフォールバックする
+MUSCLE_LABELS = {
+    'chest': '胸',
+    'back': '背中',
+    'shoulders': '肩',
+    'legs': '脚',
+    'arms': '腕',
 }
 
 
-def calc_training_volume(row):
-    """
-    1セットのTraining Volumeを計算（データソース非依存）
-
-    Parameters
-    ----------
-    row : Series
-        DataFrameの1行（weight_kg, repsを含む）
-
-    Returns
-    -------
-    float
-        Training Volume
-        - 重量あり: weight_kg × reps
-        - 自重: reps のみ
-    """
-    if pd.notna(row['weight_kg']):
-        return row['weight_kg'] * row['reps']
-    else:
-        return float(row['reps'])
+def load_muscle_mapping(yaml_path=EXERCISE_MUSCLES_YAML):
+    """種目名（正規化後） → 部位コード のマッピングを yaml から読み込む"""
+    with Path(yaml_path).open(encoding='utf-8') as f:
+        data = yaml.safe_load(f) or {}
+    exercises = data.get('exercises') or {}
+    return {name: info['muscle'] for name, info in exercises.items()}
 
 
-def prepare_workout_df(df):
-    """
-    ワークアウトデータフレームに分析用カラムを追加
-
-    Parameters
-    ----------
-    df : DataFrame
-        標準化されたDataFrame（start_dt, exercise_title, weight_kg, repsを含む）
-        - start_dt: datetime型
-        - exercise_title: str
-        - weight_kg: float (nullable)
-        - reps: int
-
-    Returns
-    -------
-    DataFrame
-        ISO週番号・volume・is_bodyweight・exercise_jp列を追加したDataFrame
-
-    Notes
-    -----
-    - ISO週番号は月曜始まり〜日曜終わり
-    - volumeは calc_training_volume() で計算
-    - is_bodyweight は weight_kg が NaN かどうかで判定
-    - exercise_jpはチョコザップのマシン名（日本語）
-    """
+def add_week_label(df, date_column='start_dt'):
+    """ISO週ラベル（`YYYY-Wxx`）の列 week_label を追加する"""
     df = df.copy()
-
-    # チョコザップマシン名に変換
-    df['exercise_jp'] = df['exercise_title'].map(CHOCOZAP_MACHINE_MAPPING).fillna(df['exercise_title'])
-
-    # ISO週番号を追加（月曜始まり）
-    df['iso_year'] = df['start_dt'].dt.isocalendar().year
-    df['iso_week'] = df['start_dt'].dt.isocalendar().week
-
-    # Training Volume計算
-    df['volume'] = df.apply(calc_training_volume, axis=1)
-
-    # エクササイズタイプを判定（重量あり/自重）
-    df['is_bodyweight'] = df['weight_kg'].isna()
-
+    iso = df[date_column].dt.isocalendar()
+    df['week_label'] = iso['year'].astype(str) + '-W' + iso['week'].astype(int).map('{:02d}'.format)
     return df
 
 
-def calc_weekly_volume(df):
+def recent_iso_weeks(n, today=None):
+    """直近 n 週の ISO週ラベルを古い→新しいの順で返す（今週を含む）
+
+    記録の無い週も表に出すため、データではなく暦から週の一覧を作る。
     """
-    週次・エクササイズごとのTraining Volume合計を計算
+    today = pd.Timestamp(today) if today is not None else pd.Timestamp.now().normalize()
+    iso_today = today.isocalendar()
+    monday_this_week = today - pd.Timedelta(days=int(iso_today.weekday) - 1)
+
+    labels = []
+    for i in range(n - 1, -1, -1):
+        monday = monday_this_week - pd.Timedelta(days=7 * i)
+        iso = monday.isocalendar()
+        labels.append(f'{iso.year}-W{iso.week:02d}')
+    return labels
+
+
+def weekly_muscle_sets(df, muscle_map, week_labels):
+    """
+    週 × 部位のセット数、トレーニング日数、未マッピング種目を集計する
 
     Parameters
     ----------
     df : DataFrame
-        prepare_workout_df()処理済みのDataFrame
-        - iso_year, iso_week, exercise_jp, volume, is_bodyweight, reps, set_index を含む
+        parse_hevy_csv() 済みの DataFrame（start_dt, exercise_title を含む）
+    muscle_map : dict
+        exercise_title（正規化後） → 部位コード
+    week_labels : list[str]
+        表に出す週（古い→新しい）。この範囲外のセットは無視する
 
     Returns
     -------
-    DataFrame
-        週・エクササイズごとの集計結果
-        Columns:
-        - iso_year: int
-        - iso_week: int
-        - exercise_jp: str (チョコザップマシン名)
-        - total_volume: float
-        - total_reps: int (総レップ数)
-        - total_sets: int (総セット数)
-        - min_weight: float (最小重量)
-        - max_weight: float (最大重量)
-        - is_bodyweight: bool
-        - week_over_week_diff: float (前週比volume)
-        - reps_diff: float (前週比reps)
-        - sets_diff: float (前週比sets)
-
-    Notes
-    -----
-    - グルーピング: (iso_year, iso_week, exercise_jp)
-    - 前週比は同じexercise_jp内で計算
-    - 最初の週は NaN となる
+    (sets_table, unmapped)
+        sets_table : DataFrame
+            index=week_labels、columns=部位コード（アルファベット順）+ 'training_days'。
+            記録が1セットも無い週も 0 の行として含む
+        unmapped : DataFrame
+            columns=['exercise_title', 'sets']。yaml に無い種目とそのセット数
+            （セット数降順）。無ければ空の DataFrame
     """
-    # 週・エクササイズでグルーピング
-    grouped = df.groupby(['iso_year', 'iso_week', 'exercise_jp']).agg({
-        'volume': 'sum',
-        'reps': 'sum',
-        'set_index': 'count',
-        'weight_kg': ['min', 'max'],
-        'is_bodyweight': 'first',  # 同じエクササイズなら全て同じ
-    }).reset_index()
+    df = add_week_label(df)
+    df = df[df['week_label'].isin(week_labels)].copy()
 
-    # マルチレベルカラムをフラット化
-    grouped.columns = ['iso_year', 'iso_week', 'exercise_jp', 'total_volume', 'total_reps', 'total_sets', 'min_weight', 'max_weight', 'is_bodyweight']
+    if df.empty:
+        training_days = pd.Series(0, index=week_labels, dtype=int)
+    else:
+        training_days = (
+            df.groupby('week_label')['start_dt']
+            .apply(lambda s: s.dt.date.nunique())
+            .reindex(week_labels, fill_value=0)
+            .astype(int)
+        )
 
-    # エクササイズごとに前週比を計算
-    grouped = grouped.sort_values(['exercise_jp', 'iso_year', 'iso_week'])
-    grouped['week_over_week_diff'] = grouped.groupby('exercise_jp')['total_volume'].diff()
-    grouped['reps_diff'] = grouped.groupby('exercise_jp')['total_reps'].diff()
-    grouped['sets_diff'] = grouped.groupby('exercise_jp')['total_sets'].diff()
+    df['muscle'] = df['exercise_title'].map(muscle_map)
+    unmapped_mask = df['muscle'].isna()
 
-    return grouped
+    unmapped = (
+        df.loc[unmapped_mask]
+        .groupby('exercise_title')
+        .size()
+        .reset_index(name='sets')
+        .sort_values('sets', ascending=False)
+        .reset_index(drop=True)
+    )
+
+    mapped = df.loc[~unmapped_mask]
+    if mapped.empty:
+        sets_table = pd.DataFrame(index=week_labels)
+    else:
+        sets_table = (
+            mapped.groupby(['week_label', 'muscle'])
+            .size()
+            .unstack(fill_value=0)
+        )
+        sets_table = sets_table.reindex(week_labels, fill_value=0)
+        sets_table = sets_table.reindex(columns=sorted(sets_table.columns), fill_value=0)
+
+    sets_table['training_days'] = training_days
+
+    return sets_table, unmapped
 
 
-def calc_daily_stats(df):
+def calc_e1rm(weight_kg, reps):
+    """Epley 式で 1レップ最大重量を推定する（自重は呼び出し側で除外する）"""
+    return weight_kg * (1 + reps / 30)
+
+
+def weekly_e1rm(df, week_labels):
     """
-    日次トレーニング統計を計算
+    種目別 e1RM の週次推移（その週の最大値）を計算する
+
+    `weight_kg` が空（自重）のセットは計算から除外する。窓の中で1度も
+    実施していない種目は結果に含めない（列が全て NaN になるので呼び出し側で
+    dropna(axis=1, how='all') する想定）。
 
     Parameters
     ----------
     df : DataFrame
-        標準化されたDataFrame（start_dt, end_dt, exercise_title, weight_kg, repsを含む）
-        - start_dt, end_dt: datetime型
-        - title: str (ワークアウトタイトル)
-        - start_time, end_time: str (元の文字列形式)
-        - exercise_title: str
-        - weight_kg: float (nullable)
-        - reps: int
-        - set_index: int
+        parse_hevy_csv() 済みの DataFrame
+    week_labels : list[str]
+        表に出す週（古い→新しい）
 
     Returns
     -------
     DataFrame
-        日ごとの統計
-        Columns:
-        - date: date (トレーニング日)
-        - title: str (ワークアウトタイトル)
-        - start_time: str (開始時刻の文字列)
-        - end_time: str (終了時刻の文字列)
-        - duration_minutes: int (トレーニング時間、分)
-        - exercise_count: int (種目数)
-        - total_reps: int (総レップ数)
-        - total_sets: int (総セット数)
-        - total_volume_kg: float (総ボリューム)
-
-    Notes
-    -----
-    - 日付は start_dt から抽出
-    - ボリュームは weight_kg × reps で計算
-    - 結果は日付降順でソート
+        index=week_labels、columns=exercise_title。未実施セルは NaN
     """
-    df = df.copy()
+    df = df[df['weight_kg'].notna()].copy()
+    if df.empty:
+        return pd.DataFrame(index=week_labels)
 
-    # 日付カラムを追加
-    df['date'] = df['start_dt'].dt.date
+    df['e1rm'] = calc_e1rm(df['weight_kg'], df['reps'])
+    df = add_week_label(df)
+    df = df[df['week_label'].isin(week_labels)]
 
-    # ボリューム計算 (weight * reps)
-    df['volume'] = df['weight_kg'].fillna(0) * df['reps']
+    if df.empty:
+        return pd.DataFrame(index=week_labels)
 
-    # 日次集計
-    daily = df.groupby('date').agg(
-        title=('title', 'first'),
-        start_time=('start_time', 'first'),
-        end_time=('end_time', 'first'),
-        start_dt=('start_dt', 'min'),
-        end_dt=('end_dt', 'max'),
-        exercise_count=('exercise_title', 'nunique'),
-        total_reps=('reps', 'sum'),
-        total_sets=('set_index', 'count'),
-        total_volume_kg=('volume', 'sum')
-    ).reset_index()
-
-    # トレーニング時間を計算（分単位）
-    daily['duration_minutes'] = (
-        (daily['end_dt'] - daily['start_dt']).dt.total_seconds() / 60
-    ).astype(int)
-
-    # カラムを整理（不要なカラムを削除）
-    daily = daily[[
-        'date',
-        'title',
-        'start_time',
-        'end_time',
-        'duration_minutes',
-        'exercise_count',
-        'total_reps',
-        'total_sets',
-        'total_volume_kg'
-    ]]
-
-    # 日付降順でソート
-    daily = daily.sort_values('date', ascending=False)
-
-    return daily
+    pivot = df.groupby(['week_label', 'exercise_title'])['e1rm'].max().unstack()
+    pivot = pivot.reindex(week_labels)
+    pivot = pivot.sort_index(axis=1)
+    return pivot
 
 
-def calc_weekly_stats_from_daily(daily_df):
+def weekly_waist(measurements_df, week_labels):
     """
-    日次統計から週次統計を計算
+    腹囲（waist_cm）の週次推移。測定の無い週は NaN のままにし、前週の値で埋めない。
+    同じ週に複数の測定があれば日付が最も新しいものを採る。
 
     Parameters
     ----------
-    daily_df : DataFrame
-        calc_daily_stats()の出力、または同等のDataFrame
-        - date: date型
-        - duration_minutes: int
-        - exercise_count: int
-        - total_reps: int
-        - total_sets: int
-        - total_volume_kg: float
+    measurements_df : DataFrame
+        parse_hevy_measurements() 済みの DataFrame（date, waist_cm を含む）
+    week_labels : list[str]
+        表に出す週（古い→新しい）
 
     Returns
     -------
-    DataFrame
-        週ごとの統計
-        Columns:
-        - iso_year: int
-        - iso_week: int
-        - training_days: int (トレーニング日数)
-        - duration_minutes: int (週の総トレーニング時間、分)
-        - exercise_count: int (種目数の合計)
-        - total_reps: int (総レップ数)
-        - total_sets: int (総セット数)
-        - total_volume_kg: float (総ボリューム)
-
-    Notes
-    -----
-    - 日次データを週単位で集計
-    - exercise_countは週内の合計（ユニーク数ではない）
-    - training_daysは週内のユニークな日付数
-    - duration_minutesは週内の各日のトレーニング時間の合計
+    Series
+        index=week_labels、値は waist_cm（float、未測定週は NaN）
     """
-    df = daily_df.copy()
+    df = measurements_df.dropna(subset=['waist_cm']).copy()
+    if df.empty:
+        return pd.Series(index=week_labels, dtype=float, name='waist_cm')
 
-    # dateをdatetime型に変換（必要な場合）
-    if not pd.api.types.is_datetime64_any_dtype(df['date']):
-        df['date'] = pd.to_datetime(df['date'])
-
-    # ISO週番号を追加
-    df['iso_year'] = df['date'].dt.isocalendar().year
-    df['iso_week'] = df['date'].dt.isocalendar().week
-
-    # 週ごとに集計
-    weekly = df.groupby(['iso_year', 'iso_week']).agg(
-        training_days=('date', 'nunique'),
-        duration_minutes=('duration_minutes', 'sum'),
-        exercise_count=('exercise_count', 'sum'),
-        total_reps=('total_reps', 'sum'),
-        total_sets=('total_sets', 'sum'),
-        total_volume_kg=('total_volume_kg', 'sum')
-    ).reset_index()
-
-    # カラム順序を整理
-    weekly = weekly[[
-        'iso_year',
-        'iso_week',
-        'training_days',
-        'duration_minutes',
-        'exercise_count',
-        'total_reps',
-        'total_sets',
-        'total_volume_kg'
-    ]]
-
-    # 週番号でソート（降順）
-    weekly = weekly.sort_values(['iso_year', 'iso_week'], ascending=False)
-
-    return weekly
-
-
-def calc_weekly_stats(df):
-    """
-    週次トレーニング統計を計算（全体のサマリー）
-
-    Parameters
-    ----------
-    df : DataFrame
-        prepare_workout_df()処理済みのDataFrame
-        - iso_year, iso_week, volume, reps, is_bodyweight, start_dt, exercise_jp を含む
-
-    Returns
-    -------
-    DataFrame
-        週ごとの統計
-        Columns:
-        - iso_year: int
-        - iso_week: int
-        - training_days: int (トレーニング日数)
-        - exercise_count: int (種目数)
-        - total_reps: int (総レップ数)
-        - total_sets: int (総セット数)
-        - total_volume_kg: float (総ボリューム、重量ありのみ)
-
-    Notes
-    -----
-    - ボリュームは重量ありエクササイズのみ集計（is_bodyweight=Falseのみ）
-    - トレーニング日数は週内のユニークな日付数
-    """
-    # 週ごとに集計
-    stats = df.groupby(['iso_year', 'iso_week']).agg({
-        'exercise_jp': 'nunique',  # 種目数
-        'reps': 'sum',  # 総レップ数
-        'set_index': 'count',  # 総セット数（行数）
-    }).reset_index()
-
-    stats = stats.rename(columns={
-        'exercise_jp': 'exercise_count',
-        'reps': 'total_reps',
-        'set_index': 'total_sets'
-    })
-
-    # トレーニング日数を計算（週内のユニークな日付数）
-    df['training_date'] = df['start_dt'].dt.date
-    training_days = df.groupby(['iso_year', 'iso_week'])['training_date'].nunique().reset_index()
-    training_days = training_days.rename(columns={'training_date': 'training_days'})
-
-    # 重量ありのボリュームのみを集計
-    weighted_volume = df[~df['is_bodyweight']].groupby(['iso_year', 'iso_week'])['volume'].sum().reset_index()
-    weighted_volume = weighted_volume.rename(columns={'volume': 'total_volume_kg'})
-
-    # マージ
-    stats = stats.merge(training_days, on=['iso_year', 'iso_week'], how='left')
-    stats = stats.merge(weighted_volume, on=['iso_year', 'iso_week'], how='left')
-
-    # NaNを0で埋める
-    stats['total_volume_kg'] = stats['total_volume_kg'].fillna(0)
-    stats['training_days'] = stats['training_days'].fillna(0).astype(int)
-
-    # カラム順序を整理
-    stats = stats[[
-        'iso_year',
-        'iso_week',
-        'training_days',
-        'exercise_count',
-        'total_reps',
-        'total_sets',
-        'total_volume_kg'
-    ]]
-
-    return stats
+    df['date'] = pd.to_datetime(df['date'])
+    df = add_week_label(df, date_column='date')
+    df = df.sort_values('date')
+    weekly = df.groupby('week_label')['waist_cm'].last()
+    return weekly.reindex(week_labels)

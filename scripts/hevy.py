@@ -8,6 +8,8 @@ Google Drive フォルダから最新の CSV を取って `data/hevy/` を置き
 Usage:
     python scripts/hevy.py fetch           # Drive から最新の export を取得する
     python scripts/hevy.py fetch --force   # 行数が減っていても書き込む
+    python scripts/hevy.py show            # 週次サマリ（既定 8週）を stdout へ
+    python scripts/hevy.py show --weeks 12
 
 週1回（土日）の export を前提にしている。export を忘れると古い CSV が黙って
 残り「今週トレーニング0回」に見えるため、Drive 側のファイルが古ければ警告する。
@@ -26,6 +28,7 @@ import pandas as pd
 import yaml
 
 from lib import hevy_csv
+from lib.analytics import workout
 from lib.clients import gdrive_client
 from lib.utils.private_data import ensure_dir, require_private_path
 
@@ -141,6 +144,73 @@ def fetch(force=False):
     return 0 if ok else 1
 
 
+def _format_e1rm(value):
+    return '-' if pd.isna(value) else f'{value:.1f}'
+
+
+def _format_waist(value):
+    return '-' if pd.isna(value) else f'{value:.1f}'
+
+
+def show(weeks=8):
+    """部位別セット数 / 種目別 e1RM / 腹囲の週次推移を markdown で stdout へ出す
+
+    API は叩かず data/hevy/ の CSV だけを読む。判断語は書かない（数値のみ）。
+    """
+    if not WORKOUTS_CSV.exists():
+        logger.error('%s が無い。先に fetch を実行する', WORKOUTS_CSV)
+        return 1
+
+    week_labels = workout.recent_iso_weeks(weeks)
+    start, end = week_labels[0], week_labels[-1]
+
+    df = hevy_csv.parse_hevy_csv(WORKOUTS_CSV)
+    muscle_map = workout.load_muscle_mapping()
+
+    sets_table, unmapped = workout.weekly_muscle_sets(df, muscle_map, week_labels)
+    for _, row in unmapped.iterrows():
+        logger.warning(
+            'config/exercise_muscles.yaml に未マッピングの種目: %s（%d セット、集計から除外）',
+            row['exercise_title'], row['sets'],
+        )
+
+    sets_table = sets_table.rename(columns=workout.MUSCLE_LABELS)
+    sets_table = sets_table.rename(columns={'training_days': 'トレーニング日数'})
+    sets_table.index.name = '週'
+
+    e1rm_table = workout.weekly_e1rm(df, week_labels)
+    e1rm_table = e1rm_table.dropna(axis=1, how='all')
+    e1rm_table.index.name = '週'
+
+    print(f'# ワークアウト週次サマリ（{start} 〜 {end}）\n')
+
+    print('## 部位別セット数\n')
+    print(sets_table.to_markdown())
+    print()
+
+    print('## 種目別 e1RM（週次最大値、Epley）\n')
+    if e1rm_table.empty or e1rm_table.shape[1] == 0:
+        print('該当期間に重量ありのセットが無い')
+    else:
+        print(e1rm_table.map(_format_e1rm).to_markdown())
+    print()
+
+    print('## 腹囲の週次推移\n')
+    if MEASUREMENTS_CSV.exists():
+        # measurements.csv は fetch 時点で日付を ISO へ直して保存済み
+        # （_write_measurements）。生の export と違い月名の解釈は不要
+        measurements = pd.read_csv(MEASUREMENTS_CSV, parse_dates=['date'])
+        waist = workout.weekly_waist(measurements, week_labels)
+        waist_table = waist.to_frame(name='腹囲(cm)')
+        waist_table.index.name = '週'
+        print(waist_table['腹囲(cm)'].map(_format_waist).to_frame(name='腹囲(cm)').to_markdown())
+    else:
+        logger.warning('%s が無いので腹囲は出さない', MEASUREMENTS_CSV)
+        print('measurements.csv が無い')
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description='Hevy の export を Drive から取得する')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -149,6 +219,9 @@ def main():
     p_fetch.add_argument('--force', action='store_true',
                          help='行数が減っていても書き込む')
 
+    p_show = sub.add_parser('show', help='週次サマリを markdown で stdout へ出す')
+    p_show.add_argument('--weeks', type=int, default=8, help='直近何週分を出すか')
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -156,6 +229,8 @@ def main():
 
     if args.command == 'fetch':
         return fetch(force=args.force)
+    if args.command == 'show':
+        return show(weeks=args.weeks)
     return 1
 
 
