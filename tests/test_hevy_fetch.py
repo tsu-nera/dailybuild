@@ -7,6 +7,7 @@ Drive が同名ファイルを重複させる（上書きしない）点も、�
 古い export で正本を巻き戻すため、並び順の指定を検査する。
 """
 
+import datetime as dt
 import importlib.util
 import sys
 from pathlib import Path
@@ -89,6 +90,28 @@ def test_latest_file_raises_when_nothing_matches():
     service = FakeService([])
     with pytest.raises(gdrive_client.GoogleDriveError):
         gdrive_client.latest_file(service, 'folder-id', 'workout_data.csv')
+
+
+def test_stale_export_warns(caplog):
+    # export を忘れた週は、古い CSV のまま「今週0回」に見える
+    old = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=9)).isoformat()
+    meta = {'name': 'workout_data.csv', 'createdTime': old.replace('+00:00', 'Z')}
+
+    with caplog.at_level('WARNING'):
+        age = hevy._warn_if_stale(meta)
+
+    assert age == 9
+    assert 'export' in caplog.text
+
+
+def test_fresh_export_does_not_warn(caplog):
+    fresh = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).isoformat()
+    meta = {'name': 'workout_data.csv', 'createdTime': fresh.replace('+00:00', 'Z')}
+
+    with caplog.at_level('WARNING'):
+        hevy._warn_if_stale(meta)
+
+    assert caplog.text == ''
 
 
 @pytest.fixture
