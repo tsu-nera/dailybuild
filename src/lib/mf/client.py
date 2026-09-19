@@ -2,8 +2,8 @@
 MoneyForward ME 家計簿データ取得クライアント
 
 MF ME に公式 API は無い。ブラウザのログインセッション（Cookie）で
-`/cf/csv` を叩くと収入・支出詳細の CSV がそのまま落ちてくるため、
-画面のスクレイピングはせずこのエンドポイントだけを使う。
+`/cf/csv` と `/bs/history/csv` を叩くと収入・支出詳細と資産推移の CSV が
+そのまま落ちてくるため、画面のスクレイピングはせずこの2本だけを使う。
 
 Cookie は Playwright の storage_state として config/mf_state.json に持つ。
 初回とセッション切れのときだけ headful ブラウザで手動ログイン（2FA 含む）
@@ -30,6 +30,8 @@ from playwright.sync_api import sync_playwright
 
 CF_URL = 'https://moneyforward.com/cf'
 CSV_URL = 'https://moneyforward.com/cf/csv'
+# 資産推移（バランスシート）の CSV。当月は日次、前月以前は月末1点だけが返る
+ASSETS_CSV_URL = 'https://moneyforward.com/bs/history/csv'
 ACCOUNTS_URL = 'https://moneyforward.com/accounts'
 # 画面の「金融機関からのデータ一括更新」ボタンが叩く Rails UJS のエンドポイント
 REFRESH_URL = 'https://moneyforward.com/faggregation_queue2'
@@ -39,6 +41,7 @@ LOGIN_HOST = 'id.moneyforward.com'
 CSV_ENCODING = 'cp932'
 # ログイン画面の HTML が 200 で返るケースを弾くための検証
 EXPECTED_HEADER = '計算対象'
+EXPECTED_ASSETS_HEADER = '合計（円）'
 
 LOGIN_TIMEOUT_SEC = 300
 
@@ -162,6 +165,33 @@ class MoneyForwardSession:
             status = (match.group(2) if match else row).strip()
             parsed.append((name, fetched_at, status))
         return parsed
+
+    def fetch_assets_csv(self) -> str:
+        """資産推移の CSV を文字列で返す（全期間）。
+
+        期間を絞るパラメータは無い（range / from-to / year はいずれも無視され、
+        常に全期間が返る）。粒度は MF 側が決めていて、**当月は日次、前月以前は
+        月末1点**。過去の日次は後から取り直せないため、月をまたぐ前に最低1回
+        取っておく必要がある。
+        """
+        response = self._context.request.get(ASSETS_CSV_URL)
+
+        if LOGIN_HOST in response.url or response.status != 200:
+            raise NotLoggedInError(
+                f"資産推移 CSV を取得できません (status={response.status}, "
+                f"url={response.url})\n"
+                f"  セッション切れの可能性があります: uv run scripts/mf.py fetch --login"
+            )
+
+        text = response.body().decode(CSV_ENCODING, errors='replace')
+
+        if EXPECTED_ASSETS_HEADER not in text.split('\n', 1)[0]:
+            raise NotLoggedInError(
+                "資産推移の CSV ではない応答が返りました。"
+                "セッション切れの可能性があります: uv run scripts/mf.py fetch --login"
+            )
+
+        return text
 
     def fetch_month_csv(self, year: int, month: int) -> str:
         """指定月の収入・支出詳細 CSV を文字列で返す"""

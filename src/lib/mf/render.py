@@ -9,7 +9,8 @@ import pandas as pd
 from wcwidth import wcswidth
 
 from lib.mf.store import (
-    COL_ACCOUNT, COL_AMOUNT, COL_CATEGORY, COL_NAME, COL_SUBCATEGORY,
+    COL_ACCOUNT, COL_AMOUNT, COL_ASSET_TOTAL, COL_CATEGORY, COL_NAME,
+    COL_SUBCATEGORY, asset_columns,
 )
 
 WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
@@ -277,3 +278,34 @@ def render_entries(df: pd.DataFrame) -> str:
         )
 
     return '\n\n'.join(blocks)
+
+
+def render_assets(df: pd.DataFrame, unit: str) -> str:
+    """資産残高の推移。合計と内訳、前期比の増減。
+
+    残高はストック量なので集計単位ごとに**合算せず最終値を取る**（月次なら
+    月末時点）。MF の CSV は当月だけ日次・前月以前は月末1点なので、月次より
+    細かい単位を指定すると過去側は点が飛ぶ。
+
+    内訳の列は MF 側の保有状況で増減する。期間を通して残高が無い区分
+    （解約済みの FX など）は列ごと落とす。0 が並ぶだけで読む情報が無い。
+    """
+    df = add_bucket(df, unit)
+    latest = df.sort_values('date').groupby('bucket').last()
+
+    columns = [c for c in asset_columns(df) if c != COL_ASSET_TOTAL]
+    columns = [c for c in columns if latest[c].fillna(0).abs().sum() > 0]
+
+    total = latest[COL_ASSET_TOTAL]
+    prev = total.shift(1)
+
+    out = pd.DataFrame({
+        '合計': total.map(format_yen),
+        'Δ': (total - prev).map(format_delta),
+        'Δ%': [format_delta_pct(c, p) for c, p in zip(total, prev)],
+    })
+    for col in columns:
+        out[col.replace('（円）', '')] = latest[col].map(format_yen)
+
+    out.index.name = bucket_label(unit)
+    return out.to_markdown()
