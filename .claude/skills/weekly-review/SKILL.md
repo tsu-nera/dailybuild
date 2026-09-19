@@ -40,11 +40,18 @@ uv run python scripts/generate_sleep_report_daily.py --week current
 
 # メンタル
 uv run python scripts/generate_mind_report_daily.py --week current
+
+# 筋トレ・腹囲（Hevy の export を取り込む。`--only` 指定時はスキップ）
+uv run scripts/hevy.py fetch
 ```
 
 出力先: `reports/{body,sleep,mind}/weekly/YYYY-Wxx/REPORT.md`
 
 エラーがあれば報告する。
+
+`hevy.py fetch` が「N 日前の export」と警告したら、**アプリから export し直すよう
+促してから先へ進む**（Hevy に API は無く、export しない限り古いデータのまま回る。
+トレーニングしていないのか記録が届いていないのかは、データからは区別できない）。
 
 ## Step 2: 今週のjournalを読み込み
 

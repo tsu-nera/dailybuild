@@ -167,6 +167,8 @@ uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等�
 uv run scripts/food.py sync-sheet    # food_master に全件を流し込む（成分表＋手動登録＋レシピ＋seed）
 uv run scripts/food.py sync-sheet --candidates  # 候補を絞る（実績上位＋レシピ＋手動登録＋seed）
 uv run scripts/food.py fetch         # シートを読んで entries.csv / daily.csv を作る
+uv run scripts/hevy.py fetch         # Hevy の export を Drive から取得（週1・/weekly-review が使う）
+uv run scripts/hevy.py fetch --force # 行数が減っていても上書きする
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
 uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
@@ -217,6 +219,7 @@ stdout）。
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
+| `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | 習慣の phase / 目標値 / 移行判断を扱うとき | [docs/habits.md](docs/habits.md) — 達成率の分母は `target_per_week` であって `is_due` ではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |

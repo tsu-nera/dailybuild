@@ -9,6 +9,10 @@ birth_date: 1986-10-25        # age はシステム日付から都度算出（�
 # アクセスはできない（Drive のアクセス制御は ACL で、ID の秘匿ではない）
 gdrive:
   folder_id: 10V9Bijc4rIDfTPdV-SBYyAejBtSsGUFs
+  # Hevy アプリの export 先（`dailybuild/hevy`）。service account には
+  # このフォルダだけを共有しており、親の dailybuild は 404 になる。
+  # 名前でパスを辿れないので、ID を直接持つ
+  hevy_folder_id: 13fNPePmWLFPbAglRiG7NtUNQp_PVWOar
 
 hr_zones:
   max_hr_override:            # ランプテスト等の実測最大HR。設定時はTanaka推定より優先（空/null=Tanaka）
