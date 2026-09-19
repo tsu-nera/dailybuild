@@ -24,6 +24,8 @@ from lib import exercise_source
 from lib.analytics import sleep, hrv, body, nutrition, activity, training
 from lib.analytics import hr_zones
 from lib.analytics import zone2
+from lib.analytics.nutrition_logging import load_nutrition_with_logging_mode
+from lib.analytics.weight_trend import calc_weight_trend
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir, filter_dataframe_by_period
 from lib.utils.data_loader import determine_target_period
 from lib.utils.private_data import ensure_dir
@@ -37,6 +39,7 @@ HRV_MASTER_CSV = BASE_DIR / 'data/wearable/hrv.csv'
 HEART_RATE_MASTER_CSV = BASE_DIR / 'data/wearable/heart_rate.csv'
 HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/wearable/heart_rate_intraday.csv'
 NUTRITION_MASTER_CSV = BASE_DIR / 'data/wearable/nutrition.csv'
+NUTRITION_LOGGING_CONFIG = BASE_DIR / 'config/nutrition_logging.yaml'
 CARDIO_SCORE_CSV = BASE_DIR / 'data/wearable/cardio_score.csv'
 
 
@@ -222,8 +225,11 @@ def calc_nutrition_stats_for_period(start_date, end_date):
     if not NUTRITION_MASTER_CSV.exists():
         return None
 
-    df_nutrition = pd.read_csv(NUTRITION_MASTER_CSV)
-    df_nutrition['date'] = pd.to_datetime(df_nutrition['date'])
+    # 記録モード（config/nutrition_logging.yaml）を適用（Issue #25）。
+    # protein_only の日は protein 以外が NaN、unknown の日は行ごと落ちる。
+    df_nutrition = load_nutrition_with_logging_mode(
+        NUTRITION_MASTER_CSV, NUTRITION_LOGGING_CONFIG
+    )
 
     # 期間でフィルタ
     mask = (df_nutrition['date'] >= start_date) & (df_nutrition['date'] <= end_date)
@@ -318,6 +324,13 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     start_date = dates.min()
     end_date = dates.max()
 
+    # 体重トレンド（kg/週）。3週窓が要るためレポート期間でフィルタする前の
+    # 全履歴から計算する（--days 7 等の短い期間フィルタの影響を受けない）。
+    df_weight_full = pd.read_csv(DATA_CSV)
+    weight_trend = calc_weight_trend(
+        df_weight_full, end_date=target_end if target_end is not None else end_date
+    )
+
     # 睡眠DataFrameを読み込んで期間でフィルタ
     df_sleep_filtered = None
     if SLEEP_MASTER_CSV.exists():
@@ -367,6 +380,25 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
             'change': body.format_change(stats['ffmi']['change'], '')
         }
     ]
+
+    # 体重トレンド（kg/週）。kcal には換算しない。測定不足のときは値を出さず
+    # 「測定不足」を表示する（Issue #25）。
+    if weight_trend['sufficient']:
+        trend_text = (
+            f"{weight_trend['kg_per_week']:+.2f} kg/週"
+            f"（3週、測定 {weight_trend['measured_days']}/{weight_trend['window_days']}日）"
+        )
+    else:
+        trend_text = (
+            f"測定不足（測定 {weight_trend['measured_days']}/{weight_trend['window_days']}日）"
+        )
+    summary_metrics.append({
+        'label': '体重トレンド',
+        'n': '',
+        'first': '-',
+        'last': '-',
+        'change': trend_text,
+    })
 
     # トレーニングセクションのデータ準備
     training_data = None

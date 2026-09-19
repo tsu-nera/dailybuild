@@ -3,7 +3,7 @@
 | 指標 | 開始 | 終了 | 変化 | 測定点 |
 |------|------|------|------|--------|
 {% for metric in summary_metrics %}
-| {{ metric.label }} | {{ metric.first }} | {{ metric.last }} | {{ metric.change }} | {{ metric.n }}点 |
+| {{ metric.label }} | {{ metric.first }} | {{ metric.last }} | {{ metric.change }} | {% if metric.n %}{{ metric.n }}点{% endif %} |
 {% endfor %}
 {% if summary_metrics and summary_metrics[0].n is defined and summary_metrics[0].n < 5 %}
 > 変化は期間の最初と最後の差。測定点が少ないと1点のノイズがそのまま出る。
