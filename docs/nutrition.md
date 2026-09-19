@@ -26,3 +26,28 @@
 市販の冷凍食品・加工食品は成分表に無い。パッケージの栄養成分表示から可食部100g当たりで
 `foods_master.csv` に追記する（`source=manual`）。`build-master` は既存 CSV の
 `source != mext` の行を読み戻してから書くので、成分表を取り直しても手入力分は消えない。
+
+## 栄養記録の完全性モード（`data/wearable/nutrition.csv`）
+
+分析に使う正本は `data/wearable/nutrition.csv`（`Cronometer → Health Connect →
+Google Health → nutrition.csv` の経路）で、これは上記の食品マスタとは別物。
+Google Health の `nutrition-log` は食品項目しか運ばず、Cronometer の
+`Completed` フラグはこの経路に乗らないため、日単位で「記録が完全だったか」を
+検証する材料が無い。代わりに `config/nutrition_logging.yaml` で**期間ごとに
+記録運用を宣言**し、`src/lib/analytics/nutrition_logging.py` の
+`load_nutrition_with_logging_mode()` がモードに応じて列を欠測（NaN）にする。
+
+| mode | `protein` | `calories` / `carbs` / `fat` / `fiber` / `sodium` / `water` |
+|---|---|---|
+| `complete` | 出す | 出す |
+| `protein_only` | 出す | 出さない（NaN。0埋めしない） |
+| `unknown` | 出さない | 出さない（行ごと落ちる） |
+
+- 宣言の外側の日付、および yaml 自体が無い場合は全期間 `unknown`（設定漏れで
+  古い誤表示に戻らない側に倒す）
+- 期間は `from`/`to` を含む閉区間。`to` が無い期間は現在まで継続
+- **現運用（2026-09-20〜）の `protein_only` は「タンパク源を含む食品だけを
+  Cronometer に記録する」運用の宣言であって、実測の完全性チェックではない。**
+  残存リスクとして、**タンパク源そのものを記録し忘れた日は検出できない**
+  （protein も欠測すべきところが `complete` のように扱われることはないが、
+  逆に「その日は本当に何も食べていない」のか「記録漏れ」なのかは区別できない）

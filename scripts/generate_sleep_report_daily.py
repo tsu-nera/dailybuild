@@ -23,6 +23,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import sleep
+from lib.analytics.nutrition_logging import load_nutrition_with_logging_mode
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 from lib.utils.private_data import ensure_dir
 from lib.utils.intraday_freshness import hr_intraday_freshness
@@ -37,6 +38,7 @@ HR_INTRADAY_CSV = BASE_DIR / 'data/wearable/heart_rate_intraday.csv'
 HR_DAILY_CSV = BASE_DIR / 'data/wearable/heart_rate.csv'
 SUN_TIMES_CSV = BASE_DIR / 'data/sun_times.csv'
 NUTRITION_CSV = BASE_DIR / 'data/wearable/nutrition.csv'
+NUTRITION_LOGGING_CONFIG = BASE_DIR / 'config/nutrition_logging.yaml'
 
 
 def prepare_sleep_report_data(results):
@@ -653,10 +655,14 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
     # 栄養データの読み込みと分析
     if NUTRITION_CSV.exists():
         print(f'Loading: {NUTRITION_CSV}')
-        df_nutrition = pd.read_csv(NUTRITION_CSV)
-        df_nutrition['date'] = pd.to_datetime(df_nutrition['date'])
+        # 記録モード（config/nutrition_logging.yaml）を適用（Issue #25）。
+        # GL は Carbs/Fiber から出すため、protein_only の日は carbs が NaN に
+        # なり、次のフィルタで自然に落ちる。unknown の日はここで既に行が無い。
+        df_nutrition = load_nutrition_with_logging_mode(
+            NUTRITION_CSV, NUTRITION_LOGGING_CONFIG
+        )
 
-        # カロリーが0より大きい日のみ（記録がある日）
+        # カロリーが0より大きい日のみ（記録がある日。NaN は False で除外される）
         df_nutrition = df_nutrition[df_nutrition['calories'] > 0].copy()
 
         # GLスコアを計算

@@ -1,0 +1,11 @@
+# 栄養記録の完全性は、日ごとに検証できない（Google Health の nutrition-log は
+# 食品項目しか運ばず、Cronometer の Completed フラグは届かない）。
+# 運用の宣言として期間で持つ。運用が変われば期間を1つ足す。
+periods:
+  - from: 2025-12-03
+    to: 2026-09-19
+    mode: unknown
+    note: "完全性を判定する材料が残っていない。Cronometer 期と自作シート期が混在"
+  - from: 2026-09-20
+    mode: protein_only
+    note: "タンパク源を含む食品だけを Cronometer に記録する。総カロリーは作れない"
