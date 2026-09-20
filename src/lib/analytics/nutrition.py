@@ -27,6 +27,9 @@ MEAL_TYPE_ANYTIME = 7        # 任意
 # 夜の食事（睡眠に影響する食事タイミング）
 MEAL_TYPE_EVENING = [MEAL_TYPE_DINNER, MEAL_TYPE_EVENING_SNACK]
 
+# 「その日に記録がある」を判定する列。1つでも値があれば記録日として扱う
+NUTRIENT_VALUE_COLUMNS = ['calories', 'protein', 'fat', 'carbs', 'fiber', 'sodium', 'water']
+
 
 def calc_nutrition_stats_for_period(df_nutrition):
     """
@@ -45,8 +48,13 @@ def calc_nutrition_stats_for_period(df_nutrition):
     if df_nutrition is None or len(df_nutrition) == 0:
         return None
 
-    # カロリーが0より大きい日のみでフィルタ（記録がある日のみ）
-    df_recorded = df_nutrition[df_nutrition['calories'] > 0].copy()
+    # 記録のある日のみでフィルタ。**calories だけで絞らない**。
+    # config/nutrition_logging.yaml の protein_only は calories を NaN に
+    # するため、calories で絞ると protein だけの日が丸ごと落ちて
+    # 栄養セクションが例外を出さずに消える。
+    value_cols = [c for c in NUTRIENT_VALUE_COLUMNS if c in df_nutrition.columns]
+    recorded_mask = (df_nutrition[value_cols].fillna(0) > 0).any(axis=1)
+    df_recorded = df_nutrition[recorded_mask].copy()
 
     if len(df_recorded) == 0:
         return None
@@ -59,9 +67,14 @@ def calc_nutrition_stats_for_period(df_nutrition):
 
     # PFC比率（カロリーベース）
     # 炭水化物: 4kcal/g, 脂質: 9kcal/g, タンパク質: 4kcal/g
-    carbs_pct = (avg_carbs * 4 / avg_calories * 100) if avg_calories > 0 else 0
-    fat_pct = (avg_fat * 9 / avg_calories * 100) if avg_calories > 0 else 0
-    protein_pct = (avg_protein * 4 / avg_calories * 100) if avg_calories > 0 else 0
+    # カロリーが無い期間（protein_only だけの期間）では算出できないので NaN。
+    # 0 を返すと「PFC比率が0%」という測定結果に見える。
+    if avg_calories > 0:
+        carbs_pct = avg_carbs * 4 / avg_calories * 100
+        fat_pct = avg_fat * 9 / avg_calories * 100
+        protein_pct = avg_protein * 4 / avg_calories * 100
+    else:
+        carbs_pct = fat_pct = protein_pct = np.nan
 
     # 日別データにPFC比率を追加
     daily_data = []
