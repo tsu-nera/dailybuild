@@ -63,6 +63,9 @@ else
   step "Google Health" uv run python scripts/fetch_googlehealth.py --non-interactive
 fi
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
+# Hevy の export 取得。セッションの有無は Health Connect 経由で exercise.csv に
+# 入るが、部位別セット数の内訳は export にしか無い（Hevy に API は無い）
+step "Hevy"          uv run python scripts/hevy.py fetch
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "日次記録（朝）" uv run scripts/daily.py morning fetch --non-interactive

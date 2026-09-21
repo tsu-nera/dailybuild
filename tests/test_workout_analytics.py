@@ -146,3 +146,84 @@ def test_load_muscle_mapping_reads_the_yaml(tmp_path):
     )
     mapping = workout.load_muscle_mapping(yaml_path)
     assert mapping == {'ベンチプレス (ダンベル)': 'chest'}
+
+
+def test_load_weekly_set_targets_returns_empty_dict_without_weekly_sets_key(tmp_path):
+    yaml_path = tmp_path / 'exercise_muscles.yaml'
+    yaml_path.write_text(
+        'exercises:\n'
+        '  ベンチプレス (ダンベル):\n'
+        '    muscle: chest\n'
+    )
+    targets = workout.load_weekly_set_targets(yaml_path)
+    assert targets == {}
+
+
+def test_load_weekly_set_targets_reads_target_as_int_and_drops_since(tmp_path):
+    yaml_path = tmp_path / 'exercise_muscles.yaml'
+    yaml_path.write_text(
+        'weekly_sets:\n'
+        '  chest: {target: 6, since: 2026-09-21}\n'
+        '  legs: {target: 4, since: 2026-09-21}\n'
+    )
+    targets = workout.load_weekly_set_targets(yaml_path)
+    assert targets == {'chest': 6, 'legs': 4}
+    assert all(isinstance(v, int) for v in targets.values())
+
+
+def test_weekly_set_progress_returns_actual_target_and_remaining():
+    df = make_workout_df([
+        ('2026-08-24 10:00', 'ベンチプレス (ダンベル)', 30, 10),
+        ('2026-08-24 10:05', 'ベンチプレス (ダンベル)', 30, 10),
+    ])
+    muscle_map = {'ベンチプレス (ダンベル)': 'chest'}
+    week_labels = ['2026-W35']
+    sets_table, _ = workout.weekly_muscle_sets(df, muscle_map, week_labels)
+
+    rows = workout.weekly_set_progress(sets_table, '2026-W35', {'chest': 6})
+
+    assert rows == [{'muscle': 'chest', 'label': '胸', 'actual': 2, 'target': 6, 'remaining': 4}]
+
+
+def test_weekly_set_progress_remaining_does_not_go_negative_when_actual_exceeds_target():
+    df = make_workout_df([
+        ('2026-08-24 10:00', 'ベンチプレス (ダンベル)', 30, 10),
+        ('2026-08-24 10:05', 'ベンチプレス (ダンベル)', 30, 10),
+        ('2026-08-24 10:10', 'ベンチプレス (ダンベル)', 30, 10),
+    ])
+    muscle_map = {'ベンチプレス (ダンベル)': 'chest'}
+    week_labels = ['2026-W35']
+    sets_table, _ = workout.weekly_muscle_sets(df, muscle_map, week_labels)
+
+    rows = workout.weekly_set_progress(sets_table, '2026-W35', {'chest': 2})
+
+    assert rows[0]['actual'] == 3
+    assert rows[0]['remaining'] == 0
+
+
+def test_weekly_set_progress_omits_muscles_not_in_targets():
+    df = make_workout_df([
+        ('2026-08-24 10:00', 'ベンチプレス (ダンベル)', 30, 10),
+        ('2026-08-25 10:00', 'デッドリフト (ダンベル)', 40, 6),
+    ])
+    muscle_map = {'ベンチプレス (ダンベル)': 'chest', 'デッドリフト (ダンベル)': 'back'}
+    week_labels = ['2026-W35']
+    sets_table, _ = workout.weekly_muscle_sets(df, muscle_map, week_labels)
+
+    rows = workout.weekly_set_progress(sets_table, '2026-W35', {'chest': 6})
+
+    assert [r['muscle'] for r in rows] == ['chest']
+
+
+def test_weekly_set_progress_treats_missing_column_as_zero_actual():
+    df = make_workout_df([
+        ('2026-08-24 10:00', 'ベンチプレス (ダンベル)', 30, 10),
+    ])
+    muscle_map = {'ベンチプレス (ダンベル)': 'chest'}
+    week_labels = ['2026-W35']
+    sets_table, _ = workout.weekly_muscle_sets(df, muscle_map, week_labels)
+
+    # sets_table に legs 列は無い（legs の種目が1件も無いため）
+    rows = workout.weekly_set_progress(sets_table, '2026-W35', {'legs': 4})
+
+    assert rows == [{'muscle': 'legs', 'label': '脚', 'actual': 0, 'target': 4, 'remaining': 4}]

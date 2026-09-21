@@ -31,6 +31,62 @@ def load_muscle_mapping(yaml_path=EXERCISE_MUSCLES_YAML):
     return {name: info['muscle'] for name, info in exercises.items()}
 
 
+def load_weekly_set_targets(yaml_path=EXERCISE_MUSCLES_YAML):
+    """部位コード → 週あたり目標セット数 のマッピングを yaml から読み込む
+
+    Parameters
+    ----------
+    yaml_path : Path
+        `config/exercise_muscles.yaml` へのパス
+
+    Returns
+    -------
+    dict
+        部位コード → target（int）。yaml に `weekly_sets` が無い/空なら空 dict。
+        `since` は読むだけで返り値には含めない
+    """
+    with Path(yaml_path).open(encoding='utf-8') as f:
+        data = yaml.safe_load(f) or {}
+    weekly_sets = data.get('weekly_sets') or {}
+    return {muscle: int(info['target']) for muscle, info in weekly_sets.items()}
+
+
+def weekly_set_progress(sets_table, week_label, targets):
+    """
+    指定週の部位別セット数を目標と突き合わせ、実績・目標・残量を返す
+
+    Parameters
+    ----------
+    sets_table : DataFrame
+        weekly_muscle_sets() の第1戻り値（index=週ラベル、columns=部位コード）
+    week_label : str
+        対象週のラベル（`YYYY-Wxx`）
+    targets : dict
+        load_weekly_set_targets() の戻り値（部位コード → 目標セット数）
+
+    Returns
+    -------
+    list[dict]
+        `targets` の順に、部位ごとの
+        {'muscle', 'label', 'actual', 'target', 'remaining'} を並べたもの。
+        `targets` に無い部位は含めない。`sets_table` に列が無い、または
+        `week_label` が index に無い場合 actual は 0 とする
+    """
+    rows = []
+    for muscle, target in targets.items():
+        actual = 0
+        if muscle in sets_table.columns and week_label in sets_table.index:
+            actual = int(sets_table.loc[week_label, muscle])
+        rows.append({
+            'muscle': muscle,
+            'label': MUSCLE_LABELS.get(muscle, muscle),
+            'actual': actual,
+            'target': target,
+            'remaining': max(target - actual, 0),
+        })
+    return rows
+
+
 def add_week_label(df, date_column='start_dt'):
     """ISO週ラベル（`YYYY-Wxx`）の列 week_label を追加する"""
     df = df.copy()

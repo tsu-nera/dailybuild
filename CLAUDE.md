@@ -167,7 +167,7 @@ uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等�
 uv run scripts/food.py sync-sheet    # food_master に全件を流し込む（成分表＋手動登録＋レシピ＋seed）
 uv run scripts/food.py sync-sheet --candidates  # 候補を絞る（実績上位＋レシピ＋手動登録＋seed）
 uv run scripts/food.py fetch         # シートを読んで entries.csv / daily.csv を作る
-uv run scripts/hevy.py fetch         # Hevy の export を Drive から取得（週1・/weekly-review が使う）
+uv run scripts/hevy.py fetch         # Hevy の export を Drive から取得（daily-routine.sh が日次で実行）
 uv run scripts/hevy.py fetch --force # 行数が減っていても上書きする
 uv run scripts/hevy.py show          # 部位別セット数・種目別e1RM・腹囲の週次推移（既定8週）
 uv run scripts/hevy.py show --weeks 12

@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import exercise_source
-from lib.analytics import sleep, hrv, body, nutrition, activity, training
+from lib import exercise_source, hevy_csv
+from lib.analytics import sleep, hrv, body, nutrition, activity, training, workout
 from lib.analytics import hr_zones
 from lib.analytics import zone2
 from lib.analytics.nutrition_logging import load_nutrition_with_logging_mode
@@ -41,6 +41,7 @@ HEART_RATE_INTRADAY_CSV = BASE_DIR / 'data/wearable/heart_rate_intraday.csv'
 NUTRITION_MASTER_CSV = BASE_DIR / 'data/wearable/nutrition.csv'
 NUTRITION_LOGGING_CONFIG = BASE_DIR / 'config/nutrition_logging.yaml'
 CARDIO_SCORE_CSV = BASE_DIR / 'data/wearable/cardio_score.csv'
+WORKOUTS_CSV = BASE_DIR / 'data/hevy/workouts.csv'
 
 
 def plot_main_chart(df, save_path):
@@ -289,6 +290,76 @@ def calc_strength_stats_for_period(start_date, end_date):
     return activity.calc_strength_stats_for_period(df_period)
 
 
+def _normalize_to_date(value):
+    """strength_data の 'date'（str/Timestamp どちらも来うる）を date へ正規化する"""
+    if isinstance(value, str):
+        return pd.to_datetime(value).date()
+    return pd.Timestamp(value).date()
+
+
+def _prepare_weekly_sets_data(target_end, strength_data):
+    """
+    今週（ISO週）の部位別セット数の残量データを準備する（Issue #186）
+
+    Parameters
+    ----------
+    target_end : pd.Timestamp or None
+        レポート引数の終了日（今日など）。今週の判定に使う
+    strength_data : list[dict] or None
+        calc_strength_stats_for_period(...)['daily']。export 未反映日の検出に使う
+
+    Returns
+    -------
+    dict or None
+        {'week_label', 'rows', 'missing_export_dates'}。
+        `data/hevy/workouts.csv` が無い、`weekly_sets` の目標が空、
+        または読み込み・パースで例外が出た場合は None（レポート生成は止めない）
+    """
+    if not WORKOUTS_CSV.exists():
+        return None
+
+    targets = workout.load_weekly_set_targets()
+    if not targets:
+        return None
+
+    try:
+        if target_end is not None:
+            week_label = workout.recent_iso_weeks(1, today=target_end)[0]
+        else:
+            week_label = workout.recent_iso_weeks(1)[0]
+
+        df_workouts = hevy_csv.parse_hevy_csv(WORKOUTS_CSV)
+        muscle_map = workout.load_muscle_mapping()
+        sets_table, _unmapped = workout.weekly_muscle_sets(df_workouts, muscle_map, [week_label])
+        rows = workout.weekly_set_progress(sets_table, week_label, targets)
+
+        # 今週のうち、exercise.csv（strength_data）にセッションがあるのに workouts.csv
+        # に同日のセットが1件も無い日 = export が追いついていない疑い
+        missing_export_dates = []
+        if strength_data:
+            year_str, week_str = week_label.split('-W')
+            monday = pd.Timestamp.fromisocalendar(int(year_str), int(week_str), 1).date()
+            week_dates = {monday + pd.Timedelta(days=i) for i in range(7)}
+
+            session_dates = {
+                _normalize_to_date(row['date']) for row in strength_data
+            } & week_dates
+
+            hevy_dates = set(pd.to_datetime(df_workouts['start_dt']).dt.date) & week_dates
+
+            missing_export_dates = sorted(
+                d.strftime('%Y-%m-%d') for d in (session_dates - hevy_dates)
+            )
+
+        return {
+            'week_label': week_label,
+            'rows': rows,
+            'missing_export_dates': missing_export_dates,
+        }
+    except Exception:
+        return None
+
+
 def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
                         hrv_stats=None, nutrition_stats=None, eat_stats=None,
                         target_end=None):
@@ -414,6 +485,9 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
     cycling_data = cycling_stats['daily'] if cycling_stats else None
     strength_data = strength_stats['daily'] if strength_stats else None
 
+    # 今週の部位別セット数の残量（Issue #186）
+    weekly_sets_data = _prepare_weekly_sets_data(target_end, strength_data)
+
     # 栄養セクションのデータ準備
     nutrition_section_data = nutrition_stats if nutrition_stats else None
 
@@ -452,6 +526,7 @@ def prepare_report_data(df, stats, sleep_stats=None, activity_stats=None,
         'aerobic_data': aerobic_data,
         'cycling_data': cycling_data,
         'strength_data': strength_data,
+        'weekly_sets_data': weekly_sets_data,
         'nutrition_data': nutrition_section_data,
         'calorie_analysis_data': calorie_analysis_data,
         'recovery_data': recovery_data,
