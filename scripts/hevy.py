@@ -11,7 +11,7 @@ Usage:
     python scripts/hevy.py show            # 週次サマリ（既定 8週）を stdout へ
     python scripts/hevy.py show --weeks 12
 
-週1回（土日）の export を前提にしている。export を忘れると古い CSV が黙って
+daily-routine.sh から日次で fetch する運用。export を忘れると古い CSV が黙って
 残り「今週トレーニング0回」に見えるため、Drive 側のファイルが古ければ警告する。
 """
 
@@ -37,8 +37,9 @@ PERSONAL_YAML = BASE_DIR / 'config' / 'personal.yaml'
 WORKOUTS_CSV = BASE_DIR / 'data' / 'hevy' / 'workouts.csv'
 MEASUREMENTS_CSV = BASE_DIR / 'data' / 'hevy' / 'measurements.csv'
 
-# export を忘れたまま回した週を検出する閾値。週1運用なので7日ちょうどは正常
-STALE_DAYS = 8
+# export を忘れたまま回した日を検出する閾値。日次運用（朝 fetch）なので、
+# 前夜に export していれば age は 0〜1 日で収まる
+STALE_DAYS = 2
 
 logger = logging.getLogger('hevy')
 

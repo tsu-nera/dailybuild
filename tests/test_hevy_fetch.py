@@ -105,7 +105,8 @@ def test_stale_export_warns(caplog):
 
 
 def test_fresh_export_does_not_warn(caplog):
-    fresh = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).isoformat()
+    # 日次運用（朝 fetch）では前夜の export で age は 0〜1 日
+    fresh = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).isoformat()
     meta = {'name': 'workout_data.csv', 'createdTime': fresh.replace('+00:00', 'Z')}
 
     with caplog.at_level('WARNING'):

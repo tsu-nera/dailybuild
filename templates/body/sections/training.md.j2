@@ -28,6 +28,19 @@
 {% endfor %}{% else %}
 > 記録なし
 {% endif %}
+{% if weekly_sets_data %}
+
+#### 今週の部位別セット数（{{ weekly_sets_data.week_label }}）
+
+| 部位 | 今週 | 目標 | 残り |
+|------|------|------|------|
+{% for row in weekly_sets_data.rows %}
+| {{ row.label }} | {{ row.actual }} | {{ row.target }} | {{ row.remaining }} |
+{% endfor %}
+{% if weekly_sets_data.missing_export_dates %}
+> Hevy の export に入っていないセッションがある（{{ weekly_sets_data.missing_export_dates | join(', ') }}）。セット数は過少の可能性がある
+{% endif %}
+{% endif %}
 
 ### 🚴 サイクリング
 
