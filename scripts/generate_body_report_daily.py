@@ -21,7 +21,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib import exercise_source, hevy_csv
-from lib.analytics import sleep, hrv, body, nutrition, activity, training, workout
+from lib.analytics import sleep, hrv, body, nutrition, activity, workout
 from lib.analytics import hr_zones
 from lib.analytics import zone2
 from lib.analytics.nutrition_logging import load_nutrition_with_logging_mode
@@ -691,20 +691,10 @@ def _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats):
         df_hrv_all['date'] = pd.to_datetime(df_hrv_all['date'])
         df_hrv_all.set_index('date', inplace=True)
 
-        # 7日移動統計を計算
-        df_hrv_all = training.calc_hrv_7day_rolling_stats(df_hrv_all)
-
     df_hr_all = None
     if HEART_RATE_MASTER_CSV.exists():
         df_hr_all = pd.read_csv(HEART_RATE_MASTER_CSV)
         df_hr_all['date'] = pd.to_datetime(df_hr_all['date'])
-
-    # 筋トレ判断データを準備
-    training_readiness = None
-    if df_hrv_all is not None:
-        training_readiness = training.prepare_training_readiness_data(
-            start_date, end_date, df_hrv_all, df_sleep_filtered
-        )
 
     # 日別データの準備
     recovery_data = []
@@ -741,17 +731,6 @@ def _prepare_recovery_data(start_date, end_date, df_sleep_filtered, hrv_stats):
                 row['hr'] = None
         else:
             row['hr'] = None
-
-        # 筋トレ判断データを追加
-        if training_readiness:
-            training_day = next((t for t in training_readiness if t['date'] == date), None)
-            if training_day:
-                row['training_recommendation'] = training_day.get('recommendation', '-')
-                row['training_intensity'] = training_day.get('intensity', 'unknown')
-                row['training_reason'] = training_day.get('reason', '-')
-                row['hrv_7day_mean'] = training_day.get('hrv_7day_mean')
-                row['hrv_7day_lower'] = training_day.get('hrv_7day_lower')
-                row['hrv_7day_upper'] = training_day.get('hrv_7day_upper')
 
         recovery_data.append(row)
 
