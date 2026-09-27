@@ -114,7 +114,8 @@ questions:
   # M と R の境界は PERMA に合わせる（社会・より大きなものとのつながりは M、
   # 具体的な他者との関係は R）。
   # 満足感・達成感は Beck の Pleasure / Mastery として 2026-09-06 から回答が
-  # あり、2026-09-27 にこのグリッドへ移した（legacy_question_ids が移す前の id）
+  # あり、2026-09-27 にこのグリッドへ移した（legacy_question_ids が移す前の id）。
+  # 同日、満足感（P）は気分と重複するため退役。P はコンディションの気分が担う
   - key: fulfillment
     label: 充実感
     column: fulfillment
@@ -126,6 +127,8 @@ questions:
     type: grid
     grid: kyomu
     legacy_question_ids: [739c7426]
+    active: false
+    description: 2026-09-27 退役。気分（コンディション）と重複するため（最終記録 2026-09-21）
   - key: engagement
     label: 没頭感
     column: engagement
