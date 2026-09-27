@@ -123,11 +123,12 @@ def build_items(conf):
     対応付く。
     """
     s = conf['score']
-    grid_entries = store.grid_rows(conf)
-    rows = [e['label'] for e in grid_entries]
-    required = [e.get('required', False) for e in grid_entries]
-    items = [gforms_client.grid_item(conf['grid_title'], rows, s['low'], s['high'],
-                                  s['low_label'], s['high_label'], required=required)]
+    items = [
+        gforms_client.grid_item(title, [e['label'] for e in entries], s['low'], s['high'],
+                                s['low_label'], s['high_label'],
+                                required=[e.get('required', False) for e in entries])
+        for title, entries in store.grid_groups(conf)
+    ]
     for e in store.text_like_questions(conf):
         items.append(gforms_client.text_item(
             e['label'], required=e.get('required', False),
@@ -136,13 +137,13 @@ def build_items(conf):
 
 
 def _grid_row_titles(form):
-    """フォームの実際のグリッド行タイトルを出現順で返す。無ければ None"""
-    for item in form.get('items', []):
-        group = item.get('questionGroupItem')
-        if group:
-            return [q.get('rowQuestion', {}).get('title')
-                   for q in group.get('questions', [])]
-    return None
+    """フォームの実際のグリッド行タイトルを出現順で返す（複数グリッドは連結）。
+    無ければ None
+    """
+    titles = [q.get('rowQuestion', {}).get('title')
+              for item in form.get('items', [])
+              for q in item.get('questionGroupItem', {}).get('questions', [])]
+    return titles or None
 
 
 def update_vocab_history(revision_id, labels, path, now=None) -> bool:
@@ -342,7 +343,13 @@ def build_dataframe(form, responses, conf, slot):
         if slot_conf['has_source']:
             row['source'] = 'form'
         for e in grid_entries:
-            v = gforms_client.answer_values(res, by_title[e['label']])
+            # 別グリッドへ移した行は questionId が変わる。移す前の回答は
+            # 旧 id のまま API に残るので legacy_question_ids から引く
+            v = []
+            for qid in [by_title[e['label']], *e.get('legacy_question_ids', [])]:
+                v = gforms_client.answer_values(res, qid)
+                if v:
+                    break
             row[e['column']] = v[0] if v else pd.NA
         for e in text_like_entries:
             v = gforms_client.answer_values(res, by_title[e['label']])

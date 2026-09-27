@@ -67,6 +67,19 @@ def grid_rows(conf: dict) -> list:
     return [q for q in active_questions(conf) if q['type'] == 'grid']
 
 
+def grid_groups(conf: dict) -> list:
+    """フォーム上のグリッド item ごとの (タイトル, 行の設問リスト) を並び順で返す
+
+    yaml に grids があれば、各行の grid キーで振り分ける（行の並びは
+    questions の並び順）。無ければ grid_title の1グリッドに全行が入る。
+    """
+    rows = grid_rows(conf)
+    if 'grids' not in conf:
+        return [(conf['grid_title'], rows)]
+    return [(g['title'], [q for q in rows if q.get('grid') == g['key']])
+            for g in conf['grids']]
+
+
 def text_like_questions(conf: dict) -> list:
     """active な text/number の設問（フォームの text item になるもの）"""
     return [q for q in active_questions(conf) if q['type'] in ('text', 'number')]

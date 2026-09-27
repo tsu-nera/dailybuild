@@ -13,7 +13,15 @@
 form_id: 1mhdKDisv_kqanSG8KyIx2jt8Rlfo82f8Ip1ohGnOTI8
 form_title: 夜の記録
 
-grid_title: 今日一日はどうだった？
+# グリッド item はこの順でフォームに並ぶ。各グリッド行は grid キーで所属を持つ。
+# 行の questionId はグリッドごとに出現順（FIFO）で対応付くので、行を足すのは
+# そのグリッドの末尾だけ。別グリッドへ移した行は questionId が変わるため、
+# 移す前の id を legacy_question_ids に残す（過去回答はその id で API に残る）
+grids:
+  - key: condition
+    title: コンディション
+  - key: kyomu
+    title: 虚無との戦い
 
 # 満足感・達成感は Beck の Mastery / Pleasure（『うつ病の認知療法』1979）。
 # 1日1点への集約で、原典の「どの行動の後か」を特定する用途は満たさない。
@@ -57,30 +65,28 @@ grid_title: 今日一日はどうだった？
 #                書き戻す。これがあると questionId の対応付けが並び順に
 #                依存しなくなり、中間の設問を退役させても後続の
 #                questionId が付け替わらない（Issue #176）。手で書かない
+#   grid:        grid 設問の所属（grids の key）
+#   legacy_question_ids: 別グリッドへ移した grid 行の、移す前の questionId。
+#                現在の id に回答が無いときにこれで引く。消さない
 questions:
   - key: mind
     label: 気分
     column: mind_score
     type: grid
     required: true
+    grid: condition
   - key: body
     label: 身体の軽さ
     short: 身体
     column: body_score
     type: grid
+    grid: condition
   - key: head
     label: 頭の軽さ
     short: 頭
     column: head_score
     type: grid
-  - key: satisfaction
-    label: 満足感
-    column: satisfaction
-    type: grid
-  - key: achievement
-    label: 達成感
-    column: achievement
-    type: grid
+    grid: condition
   - key: comment
     label: コメント
     column: comment
@@ -102,26 +108,50 @@ questions:
     active: false
     description: 2026-09-27 退役。手入力が続かなかった（最終記録 2026-09-09）
     question_id: 6aabeff8
-  # 虚しさ（目的変数）と、それを動かしうる候補（満足感・達成感・つながり2軸）を
-  # 別々に測る。候補の合計で虚しさを定義すると、どれが効くのかが分からなくなる。
-  # つながりは相手で2問に分ける（1問にまとめると欠けている軸が記録に残らない）。
-  # BATD-R の「重要さ」に畳まないのは、あちらは生活領域のラベルが軸を持つが、
-  # 1日1点のここにはそれが無いため。グリッド行なので足すときは末尾に
-  - key: not_empty
-    label: 虚しさのなさ
-    short: 虚しさ
-    column: not_empty
+  # 虚無との戦い: 充実感（虚しさの裏返し）を目的変数として直接聞き、PERMA の
+  # 5要素（満足感=P 没頭感=E つながり=R 有意味感=M 達成感=A）と自律感を候補として
+  # 並べる。候補の合計で充実感を定義しないのは、どれが効くかを分けて見るため。
+  # M と R の境界は PERMA に合わせる（社会・より大きなものとのつながりは M、
+  # 具体的な他者との関係は R）。
+  # 満足感・達成感は Beck の Pleasure / Mastery として 2026-09-06 から回答が
+  # あり、2026-09-27 にこのグリッドへ移した（legacy_question_ids が移す前の id）
+  - key: fulfillment
+    label: 充実感
+    column: fulfillment
     type: grid
-  - key: connection_self
-    label: 過去や未来の自分とのつながり
-    short: 自分とのつながり
-    column: connection_self
+    grid: kyomu
+  - key: satisfaction
+    label: 満足感
+    column: satisfaction
     type: grid
-  - key: connection_others
-    label: 人や社会とのつながり
-    short: 人とのつながり
-    column: connection_others
+    grid: kyomu
+    legacy_question_ids: [739c7426]
+  - key: engagement
+    label: 没頭感
+    column: engagement
     type: grid
+    grid: kyomu
+  - key: connection
+    label: つながり
+    column: connection
+    type: grid
+    grid: kyomu
+  - key: meaning
+    label: 有意味感
+    column: meaning
+    type: grid
+    grid: kyomu
+  - key: achievement
+    label: 達成感
+    column: achievement
+    type: grid
+    grid: kyomu
+    legacy_question_ids: [1b5390f4]
+  - key: autonomy
+    label: 自律感
+    column: autonomy
+    type: grid
+    grid: kyomu
 
 # グリッドの列（1〜5）。全行とも「高=良好」で揃える
 score:

@@ -54,9 +54,36 @@ CONFS = {slot: _all_active(store.load_def(slot)) for slot in ('morning', 'evenin
 
 # 削除・並び替えを検出するための既知キー（末尾追加は許す。append-only ガード）
 _MORNING_KNOWN_KEYS = ['mind', 'body', 'head', 'sleep', 'comment', 'hrv_rmssd', 'eda_responses']
-_EVENING_KNOWN_KEYS = ['mind', 'body', 'head', 'satisfaction', 'achievement',
-                       'comment', 'hrv_rmssd', 'eda_responses',
-                       'not_empty', 'connection_self', 'connection_others']
+# 夜は 2026-09-27 にグリッドを2つに分けた際、回答の無かった3行を消し、
+# 満足感・達成感を「虚無との戦い」グリッドへ移した（意図的な並び替え）
+_EVENING_KNOWN_KEYS = ['mind', 'body', 'head', 'comment', 'hrv_rmssd', 'eda_responses',
+                       'fulfillment', 'satisfaction', 'engagement', 'connection',
+                       'meaning', 'achievement', 'autonomy']
+
+
+def _fake_grid_items(conf):
+    """conf のグリッド item 群（store.grid_groups の順）を fake で作る
+
+    行の questionId はグリッドをまたいだ通し番号で q_grid_i。
+    """
+    items = []
+    n = 0
+    for title, entries in store.grid_groups(conf):
+        questions = []
+        for e in entries:
+            questions.append({'questionId': f'q_grid_{n}',
+                              'required': e.get('required', False),
+                              'rowQuestion': {'title': e['label']}})
+            n += 1
+        items.append({
+            'title': title,
+            'questionGroupItem': {
+                'questions': questions,
+                'grid': {'columns': {'type': 'RADIO',
+                                     'options': [{'value': str(v)} for v in range(1, 6)]}},
+            },
+        })
+    return items
 
 
 def _build_fake_form(conf):
@@ -65,20 +92,8 @@ def _build_fake_form(conf):
     questionId は出現順（FIFO）で割り振る。grid の行は q_grid_i、
     text/number は q_text_i。
     """
-    grid_entries = store.grid_rows(conf)
     text_like = [e for e in store.active_questions(conf) if e['type'] in ('text', 'number')]
-    items = [{
-        'title': conf['grid_title'],
-        'questionGroupItem': {
-            'questions': [
-                {'questionId': f'q_grid_{i}', 'required': e.get('required', False),
-                 'rowQuestion': {'title': e['label']}}
-                for i, e in enumerate(grid_entries)
-            ],
-            'grid': {'columns': {'type': 'RADIO',
-                                 'options': [{'value': str(n)} for n in range(1, 6)]}},
-        },
-    }]
+    items = _fake_grid_items(conf)
     for i, e in enumerate(text_like):
         items.append({
             'title': e['label'],
@@ -641,20 +656,8 @@ def _conf_with_question_ids(slot, ids_by_key, active_overrides=None):
 def _existing_form_with_text_ids(conf, text_id_by_key):
     """conf の active な設問から、text_id_by_key で指定した questionId を
     持つ既存フォームを作る（grid 行の questionId は連番で適当に振る）"""
-    grid_entries = store.grid_rows(conf)
     text_like = store.text_like_questions(conf)
-    items = [{
-        'title': conf['grid_title'],
-        'questionGroupItem': {
-            'questions': [
-                {'questionId': f'q_grid_{i}', 'required': e.get('required', False),
-                 'rowQuestion': {'title': e['label']}}
-                for i, e in enumerate(grid_entries)
-            ],
-            'grid': {'columns': {'type': 'RADIO',
-                                 'options': [{'value': str(n)} for n in range(1, 6)]}},
-        },
-    }]
+    items = _fake_grid_items(conf)
     for i, e in enumerate(text_like):
         items.append({
             'itemId': f'item_{e["key"]}',
@@ -879,3 +882,62 @@ def test_setup_form_update_backfills_question_ids_then_uses_them(tmp_path, monke
           for i in second_text_items}
     assert ids['コメント'] == 'q_text_0'
     assert ids['EDA responses (回)'] == 'q_text_2'
+
+
+# --- 夜のグリッド2分割（2026-09-27）: 移した行の過去回答を失わない ---
+
+def test_evening_builds_two_grids_in_yaml_order():
+    grids = [i for i in daily.build_items(CONFS['evening']) if 'questionGroupItem' in i]
+    assert [g['title'] for g in grids] == ['コンディション', '虚無との戦い']
+    rows = [[q['rowQuestion']['title'] for q in g['questionGroupItem']['questions']]
+            for g in grids]
+    assert rows[0] == ['気分', '身体の軽さ', '頭の軽さ']
+    assert rows[1][0] == '充実感'
+    assert {'満足感', '達成感'} <= set(rows[1])
+
+
+def test_moved_grid_row_reads_answer_from_legacy_question_id():
+    """別グリッドへ移した行は questionId が変わる。移す前の回答は旧 id で
+    API に残るので、それを読まないと再 fetch の行置換で過去値が欠測になる"""
+    conf = CONFS['evening']
+    form = _build_fake_form(conf)
+    legacy = {q['key']: q['legacy_question_ids'][0]
+              for q in conf['questions'] if q.get('legacy_question_ids')}
+    res = {'lastSubmittedTime': '2026-09-10T13:00:00Z', 'answers': {
+        legacy['satisfaction']: {'textAnswers': {'answers': [{'value': '4'}]}},
+        legacy['achievement']: {'textAnswers': {'answers': [{'value': '2'}]}},
+    }}
+
+    df = daily.build_dataframe(form, [res], conf, 'evening')
+
+    assert df.loc[0, 'satisfaction'] == 4
+    assert df.loc[0, 'achievement'] == 2
+    assert pd.isna(df.loc[0, 'fulfillment'])
+
+
+def test_splitting_grid_keeps_condition_row_ids_and_creates_new_grid():
+    """旧1グリッド（8行）→ 2グリッド。1つ目は先頭3行の id を保ち、
+    2つ目は新規作成になる。既存 item を消さない（leftover なし）"""
+    conf = store.load_def('evening')  # 実物（HRV/EDA 退役済み、comment は id 明示）
+    comment_id = next(q['question_id'] for q in conf['questions'] if q['key'] == 'comment')
+    old_rows = ['気分', '身体の軽さ', '頭の軽さ', '満足感', '達成感', 'x', 'y', 'z']
+    existing_form = {'items': [
+        {'itemId': 'grid_old', 'title': '今日一日はどうだった？',
+         'questionGroupItem': {'questions': [
+             {'questionId': f'old_{i}', 'rowQuestion': {'title': t}}
+             for i, t in enumerate(old_rows)]}},
+        {'itemId': 'item_comment', 'title': 'コメント',
+         'questionItem': {'question': {'questionId': comment_id,
+                                       'textQuestion': {'paragraph': False}}}},
+    ]}
+
+    _, requests = _run_sync(daily.build_items(conf), existing_form)
+
+    assert not any('deleteItem' in r for r in requests)
+    updated = [r['updateItem']['item'] for r in requests if 'updateItem' in r
+               and 'questionGroupItem' in r['updateItem']['item']]
+    assert len(updated) == 1
+    assert [q.get('questionId') for q in updated[0]['questionGroupItem']['questions']] \
+        == ['old_0', 'old_1', 'old_2']
+    created = [r['createItem']['item'] for r in requests if 'createItem' in r]
+    assert [c['title'] for c in created] == ['虚無との戦い']
