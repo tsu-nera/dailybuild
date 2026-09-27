@@ -115,6 +115,23 @@ uv run scripts/phq9.py url
   取り上げて安全確認に入らない（[本人の方針] 強い言葉で記録が止まるほうが損失が大きい）
 - `total` が NaN の回は未回答が混じっている。合計として扱わない
 
+## Step 2.8: 虚無との戦い
+
+夜フォームの「虚無との戦い」グリッド（充実感＋PERMA＋自律感、2026-09-27〜）を
+週で集計する。定義は `config/daily_evening_def.yaml`。集計は毎回このコマンドで行う
+（その場でコードを書くと週の区切りや欠測の扱いが回ごとにぶれる）。
+
+```bash
+uv run python -c "import pandas as pd; d=pd.read_csv('data/daily_evening.csv',parse_dates=['date']); d=d[d.date>='2026-09-27']; c=['fulfillment','satisfaction','engagement','connection','meaning','achievement','autonomy']; d['perma6']=d[c[1:]].mean(axis=1); w=d.date.dt.isocalendar(); g=d.groupby([w.year.rename('year'),w.week.rename('week')])[c+['perma6']]; print(pd.concat([g.count()['fulfillment'].rename('n'), g.mean().round(1)],axis=1).tail(8).to_markdown())"
+```
+
+今週の生の行（日ごとの値と `comment`）も読む。
+
+- `fulfillment`（充実感）は直接聞いた目的変数、`perma6` は残り6要素の平均。
+  両者のずれ（要素はそこそこなのに虚しい）が見たいもの
+- `n` が3以下の週は参考値。前週差を変化と読まない
+- 数ヶ月分たまるまで、原因の推測・助言は書かない。どの要素が高く、どれが低いかの記述に留める
+
 ## Step 3: AIレビュー
 
 生成された3つのREPORT.md と `hevy.py show` の出力（量的データ） + Step 2 のdaily journal（定性的データ）を統合してレビューする。
@@ -207,6 +224,10 @@ Body / Mind 側が見る。混ぜない。
 - 今週の点数 / 前週差 / ベースライン差 / 重症度の帯
 - 動いた項目・動かない項目
 - 未回答の週はその旨だけ書く
+
+### 虚無との戦い
+- 今週の充実感 / 6要素平均 / 回答日数
+- 高い要素・低い要素（記述のみ）
 
 ### 中長期目標の進捗
 - monthly/quarterly 目標ごとに「目標値 / 現在値 / 残差 / 直近トレンド」
