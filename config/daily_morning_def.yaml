@@ -82,16 +82,23 @@ questions:
     label: コメント
     column: comment
     type: text
+    question_id: 367334b1
   - key: hrv_rmssd
     label: 朝のHRV (RMSSD, ms)
     short: HRV
     column: hrv_rmssd
     type: number
+    active: false
+    description: 2026-09-27 退役。手入力が続かなかった（最終記録 2026-09-11）
+    question_id: 772c55b9
   - key: eda_responses
     label: EDA responses (回)
     short: EDA
     column: eda_responses
     type: number
+    active: false
+    description: 2026-09-27 退役。手入力が続かなかった（最終記録 2026-09-10）
+    question_id: 57a445ea
 
 # グリッドの列（1〜5）。全行共通で、向きは全行「高=良好」（グリッドの列見出しが
 # 行共通のため構造的に強制される）。だから body の設問文は「身体の重さ」でなく

@@ -8,6 +8,7 @@ config/ は public な通常ファイルなので、テストからも実物の 
 import argparse
 import copy
 import importlib.util
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -35,12 +36,27 @@ def _load_script():
 
 daily = _load_script()
 
-CONFS = {'morning': store.load_def('morning'), 'evening': store.load_def('evening')}
+
+def _all_active(conf):
+    """全設問を active にした複製を返す
+
+    実物の yaml では数値設問（HRV / EDA）が退役済みで、そのままだと
+    数値設問のパースや退役の経路を検査できない。ロジックは今後の数値設問にも
+    使うので、テストでは退役を解除した構成で固定する。
+    """
+    conf = copy.deepcopy(conf)
+    for q in conf['questions']:
+        q.pop('active', None)
+    return conf
+
+
+CONFS = {slot: _all_active(store.load_def(slot)) for slot in ('morning', 'evening')}
 
 # 削除・並び替えを検出するための既知キー（末尾追加は許す。append-only ガード）
 _MORNING_KNOWN_KEYS = ['mind', 'body', 'head', 'sleep', 'comment', 'hrv_rmssd', 'eda_responses']
 _EVENING_KNOWN_KEYS = ['mind', 'body', 'head', 'satisfaction', 'achievement',
-                       'comment', 'hrv_rmssd', 'eda_responses']
+                       'comment', 'hrv_rmssd', 'eda_responses',
+                       'not_empty', 'connection_self', 'connection_others']
 
 
 def _build_fake_form(conf):
@@ -535,6 +551,18 @@ def test_load_entries_number_column_is_float64_and_blank_is_na(tmp_path, monkeyp
 
 # --- 退役（active: false）: 列は残し、フォームからだけ外す ---
 
+def _without_question_ids(conf):
+    """question_id を持たない（kind-FIFO で突き合わせる）conf の複製を返す
+
+    実物の yaml は backfill 済みなので、FIFO の挙動を固定するテストは
+    これで backfill 前の状態を作る。
+    """
+    conf = copy.deepcopy(conf)
+    for q in conf['questions']:
+        q.pop('question_id', None)
+    return conf
+
+
 def _conf_with_retired(slot, key):
     """conf の1設問だけ active: false にした複製を返す"""
     conf = copy.deepcopy(CONFS[slot])
@@ -565,6 +593,28 @@ def test_retired_question_keeps_its_csv_column_as_na():
     assert 'eda_responses' in df.columns
     assert df['eda_responses'].isna().all()
     assert list(df.columns) == store.columns('morning', conf)
+
+
+def test_retired_question_values_survive_refetch():
+    """退役前の値は次の fetch で消えない（行置換で欠測を捏造しない）。
+
+    fetch は全回答を取り直して date ごとに行を置換するが、退役した列は
+    build_dataframe が読まないので、引き継がないと過去の値が NA になる。
+    """
+    conf = _conf_with_retired('morning', 'hrv_rmssd')
+    form = _build_fake_form(conf)
+    responses = [
+        _response(conf, form, '2026-09-01T23:00:00Z', mind=3),
+        _response(conf, form, '2026-09-02T23:00:00Z', mind=4),
+    ]
+    df = daily.build_dataframe(form, responses, conf, 'morning')
+    existing = pd.DataFrame({'date': ['2026-09-02'], 'hrv_rmssd': [45.3]})
+
+    df = daily.carry_retired_values(df, existing, conf)
+
+    by_date = df.set_index(pd.to_datetime(df['date']))['hrv_rmssd']
+    assert by_date[pd.Timestamp('2026-09-02')] == 45.3
+    assert pd.isna(by_date[pd.Timestamp('2026-09-03')])
 
 
 def test_retired_question_empty_response_list_keeps_column():
@@ -683,9 +733,9 @@ def test_retiring_middle_text_question_does_not_reassign_question_ids():
     assert updates[eda_label]['questionItem']['question']['questionId'] == 'q_eda'
 
     # --- question_id 無し（従来の kind-FIFO）: 同じ操作で付け替わる ---
-    conf_full_fifo = CONFS['morning']
+    conf_full_fifo = _without_question_ids(CONFS['morning'])
     existing_form_fifo = _build_fake_form(conf_full_fifo)  # q_text_0=comment, 1=hrv, 2=eda
-    conf_retired_fifo = _conf_with_retired('morning', 'hrv_rmssd')
+    conf_retired_fifo = _without_question_ids(_conf_with_retired('morning', 'hrv_rmssd'))
     items_fifo = daily.build_items(conf_retired_fifo)
 
     _, requests_fifo = _run_sync(items_fifo, existing_form_fifo, allow_kind_replace=True)
@@ -786,7 +836,9 @@ def test_save_question_ids_writes_back_and_preserves_comments(tmp_path, monkeypa
 def test_setup_form_update_backfills_question_ids_then_uses_them(tmp_path, monkeypatch):
     src = store.DEF_FILES['morning']
     dst = tmp_path / 'daily_morning_def.yaml'
-    shutil.copy(src, dst)
+    # 実物は backfill・退役済みなので、backfill 前で全設問 active の yaml を作る
+    dst.write_text(re.sub(r'^    (question_id|active):.*\n', '', src.read_text(),
+                          flags=re.MULTILINE))
     monkeypatch.setitem(store.DEF_FILES, 'morning', dst)
 
     fixed_form = _build_fake_form(CONFS['morning'])  # q_text_0=comment,1=hrv,2=eda

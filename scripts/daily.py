@@ -295,6 +295,25 @@ def _with_retired_columns(df, slot, conf):
     return df[store.columns(slot, conf)]
 
 
+def carry_retired_values(df, existing, conf):
+    """退役（active: false）した設問の値を既存 CSV から引き継ぐ
+
+    fetch は毎回全回答を取り直して date ごとに行を置換するが、
+    build_dataframe は active な設問しか読まないので、退役した列は常に
+    欠測になる。そのまま置換すると、退役前に記録した値が次の fetch で
+    すべて消える。退役した設問は新しい回答を受けないので、既存 CSV が正本。
+    """
+    retired = [q['column'] for q in conf['questions'] if not q.get('active', True)]
+    if not retired or existing is None or existing.empty:
+        return df
+    prev = existing.set_index(pd.to_datetime(existing['date']))
+    dates = pd.to_datetime(df['date'])
+    for col in retired:
+        if col in prev.columns:
+            df[col] = dates.map(prev[col]).to_numpy()
+    return df
+
+
 def build_dataframe(form, responses, conf, slot):
     """回答リストを CSV スキーマの DataFrame にする
 
@@ -380,10 +399,12 @@ def cmd_fetch(args, out=None):
     responses = gforms_client.list_responses(service, conf['form_id'])
     print(f"取得: {len(responses)}件", file=sys.stderr)
 
+    existing = pd.read_csv(out_file) if out_file.exists() else None
     df = build_dataframe(form, responses, conf, slot)
+    df = carry_retired_values(df, existing, conf)
 
     # 毎回全件を取り直すので、既存行があるのに0件は取得側の故障を疑う
-    if not responses and out_file.exists() and len(pd.read_csv(out_file)) > 0:
+    if not responses and existing is not None and len(existing) > 0:
         print('警告: 既存CSVに行があるのに回答が0件。'
               'フォームの差し替えかAPIの異常を疑うこと', file=sys.stderr)
 

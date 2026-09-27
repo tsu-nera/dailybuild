@@ -85,18 +85,45 @@ questions:
     label: コメント
     column: comment
     type: text
+    question_id: 045ae0ac
   - key: hrv_rmssd
     label: 夜のHRV (RMSSD, ms)
     short: HRV
     column: hrv_rmssd
     type: number
+    active: false
+    description: 2026-09-27 退役。手入力が続かなかった（最終記録 2026-09-09）
+    question_id: 364cb3ca
   - key: eda_responses
     label: EDA responses (回)
     short: EDA
     column: eda_responses
     type: number
+    active: false
+    description: 2026-09-27 退役。手入力が続かなかった（最終記録 2026-09-09）
+    question_id: 6aabeff8
+  # 虚しさ（目的変数）と、それを動かしうる候補（満足感・達成感・つながり2軸）を
+  # 別々に測る。候補の合計で虚しさを定義すると、どれが効くのかが分からなくなる。
+  # つながりは相手で2問に分ける（1問にまとめると欠けている軸が記録に残らない）。
+  # BATD-R の「重要さ」に畳まないのは、あちらは生活領域のラベルが軸を持つが、
+  # 1日1点のここにはそれが無いため。グリッド行なので足すときは末尾に
+  - key: not_empty
+    label: 虚しさのなさ
+    short: 虚しさ
+    column: not_empty
+    type: grid
+  - key: connection_self
+    label: 過去や未来の自分とのつながり
+    short: 自分とのつながり
+    column: connection_self
+    type: grid
+  - key: connection_others
+    label: 人や社会とのつながり
+    short: 人とのつながり
+    column: connection_others
+    type: grid
 
-# グリッドの列（1〜5）。5行とも「高=良好」で揃える
+# グリッドの列（1〜5）。全行とも「高=良好」で揃える
 score:
   low: 1
   high: 5
