@@ -26,7 +26,6 @@ from lib.analytics import sleep
 from lib.analytics.nutrition_logging import load_nutrition_with_logging_mode
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 from lib.utils.private_data import ensure_dir
-from lib.utils.intraday_freshness import hr_intraday_freshness
 
 # データファイルパス
 BASE_DIR = project_root
@@ -344,12 +343,6 @@ def prepare_sleep_report_data(results):
         'heart_rate': heart_rate_data,
         'cycles': cycles_data
     }
-
-    # heart_rate_intraday.csv の鮮度（Issue #128）
-    try:
-        context['hr_intraday_notice'] = hr_intraday_freshness(HR_INTRADAY_CSV, stats['period']['end'])
-    except Exception:
-        context['hr_intraday_notice'] = None
 
     return context
 

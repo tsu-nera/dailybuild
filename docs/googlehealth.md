@@ -241,10 +241,9 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   とは事情が異なる。取得を後回しにしても損はしないが、取らない限り
   intraday 依存の分析は空欄のままになる。
 - **heart_rate_intraday に依存する分析**（Issue #128）: 以下のレポートは
-  CSV が古い/不在だと該当欄が空欄になる。body/mind/sleep の日次レポートは
-  レポート期間の終端に CSV が追いついていないとき「intraday が N 日古い
-  （最終 YYYY-MM-DD）」という警告と取得コマンドを自動で出す
-  （`src/lib/utils/intraday_freshness.py`）。追いついていれば何も出さない。
+  CSV が古い/不在だと該当欄が空欄になる。日次取得から外してあるので空欄は
+  設計どおりで、レポートは鮮度の警告を出さない（以前は出していたが、毎日の
+  警告が取得の再実行や故障報告を誘発したため削除した）。
 
   | レポート | 依存する欄 |
   |---|---|

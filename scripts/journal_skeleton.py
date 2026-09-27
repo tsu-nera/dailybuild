@@ -85,6 +85,8 @@ SPARSE_SOURCES = [
     # 「出なかった」なのか原理的に判別できないため、当日の不在を欠測として
     # 毎日出すと故障と未記録が同じ見た目になる（SPARSE_SOURCES の趣旨）
     ('bowel', 'data/bowel.csv', 'date', '排便'),
+    # 気分記録は断続で運用が成立しているので、遅れを要確認にしない
+    ('emotion', 'data/emotion.csv', 'date', '気分記録'),
 ]
 
 
@@ -630,7 +632,6 @@ PIPELINE_SOURCES = [
     ('日次記録（朝）', 'data/daily_morning.csv', 'date', 2, 'active', ''),
     ('体組成', 'data/healthplanet_innerscan.csv', 'date', 3, 'active',
      '測らない日があるのが常態'),
-    ('気分記録', 'data/emotion.csv', 'date', 3, 'active', '断続で運用が成立している'),
     ('排便記録', 'data/bowel.csv', 'date', 4, 'active', '出ない日がある'),
     ('PHQ-9', 'data/phq9.csv', 'date', 8, 'active', '週次'),
     ('Toggl', 'data/toggl/time_entries.csv', 'start', 2, 'active', ''),

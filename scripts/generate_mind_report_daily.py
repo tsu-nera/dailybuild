@@ -26,7 +26,6 @@ from lib.analytics import hr_zones
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 from lib.utils.data_loader import load_csv_with_baseline_window, determine_target_period
 from lib.utils.private_data import ensure_dir
-from lib.utils.intraday_freshness import hr_intraday_freshness
 
 BASE_DIR = project_root
 HRV_CSV = BASE_DIR / 'data/wearable/hrv.csv'
@@ -180,7 +179,7 @@ def plot_comprehensive_trend(responsiveness_data, sleep_patterns_data, save_path
     plt.close()
 
 
-def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None, period_end=None):
+def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None):
     """
     3軸メンタルレポート用のコンテキストデータを準備
 
@@ -206,14 +205,6 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
     """
     illness_alerts = detect_sustained_illness_signal(responsiveness_daily)
 
-    # heart_rate_intraday.csv の鮮度（Issue #128）
-    hr_intraday_notice = None
-    if period_end is not None:
-        try:
-            hr_intraday_notice = hr_intraday_freshness(HEART_RATE_INTRADAY_CSV, period_end)
-        except Exception:
-            hr_intraday_notice = None
-
     context = {
         'report_title': '🧠 メンタルレポート',
         'period': {
@@ -237,7 +228,6 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
         'hr_zone_meta': hr_zone_meta,
 
         # heart_rate_intraday.csv の鮮度通知
-        'hr_intraday_notice': hr_intraday_notice,
 
         # チャート
         'charts': {
@@ -248,7 +238,7 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
     return context
 
 
-def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None, show_charts=True, period_end=None):
+def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=None, show_charts=True):
     """
     マークダウンレポートを生成（Jinja2テンプレート版）
 
@@ -264,7 +254,7 @@ def generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sl
     from lib.templates.renderer import MindReportRenderer
 
     # コンテキストデータ準備
-    context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=hr_zone_meta, period_end=period_end)
+    context = prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, days, hr_zone_meta=hr_zone_meta)
     context['show_charts'] = show_charts
 
     # テンプレートレンダリング
@@ -530,7 +520,7 @@ def main():
     # レポート生成
     print()
     print('レポート生成中...')
-    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta, show_charts=not args.no_charts, period_end=target_end)
+    generate_report(output_dir, responsiveness_daily, exertion_balance_daily, sleep_patterns_daily, period_str, len(responsiveness_daily), hr_zone_meta=hr_zone_meta, show_charts=not args.no_charts)
 
     print()
     print('='*60)
