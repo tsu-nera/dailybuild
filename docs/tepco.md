@@ -1,0 +1,20 @@
+# くらしTEPCO web（電力使用量）
+
+`scripts/tepco.py fetch` が 30分ごとの使用量を `data/tepco/usage_30min.csv`
+（`date, time, kwh` の縦持ち）に蓄積する。認証と API の仕組みは
+`src/lib/tepco/client.py` の docstring を参照。
+
+## 落とし穴
+
+- **欠測は行を作らない。** 値の無いコマは API が `billingStatus: 00` で
+  `usedInfo` ごと落として返す。0kWh で埋めると未計量が実測ゼロに化ける。
+  TEPCO 側で単発のコマが欠けることもある（2026-09-30 12:30/13:00）
+- **30分値は約2年で消える。** 2026-10 時点で 2024-10 は取れて 2024-06 は
+  取れない。fetch が落ち続けると取り直せなくなる
+- **引越しで契約番号が変わる。** 取得対象は画面で選択中の契約（SPA が最初に
+  叩く billing の `contractNum`）。旧居の契約（2026-04 以前）は取得していない
+- **既定の headless では動かない。** SPA が白画面で止まり silent auth が
+  走らない。`channel='chromium'`（new headless）が必須
+- **2026-11 上旬にログイン方式が変わる**（パスキー、またはパスワード＋
+  認証コード）。保存済みセッションで silent auth が通り続けるかは未確認。
+  `NotLoggedInError` が出たら `fetch --login` で取り直す
