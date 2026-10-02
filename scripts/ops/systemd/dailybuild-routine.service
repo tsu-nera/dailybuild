@@ -1,0 +1,7 @@
+[Unit]
+Description=dailybuild 日次データ取得（取得 → private へ commit・push）
+
+[Service]
+Type=oneshot
+# 素の非対話シェルは PATH に uv を持たないので login bash で包む
+ExecStart=/bin/bash -lc '%h/repo/dailybuild/scripts/ops/scheduled-routine.sh'
