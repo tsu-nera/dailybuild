@@ -9,7 +9,7 @@ gdrive.folder_id 配下へ移動する。
 
 gforms_client.SCOPES に drive スコープを足さない。config/gforms_token.json は
 emotion / bowel / phq9 の日次 fetch が共用しており、スコープを増やすと
-非対話の daily-routine.sh が落ちうる（トークンのスコープ変更は再認可が要る）。
+非対話の daily-fetch.sh が落ちうる（トークンのスコープ変更は再認可が要る）。
 そのため独自トークンファイルを持つ。
 
 認証情報:

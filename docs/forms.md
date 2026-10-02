@@ -303,7 +303,7 @@ Issue #157 で朝・夜の2フォームに分割し、旧スクリプト名（�
   存在しないため）
 - 夜フォームの `form_id` は merge 後に対話で `evening setup-form` を実行して
   埋める。空のうちは `scripts/daily.py evening fetch` は「未作成のため
-  スキップ」と stderr に出して正常終了する（`daily-routine.sh` を毎日
+  スキップ」と stderr に出して正常終了する（`daily-fetch.sh` を毎日
   赤くしないため）
 - **Drive フォルダへの移動は `setup-form` の新規作成時のみ。** `forms.create`
   は親を指定できずマイドライブ直下に作るため、作成後に

@@ -81,23 +81,26 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 
 ## Running Scripts
 
-日次のデータ取得は `scripts/ops/daily-routine.sh` にまとめてある。1ステップ失敗しても
-後続は続行し、失敗したステップ名を出して非ゼロ終了する。
+日次のデータ取得は2層に分かれている。入口は `scripts/ops/daily-routine.sh`
+（flock → `dailybuild-private` を pull → 取得 → commit・push）、中身は
+`scripts/ops/daily-fetch.sh`（ソースごとの取得リスト＋ジャーナル骨組み）。
+1ステップ失敗しても後続は続行し、失敗したステップ名を出して非ゼロ終了する。
 
-**取得は自宅サーバ vaio だけが走らせる。** mouse（対話マシン）は `daily-routine.sh` を
-自分では走らせない（取得元が2台になると同じ CSV を両側で書き換えて merge が壊れる）。
-起動は2系統:
+**取得は自宅サーバ vaio だけが走らせる。** mouse（対話マシン）は `daily-routine.sh` も
+`daily-fetch.sh` も自分では走らせない（取得元が2台になると同じ CSV を両側で書き換えて
+merge が壊れる）。唯一の例外が TEPCO で、セッションが1時間もたず無人取得できないため
+`/weekly-review` が mouse で週1回 `tepco.py fetch` を走らせる（vaio は `data/tepco` を
+書かないので書き手は衝突しない）。vaio の起動は2系統:
 
 - `/daily-review` Step 1 が ssh で起動する（起床後にスマホが同期した睡眠・HRV を取るため）
 - vaio の systemd user timer が毎日 12:00 に起動する（review を開かない日の安全網）
 
-どちらも `scripts/ops/scheduled-routine.sh` を呼ぶ。これは `dailybuild-private` の
-pull → `daily-routine.sh` → commit・push を flock 付きで行うラッパーで、routine が
-失敗しても取れたぶんは commit・push し、終了コードは routine のものを返す。rebase が
+どちらも `daily-routine.sh` を呼ぶ。`daily-fetch.sh` が失敗しても取れたぶんは
+commit・push し、終了コードは `daily-fetch.sh` のものを返す。rebase が
 衝突したら abort して非ゼロで止まる（強制 push はしない）。手動で起動するとき:
 
 ```bash
-ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/scheduled-routine.sh --days 2"'
+ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days 2"'
 ```
 
 個別スクリプトは以下:
@@ -151,7 +154,7 @@ uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/toggl.py fetch        # Toggl Trackタイムエントリ取得
 uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（差分取得）
 uv run scripts/toggl.py push --days 2 --dry-run  # 睡眠・運動のToggl投入予定を確認（APIを叩かない）
-uv run scripts/toggl.py push --days 2   # 投入実行（daily-routine.shがfetch直後に実行）
+uv run scripts/toggl.py push --days 2   # 投入実行（daily-fetch.sh がfetch直後に実行）
 uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）
 uv run scripts/toggl.py start 読書       # プロジェクトを指定して計測開始（部分一致可）
 uv run scripts/toggl.py start 読書 -d "SICP" -t deep
@@ -174,7 +177,7 @@ uv run scripts/daily.py evening setup-form  # 夜フォーム初回作成（merg
 uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
 uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
 uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
-uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-routine.sh が実行）
+uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-fetch.sh が実行）
 uv run scripts/habitica.py fetch     # Habit / Daily の history を CSV に落とす
 uv run scripts/habitica.py show --weeks 4  # 週ごとの回数・達成（/habits-review が使う）
 uv run scripts/habitica.py show --unit month --months 3  # 月ごと（長期の傾向を見るとき）
@@ -184,13 +187,13 @@ uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等�
 uv run scripts/food.py sync-sheet    # food_master に全件を流し込む（成分表＋手動登録＋レシピ＋seed）
 uv run scripts/food.py sync-sheet --candidates  # 候補を絞る（実績上位＋レシピ＋手動登録＋seed）
 uv run scripts/food.py fetch         # シートを読んで entries.csv / daily.csv を作る
-uv run scripts/hevy.py fetch         # Hevy の export を Drive から取得（daily-routine.sh が日次で実行）
+uv run scripts/hevy.py fetch         # Hevy の export を Drive から取得（daily-fetch.sh が日次で実行）
 uv run scripts/hevy.py fetch --force # 行数が減っていても上書きする
 uv run scripts/hevy.py show          # 部位別セット数・種目別e1RM・腹囲の週次推移（既定8週）
 uv run scripts/hevy.py show --weeks 12
 
 uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）
-uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（既定は直近7日）
+uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（CSV の最終日から今日まで。週次・mouse で手動）
 uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
@@ -399,7 +402,7 @@ symlink が無い環境では `data/` `reports/` 配下が dailybuild 内の実�
 
 | 層 | 仕組み |
 |---|---|
-| 日次実行 | `daily-routine.sh` 冒頭で `data` `reports` が symlink か検査して即 exit |
+| 日次実行 | `daily-fetch.sh` 冒頭で `data` `reports` が symlink か検査して即 exit |
 | ディレクトリ作成 | `ensure_dir()` 経由にする（素の `mkdir(parents=True)` を書かない） |
 | 個別パス | `require_private_path()` で明示検証（fetch スクリプトの出力先など） |
 

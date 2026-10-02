@@ -28,7 +28,16 @@ GTDのWeekly Reviewに合わせて**週末に実施する**（土日のどちら
 `--week` `--year` は `hevy.py show` に渡らない（`--weeks N` で直近N週を出す作りで、
 特定の週を切り出せない）。過去週を指定したときは筋トレだけ直近8週の表になる。
 
-## Step 1: レポート生成
+## Step 1: データ取得とレポート生成
+
+取得は vaio だけが走らせる（TEPCO のみ例外で Step 2.9）。**ssh が失敗したとき（vaio 停止・tailnet 断）は
+ローカルで取得を代わりに走らせない。** 失敗を報告し、pull 済みのデータで続ける。
+
+```bash
+ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh"'
+git -C ~/repo/dailybuild-private pull --rebase --autostash
+uv run scripts/journal_skeleton.py --state-only   # STATE.md / metrics_daily.csv は追跡外なので mouse で作り直す
+```
 
 `--only <type>` 指定時は該当のみ実行。`--week` `--year` 指定時はそのまま渡す。
 
@@ -45,7 +54,6 @@ uv run python scripts/generate_sleep_report_daily.py --week current
 uv run python scripts/generate_mind_report_daily.py --week current
 
 # 筋トレ・腹囲（`--only` 指定時はスキップ）
-uv run scripts/hevy.py fetch
 uv run scripts/hevy.py show --weeks 8
 ```
 
@@ -54,7 +62,7 @@ uv run scripts/hevy.py show --weeks 8
 
 エラーがあれば報告する。
 
-`hevy.py fetch` が「N 日前の export」と警告したら、**アプリから export し直すよう
+ssh の出力に Hevy の「N 日前の export」警告が出たら、**アプリから export し直すよう
 促してから先へ進む**（Hevy に API は無く、export しない限り古いデータのまま回る。
 トレーニングしていないのか記録が届いていないのかは、データからは区別できない）。
 
@@ -87,7 +95,6 @@ uv run python scripts/show_targets.py --interval monthly quarterly
 変化を拾う。定義と運用の詳細は docs/forms.md の「PHQ-9（週次）」節。
 
 ```bash
-uv run scripts/phq9.py fetch
 tail -5 data/phq9.csv
 ```
 
@@ -101,6 +108,9 @@ tail -5 data/phq9.csv
 ```bash
 uv run scripts/phq9.py url
 ```
+
+回答されたら Step 1 の ssh 起動と pull をもう一度行い、`tail -5 data/phq9.csv` で取り込みを確認する
+（`--state-only` は不要）。
 
 読み方:
 
@@ -131,6 +141,17 @@ uv run python -c "import pandas as pd; d=pd.read_csv('data/daily_evening.csv',pa
   両者のずれ（要素はそこそこなのに虚しい）が見たいもの
 - `n` が3以下の週は参考値。前週差を変化と読まない
 - 数ヶ月分たまるまで、原因の推測・助言は書かない。どの要素が高く、どれが低いかの記述に留める
+
+## Step 2.9: TEPCO（mouse で実行）
+
+取得元が vaio に一本化された中で唯一の例外。セッションが1時間もたたず無人取得できないため mouse で走らせる
+（vaio は `data/tepco` を書かないので書き手は衝突しない）。既定の窓は CSV の最終日から今日まで。
+
+```bash
+uv run scripts/tepco.py fetch
+```
+
+「ログインが必要です」で落ちたら `uv run scripts/tepco.py fetch --login`（ブラウザが開くので本人がログイン）の後に再実行する。
 
 ## Step 3: AIレビュー
 
@@ -240,3 +261,11 @@ Body / Mind 側が見る。混ぜない。
 ## ジャーナルへ記録（確認不要）
 
 `journal` スキルの weekly モードで記録する。**確認は取らない。**
+
+書き終えたら `dailybuild-private` の変更を commit・push する（TEPCO の CSV と週ファイルの区間外は mouse だけが書く）。
+
+```bash
+git -C ~/repo/dailybuild-private add -A && git -C ~/repo/dailybuild-private commit -m "chore(journal): weekly review YYYY-Wxx" && git -C ~/repo/dailybuild-private push
+```
+
+push が拒否されたら `git -C ~/repo/dailybuild-private pull --rebase` してから再度 push する。

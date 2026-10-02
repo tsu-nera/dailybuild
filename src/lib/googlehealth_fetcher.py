@@ -46,7 +46,7 @@ HISTORY_BOUNDARY = dt.date(2026, 6, 1)
 #     窓を広げてもコストはほぼゼロ。
 #   - intraday 型（*_intraday）: 分刻みサンプルのためページ数が日数にほぼ
 #     線形に増える（2日で約79ページ・約57秒を実測）。現状維持で2日のまま。
-# daily-routine.sh が毎日 --days 2 の一律窓で叩いていたことが根本原因
+# daily-fetch.sh が毎日 --days 2 の一律窓で叩いていたことが根本原因
 # （実行が失敗した日は窓の外に落ち、二度と再取得されない）。rollup と
 # daily list は窓を広げてもコストが変わらないので、その分は既定を広げて
 # 部分日の取り直しを保証する。
@@ -98,7 +98,7 @@ ENDPOINTS = {
     # fetch_temperature_core docstring 参照）
     # 体温計で測って Google Health に手で記録するもので、自動計測ではない。
     # 測り忘れる日があるのが常態（通算31件、月0〜12件）なので0件をエラーにしない。
-    # allow_empty にする前は測らなかった日すべてで daily-routine.sh が非ゼロ終了し、
+    # allow_empty にする前は測らなかった日すべてで daily-fetch.sh が非ゼロ終了し、
     # 「Google Health の取得に失敗」と毎日出ていた（実際は測っていないだけ）
     'temperature_core': {
         'description': '深部体温',
@@ -155,7 +155,7 @@ ENDPOINTS = {
     # nutrition-log は個別食事ログしか持たない（日次サマリのデータ型は存在しない）。
     # nutrition.csv はログの合算で作る。water は取得元のデータ型が無いので常に空欄。
     # 食事記録は現在ほぼ行われておらず、短い窓では0件が正常状態なので allow_empty
-    # にする（0件をエラーにすると daily-routine.sh が常時失敗する）
+    # にする（0件をエラーにすると daily-fetch.sh が常時失敗する）
     'nutrition': {
         'description': '栄養（日次サマリ）',
         'date_column': 'date',

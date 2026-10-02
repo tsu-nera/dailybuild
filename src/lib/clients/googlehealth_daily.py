@@ -195,7 +195,7 @@ def fetch_spo2(creds, start_date: dt.date, end_date: dt.date) -> list[dict]:
     # 対象点は start_date-1 日のラベルを持ち、その正午〜正午の窓には
     # 「start_date-1 日の朝に終わった睡眠」（dateOfSleep = start_date-1）が
     # 重なりうる。start_date から取ると、その日だけ候補セッションが欠け、
-    # 短い窓（daily-routine.sh の --days 2）と長い窓で同じ点が別の日付に
+    # 短い窓（daily-fetch.sh の --days 2）と長い窓で同じ点が別の日付に
     # 解決してしまう（実測: 09-02 の点が --days 3 では 09-03 に解決し、
     # 既存の正しい行を1日ずらして上書きしていた）。
     sleep_rows, _ = sleep_mod.fetch_sleep_all(

@@ -1,4 +1,4 @@
-"""scheduled-routine.sh の失敗モードを守るテスト（ADR-002）。
+"""daily-routine.sh の失敗モードを守るテスト（ADR-002）。
 
 守るのは「取得したデータを失わない・他の書き手を上書きしない」の2点。
 実 private や vaio には触れず、bare repo を remote にした一時 clone で回す。
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parent.parent / 'scripts' / 'ops' / 'scheduled-routine.sh'
+SCRIPT = Path(__file__).resolve().parent.parent / 'scripts' / 'ops' / 'daily-routine.sh'
 
 pytestmark = pytest.mark.skipif(shutil.which('flock') is None, reason='flock が無い')
 
@@ -46,7 +46,7 @@ def run(private, tmp_path, marker, body):
     stub = tmp_path / 'stub.sh'
     stub.write_text(f'#!/bin/bash\ntouch {marker}\ncd {private}\n{body}\n')
     stub.chmod(0o755)
-    e = {**os.environ, 'DAILYBUILD_PRIVATE': str(private), 'DAILYBUILD_ROUTINE': str(stub)}
+    e = {**os.environ, 'DAILYBUILD_PRIVATE': str(private), 'DAILYBUILD_FETCH': str(stub)}
     return subprocess.run(['bash', str(SCRIPT)], env=e, capture_output=True, text=True)
 
 

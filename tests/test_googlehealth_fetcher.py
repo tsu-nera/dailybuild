@@ -1409,7 +1409,7 @@ def test_nutrition_allow_empty_does_not_error(data_dir, monkeypatch):
 def test_temperature_core_allow_empty_does_not_error(data_dir, monkeypatch):
     """測り忘れた日は0件が正常。period_replace 経路でも allow_empty を尊重すること
 
-    allow_empty を入れる前は、測らなかった日すべてで daily-routine.sh が
+    allow_empty を入れる前は、測らなかった日すべてで daily-fetch.sh が
     非ゼロ終了し「Google Health の取得に失敗」と毎日出ていた。実際は
     測っていないだけで、故障ではない。
     """

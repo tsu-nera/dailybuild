@@ -8,7 +8,7 @@
 
 無料版に API は無い。アプリの Export でアプリから Google Drive の
 `dailybuild/hevy` フォルダへ保存し、`scripts/hevy.py fetch` がそれを取る。
-**export しなければ何も新しくならない。** `daily-routine.sh` から日次で
+**export しなければ何も新しくならない。** `daily-fetch.sh` から日次で
 回す運用で、2日以上古い export は fetch が警告する。警告を無視して回すと
 「今週トレーニング0回」と欠測が区別できない。
 
