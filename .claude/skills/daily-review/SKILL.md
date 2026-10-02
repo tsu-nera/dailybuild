@@ -14,7 +14,7 @@ allowed-tools: Bash, Read, Glob
 
 | オプション | 説明 | デフォルト |
 |------------|------|------------|
-| `--no-fetch` | Step 1 の ssh 起動をスキップ（pull と `--state-only` は行う） | なし |
+| `--no-fetch` | Step 1 の ssh 起動をスキップ（rsync・pull・`--state-only` は行う） | なし |
 | `--fetch N` | 取得日数を指定（例: `--fetch 7` で過去7日分） | 2 |
 | `--only body\|sleep\|mind` | 指定したレポートのみ生成・レビュー | 全3種 |
 
@@ -56,19 +56,23 @@ STATE.md は生成物で git の追跡対象外。**新しい環境では存在�
 ## Step 1: データ取得
 
 取得は vaio だけが走らせる。**`--no-fetch` の場合は ssh 起動（1つ目）だけ省き、
-pull と `--state-only` は行う**（vaio の 12:00 の取得結果を受け取るため）。
+rsync・pull・`--state-only` は行う**（vaio の 12:00 の取得結果を受け取るため）。
 
 `--fetch N` が指定されている場合はNを使用する。指定がなければ `2` を使用する。
 
 ```bash
 ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days <N>"'
+rsync -a vaio:~/repo/dailybuild/logs/daily-routine/ logs/daily-routine/
 git -C ~/repo/dailybuild-private pull --rebase --autostash
 uv run scripts/journal_skeleton.py --state-only   # STATE.md / metrics_daily.csv は追跡外なので mouse で作り直す
 ```
 
+STATE.md の「最終実行」「ログの警告」は手元の `logs/` を読む。ログは vaio にしか
+書かれずリポジトリにも入らないので、rsync を省くと mouse に残った古いログが表示される。
+
 **ssh が失敗したとき（vaio 停止・tailnet 断）は、ローカルで `daily-routine.sh` / `daily-fetch.sh` を代わりに
 走らせない。** 取得元が2台になると同じ CSV を両側で書き換える。失敗を報告し、
-pull と `--state-only` だけ行って手元の既存データでレビューする。
+pull と `--state-only` だけ行って手元の既存データでレビューする（rsync も失敗するので、「最終実行」は古い日付のまま出る）。
 
 ssh の出力（routine のログ）をそのまま読む。個々の取得コマンドは `daily-fetch.sh` が持ち、
 1ステップ失敗しても後続は続行して、失敗したステップ名が最後にまとめて出る。
