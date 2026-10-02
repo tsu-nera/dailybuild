@@ -109,7 +109,7 @@ task_name, value, is_due, completed, scored_up, scored_down`）。**マージは
 同時に `data/habitica/tasks.json` へ全量スナップショットを上書き保存する
 （削除されたタスクの復元用。private 側の git 履歴が世代を持つ）。
 
-`scripts/habitica.py cron` を `daily-routine.sh` から毎日実行する。`needsCron` が
+`scripts/habitica.py cron` を `daily-fetch.sh` から毎日実行する。`needsCron` が
 立っているときだけ `POST /cron` を叩き、結果を `data/habitica/cron_log.csv` に
 1日1行で記録する（同日の再実行は上書き）。
 
@@ -127,6 +127,5 @@ cron が走るのか、人がアプリを開いて走らせたのかを後から
 `needs_cron=False` なのに `last_cron_get` が `last_cron_prev` より進んでいれば、
 こちらの POST 以外の経路で走っている。
 
-**`daily-routine.sh` は自動実行されていない**（crontab / systemd timer に登録が
-無く、`/daily-review` から呼ばれる）。したがって Habitica の分母の被覆率は
-`/daily-review` を回した日数と一致する。PC が起動していない日は取りこぼす。
+`daily-fetch.sh` は vaio の systemd timer（毎日12:00、入口は `daily-routine.sh`）と
+`/daily-review` の ssh 起動から走る。vaio が止まっていた日は cron が走らず取りこぼす。

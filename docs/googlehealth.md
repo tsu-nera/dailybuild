@@ -31,7 +31,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 - **由来は端数の有無で判別できる。** Google は `total-calories` の `kcalSum`（float）を
   そのまま入れ、Fitbit は整数を返す。再取得後は `caloriesOut` の全283行が端数あり
   （= 全て Google 由来）
-- 段差が生まれた仕組み: `daily-routine.sh` は Fitbit → Google の順に同じ CSV を書くので、
+- 段差が生まれた仕組み: `daily-fetch.sh` は Fitbit → Google の順に同じ CSV を書くので、
   取得窓（`--days`）に入った直近日は必ず Google が後勝ちし、窓から外れた過去は Fitbit 値の
   まま凍結される。この境界が毎日1日ずつ前進していた（折れ目 2026-08-25）
 - `activityCalories` / `sedentaryMinutes` は Google に対応型が無い（#82）が、**再取得しても
@@ -51,7 +51,7 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 
 `fetch_googlehealth.py --days` を省略すると、`lib.googlehealth_fetcher.ENDPOINTS` の
 `default_days` がエンドポイントごとに使われる（Issue #70/#125）。旧実装は一律 `--days 2`
-で叩いており、`daily-routine.sh` が失敗した日は取得窓の外に落ちて二度と再取得されなかった。
+で叩いており、`daily-fetch.sh` が失敗した日は取得窓の外に落ちて二度と再取得されなかった。
 コスト構造が型で違うため、窓の広さも型で分ける:
 
 - **dailyRollUp 型**（`activity` / `active_zone_minutes`）: 既定14日。

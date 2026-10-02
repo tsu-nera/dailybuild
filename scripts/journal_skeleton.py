@@ -795,10 +795,10 @@ def collect_pipeline(target: dt.date) -> list[dict]:
 
 
 def collect_last_run() -> dict | None:
-    """最後の daily-routine.sh 実行のログから、完了と失敗ステップと警告を拾う
+    """最後の daily-fetch.sh 実行のログから、完了と失敗ステップと警告を拾う
 
     ログの書式に依存するのはこの3つだけにしてある（完了マーカー・失敗行・
-    警告行）。いずれも daily-routine.sh と各スクリプトが固定文字列で出す。
+    警告行）。いずれも daily-fetch.sh と各スクリプトが固定文字列で出す。
     """
     log_dir = BASE_DIR / 'logs' / 'daily-routine'
     logs = sorted(log_dir.glob('*.log')) if log_dir.is_dir() else []

@@ -1,99 +1,60 @@
 #!/bin/bash
-# 日次のデータ取得をまとめて実行する。判断は一切せず、副作用だけを起こす。
+# 日次取得の入口（vaio 専用）。timer（毎日12:00）と /daily-review・/weekly-review の ssh 起動から呼ばれる。
 #
-# 途中で失敗しても後続を止めない（Google Health が落ちても体組成・家計簿は取りに行く）。
-# ただし黙って成功扱いにはせず、失敗したステップ名を最後にまとめて出し、
-# 非ゼロで終了する。cron から回す場合もログに残る。
+# private を pull → daily-fetch.sh → commit → pull --rebase → push の順に回す。
+# daily-fetch.sh が途中で失敗しても取れたソースのデータは正しいので、commit・push は行い、
+# 終了コードは daily-fetch.sh のものを返す。rebase が衝突したら abort して非ゼロで止まる
+# （強制 push はしない）。同じ衝突は次回も起きるので、解消は人が行う。それまでの
+# 取得はローカルに commit され続け、窓の短いソースも欠測にならない。
 #
 # Usage:
-#   scripts/ops/daily-routine.sh            # 直近2日
-#   scripts/ops/daily-routine.sh --days 7
+#   scripts/ops/daily-routine.sh --days 7   # 引数は daily-fetch.sh へそのまま渡す
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PRIVATE="${DAILYBUILD_PRIVATE:-$HOME/repo/dailybuild-private}"
+# FETCH の上書きはテストでスタブに差し替えるためだけにある
+FETCH="${DAILYBUILD_FETCH:-$REPO/scripts/ops/daily-fetch.sh}"
 
-DAYS=2
-DAYS_EXPLICIT=0
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --days) DAYS="$2"; DAYS_EXPLICIT=1; shift 2 ;;
-    *) echo "不明な引数: $1" >&2; exit 2 ;;
-  esac
-done
+# timer と ssh 起動が重なったら、後から来た方を断る
+exec 9>"$PRIVATE/.git/dailybuild-routine.lock" || exit 1
+if ! flock -n 9; then
+  echo "別の実行が進行中のため中止する" >&2
+  exit 75
+fi
 
-# data/ reports/ は dailybuild-private への symlink。未設定のまま走らせると
-# 各スクリプトが public 側にディレクトリを作り、既存データを見失う。
-for d in data reports config/private; do
-  if [ ! -L "$d" ] || [ ! -d "$d" ]; then
-    echo "エラー: $d が dailybuild-private にマウントされていません" >&2
-    echo "  ./scripts/setup_private_links.sh を実行してください" >&2
+# pull に失敗しても取得は止めない。git の問題で取得を止めると、Toggl のように
+# 窓の短いソースが欠測になる。rebase 途中の状態だけは残さない
+if ! git -C "$PRIVATE" pull --rebase; then
+  git -C "$PRIVATE" rebase --abort 2>/dev/null
+  echo "警告: private の pull --rebase に失敗。取得は続け、ローカルに commit する" >&2
+fi
+
+OUT="$(mktemp)"
+trap 'rm -f "$OUT"' EXIT
+"$FETCH" "$@" 2>&1 | tee "$OUT"
+RC=${PIPESTATUS[0]}
+
+git -C "$PRIVATE" add -A
+if ! git -C "$PRIVATE" diff --cached --quiet; then
+  MSG="data: daily routine $(date '+%Y-%m-%d %H:%M')"
+  FAILED="$(sed -n 's/^=== 失敗した取得: \(.*\) ===$/\1/p' "$OUT" | tail -n 1)"
+  [ -n "$FAILED" ] && MSG="$MSG (failed: $FAILED)"
+  if ! git -C "$PRIVATE" commit -q -m "$MSG"; then
+    echo "エラー: private の commit に失敗" >&2
     exit 1
   fi
-done
-
-LOG_DIR="logs/daily-routine"
-mkdir -p "$LOG_DIR"
-exec > >(tee -a "$LOG_DIR/$(date +%Y-%m-%d).log") 2>&1
-
-FAILED=()
-
-# 失敗しても後続を続ける。ステップ名を控えて最後に報告する
-step() {
-  local name="$1"; shift
-  echo ""
-  echo ">>> $name"
-  if ! "$@"; then
-    echo "!!! $name に失敗（後続は続行する）"
-    FAILED+=("$name")
-  fi
-}
-
-echo "=== Daily Routine (--days $DAYS) ==="
-echo "Started at $(date)"
-
-# 一律 --days 2 が根本原因だった（Issue #70/#125）: 実行が失敗した日は
-# 窓の外に落ち、二度と再取得されない。--days をこの起動時に明示された
-# ときだけ転送し、そうでなければ渡さずエンドポイントごとの既定窓
-# （lib.googlehealth_fetcher.ENDPOINTS の default_days）に委ねる。
-# Toggl は 30 req/h のクォータと push の一致件数コストがあるため対象外
-# （常に "$DAYS" を明示で渡す・既定2のまま）。
-if [ "$DAYS_EXPLICIT" -eq 1 ]; then
-  step "Google Health" uv run python scripts/fetch_googlehealth.py --days "$DAYS" --non-interactive
-else
-  step "Google Health" uv run python scripts/fetch_googlehealth.py --non-interactive
 fi
-step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
-# Hevy の export 取得。セッションの有無は Health Connect 経由で exercise.csv に
-# 入るが、部位別セット数の内訳は export にしか無い（Hevy に API は無い）
-step "Hevy"          uv run python scripts/hevy.py fetch
-step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
-step "気象"          uv run python scripts/fetch_weather.py --days 14
-step "日次記録（朝）" uv run scripts/daily.py morning fetch --non-interactive
-step "日次記録（夜）" uv run scripts/daily.py evening fetch --non-interactive
-step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
-step "PHQ-9"         uv run python scripts/phq9.py fetch --non-interactive
-step "排便記録"       uv run python scripts/bowel.py fetch --non-interactive
-step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
-step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
-# 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
-step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
-# 30分値は約2年で消えるので、落ちた日は既定7日の窓が埋め直す
-step "TEPCO"         uv run python scripts/tepco.py fetch
-# Habitica の日付をまたぐ処理（cron）を確定させる。Daily の未完了はこれでしか
-# history に残らないので、走らせない日は「未達」でなく「欠測」になる
-step "Habitica"     uv run python scripts/habitica.py cron
 
-# 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
-# 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、
-# ここが書くのは skeleton マーカーの内側だけ
-step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
-
-echo ""
-echo "Finished at $(date)"
-
-if [ ${#FAILED[@]} -gt 0 ]; then
-  echo "=== 失敗した取得: ${FAILED[*]} ==="
+# 差分が無くても、前回の衝突で push できなかった commit が残りうるので毎回 push する
+if ! git -C "$PRIVATE" pull --rebase; then
+  git -C "$PRIVATE" rebase --abort 2>/dev/null
+  echo "エラー: rebase が衝突したため中断した。ローカル commit は残してある（強制 push はしない）" >&2
+  exit 1
+fi
+if ! git -C "$PRIVATE" push; then
+  echo "エラー: private の push に失敗" >&2
   exit 1
 fi
 
-echo "=== Daily Routine Complete ==="
+exit "$RC"

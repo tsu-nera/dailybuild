@@ -393,7 +393,7 @@ def cmd_fetch(args, out=None):
 
     if not conf.get('form_id'):
         # 夜フォームは merge 後に対話で作成する運用（Issue #157）。form_id が
-        # 空のうちに daily-routine.sh から毎日呼ばれても、失敗し続けて
+        # 空のうちに daily-fetch.sh から毎日呼ばれても、失敗し続けて
         # ステップが赤く出るのを避けるため正常終了する
         print(f'{slot}: form_id が未設定のためスキップ（{store.DEF_FILES[slot]}。'
               'setup-form で作成すること）', file=sys.stderr)

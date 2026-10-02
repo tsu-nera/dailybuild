@@ -11,7 +11,7 @@ Usage:
     python scripts/hevy.py show            # 週次サマリ（既定 8週）を stdout へ
     python scripts/hevy.py show --weeks 12
 
-daily-routine.sh から日次で fetch する運用。export を忘れると古い CSV が黙って
+daily-fetch.sh から日次で fetch する運用。export を忘れると古い CSV が黙って
 残り「今週トレーニング0回」に見えるため、Drive 側のファイルが古ければ警告する。
 """
 

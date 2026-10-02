@@ -61,16 +61,16 @@ pull と `--state-only` は行う**（vaio の 12:00 の取得結果を受け取
 `--fetch N` が指定されている場合はNを使用する。指定がなければ `2` を使用する。
 
 ```bash
-ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/scheduled-routine.sh --days <N>"'
+ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days <N>"'
 git -C ~/repo/dailybuild-private pull --rebase --autostash
 uv run scripts/journal_skeleton.py --state-only   # STATE.md / metrics_daily.csv は追跡外なので mouse で作り直す
 ```
 
-**ssh が失敗したとき（vaio 停止・tailnet 断）は、ローカルで `daily-routine.sh` を代わりに
+**ssh が失敗したとき（vaio 停止・tailnet 断）は、ローカルで `daily-routine.sh` / `daily-fetch.sh` を代わりに
 走らせない。** 取得元が2台になると同じ CSV を両側で書き換える。失敗を報告し、
 pull と `--state-only` だけ行って手元の既存データでレビューする。
 
-ssh の出力（routine のログ）をそのまま読む。個々の取得コマンドは `daily-routine.sh` が持ち、
+ssh の出力（routine のログ）をそのまま読む。個々の取得コマンドは `daily-fetch.sh` が持ち、
 1ステップ失敗しても後続は続行して、失敗したステップ名が最後にまとめて出る。
 
 **報告してよい失敗・警告は、Step 3 で読む入力（レポート3種・日次記録・気分記録）を
