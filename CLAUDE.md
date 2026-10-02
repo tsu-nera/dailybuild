@@ -81,9 +81,26 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 
 ## Running Scripts
 
-日次のデータ取得は `scripts/ops/daily-routine.sh` にまとめてある（`/daily-review`
-スキルの Step 1 がこれを呼ぶ）。1ステップ失敗しても後続は続行し、
-失敗したステップ名を出して非ゼロ終了する。個別スクリプトは以下:
+日次のデータ取得は `scripts/ops/daily-routine.sh` にまとめてある。1ステップ失敗しても
+後続は続行し、失敗したステップ名を出して非ゼロ終了する。
+
+**取得は自宅サーバ vaio だけが走らせる。** mouse（対話マシン）は `daily-routine.sh` を
+自分では走らせない（取得元が2台になると同じ CSV を両側で書き換えて merge が壊れる）。
+起動は2系統:
+
+- `/daily-review` Step 1 が ssh で起動する（起床後にスマホが同期した睡眠・HRV を取るため）
+- vaio の systemd user timer が毎日 12:00 に起動する（review を開かない日の安全網）
+
+どちらも `scripts/ops/scheduled-routine.sh` を呼ぶ。これは `dailybuild-private` の
+pull → `daily-routine.sh` → commit・push を flock 付きで行うラッパーで、routine が
+失敗しても取れたぶんは commit・push し、終了コードは routine のものを返す。rebase が
+衝突したら abort して非ゼロで止まる（強制 push はしない）。手動で起動するとき:
+
+```bash
+ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/scheduled-routine.sh --days 2"'
+```
+
+個別スクリプトは以下:
 
 最後のステップだけは取得ではなく書き込みで、`journal_skeleton.py` がその日の
 数値・7日平均の変化・欠測を `reports/journal/YYYY-Wxx.md` へ追記する。
@@ -357,6 +374,21 @@ git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-priva
 
 **git worktree では symlink が引き継がれない。** worktree を作ったら
 `setup_private_links.sh` を実行すること。
+
+#### vaio（取得専用サーバ）
+
+```bash
+git clone git@github.com:tsu-nera/dailybuild.git ~/repo/dailybuild
+git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-private
+cd ~/repo/dailybuild && uv sync && ./scripts/setup_private_links.sh
+# config/*.json の認証情報を mouse からコピー（gitignore 済みなので clone では来ない）
+uv run playwright install chromium
+uv run scripts/mf.py fetch --login      # GUI セッション（VNC 可）で一度だけ
+uv run scripts/tepco.py fetch --login   # 同上。new headless の chromium が要る（docs/tepco.md）
+loginctl enable-linger tsu-nera
+systemctl --user link ~/repo/dailybuild/scripts/ops/systemd/dailybuild-routine.{service,timer}
+systemctl --user enable --now dailybuild-routine.timer
+```
 
 ### マウント忘れの検出
 

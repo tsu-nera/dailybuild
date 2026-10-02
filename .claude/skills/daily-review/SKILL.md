@@ -14,13 +14,13 @@ allowed-tools: Bash, Read, Glob
 
 | オプション | 説明 | デフォルト |
 |------------|------|------------|
-| `--no-fetch` | Step 1（データ取得）をスキップ | なし |
+| `--no-fetch` | Step 1 の ssh 起動をスキップ（pull と `--state-only` は行う） | なし |
 | `--fetch N` | 取得日数を指定（例: `--fetch 7` で過去7日分） | 2 |
 | `--only body\|sleep\|mind` | 指定したレポートのみ生成・レビュー | 全3種 |
 
 例:
 - `/daily-review` → 全3ステップ実行
-- `/daily-review --no-fetch` → データ取得スキップ、レポート生成→レビュー
+- `/daily-review --no-fetch` → vaio の起動はスキップ（pull と STATE 再生成は行う）、レポート生成→レビュー
 - `/daily-review --fetch 7` → 過去7日分取得してから全レポート生成
 - `/daily-review --only body` → 体組成レポートのみ生成・レビュー
 - `/daily-review --no-fetch --only sleep` → 睡眠レポートのみ生成・レビュー
@@ -55,17 +55,23 @@ STATE.md は生成物で git の追跡対象外。**新しい環境では存在�
 
 ## Step 1: データ取得
 
-**`--no-fetch` が指定されている場合はこのステップをスキップする。**
+取得は vaio だけが走らせる。**`--no-fetch` の場合は ssh 起動（1つ目）だけ省き、
+pull と `--state-only` は行う**（vaio の 12:00 の取得結果を受け取るため）。
 
 `--fetch N` が指定されている場合はNを使用する。指定がなければ `2` を使用する。
 
 ```bash
-cd /home/tsu-nera/repo/dailybuild
-./scripts/ops/daily-routine.sh --days <N>
+ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/scheduled-routine.sh --days <N>"'
+git -C ~/repo/dailybuild-private pull --rebase --autostash
+uv run scripts/journal_skeleton.py --state-only   # STATE.md / metrics_daily.csv は追跡外なので mouse で作り直す
 ```
 
-個々の取得コマンドはこのスクリプトが持つ。1ステップ失敗しても後続は続行し、
-失敗したステップ名が最後にまとめて出て非ゼロ終了する。
+**ssh が失敗したとき（vaio 停止・tailnet 断）は、ローカルで `daily-routine.sh` を代わりに
+走らせない。** 取得元が2台になると同じ CSV を両側で書き換える。失敗を報告し、
+pull と `--state-only` だけ行って手元の既存データでレビューする。
+
+ssh の出力（routine のログ）をそのまま読む。個々の取得コマンドは `daily-routine.sh` が持ち、
+1ステップ失敗しても後続は続行して、失敗したステップ名が最後にまとめて出る。
 
 **報告してよい失敗・警告は、Step 3 で読む入力（レポート3種・日次記録・気分記録）を
 欠けさせるものだけ**。それ以外は、スクリプトやパイプライン表に出ていても末尾を含めて触れない。
@@ -105,13 +111,6 @@ uv run python scripts/generate_mind_report_daily.py --days 14 --no-charts
 ```bash
 uv run scripts/daily.py morning show --days 7
 uv run scripts/emotion.py show --days 7
-```
-
-`--no-fetch` で来た場合は STATE.md と骨組みが前日のままなので、自前で更新してから
-Step 0 の2ファイルを読み直す:
-
-```bash
-uv run scripts/journal_skeleton.py     # 冪等。既存の考察は保持される
 ```
 
 STATE.md の「直近7日 / 前7日 / 変化」列は機械が同じ式で毎日出すので、レポートの
@@ -233,3 +232,12 @@ uv run python scripts/show_targets.py --interval weekly
 `journal` スキルの daily モードで、当日エントリの `review:` 区間・`ACTIONS.md`・索引を更新する。**「記録しますか?」と聞かず、レビューを出したらそのまま書く。**（当週の Weekly Summary は週が完了するまで書かない）
 
 その後の会話で深掘りした内容は Discussion に追記する（区間外なので上書きされない）。
+
+書き終えたら `dailybuild-private` の変更を commit・push する。週ファイルは vaio が
+skeleton 区間、mouse が区間外を書くので、mouse が push しないと次の pull で衝突する。
+
+```bash
+git -C ~/repo/dailybuild-private add -A && git -C ~/repo/dailybuild-private commit -m "chore(journal): daily review YYYY-MM-DD" && git -C ~/repo/dailybuild-private push
+```
+
+push が拒否されたら `git -C ~/repo/dailybuild-private pull --rebase` してから再度 push する。

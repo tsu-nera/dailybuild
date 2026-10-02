@@ -1,0 +1,9 @@
+[Unit]
+Description=dailybuild 日次データ取得（12:00。review を開かない日の安全網）
+
+[Timer]
+OnCalendar=*-*-* 12:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
