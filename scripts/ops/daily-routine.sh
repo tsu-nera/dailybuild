@@ -77,6 +77,8 @@ step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
 step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
+# 30分値は約2年で消えるので、落ちた日は既定7日の窓が埋め直す
+step "TEPCO"         uv run python scripts/tepco.py fetch
 # Habitica の日付をまたぐ処理（cron）を確定させる。Daily の未完了はこれでしか
 # history に残らないので、走らせない日は「未達」でなく「欠測」になる
 step "Habitica"     uv run python scripts/habitica.py cron

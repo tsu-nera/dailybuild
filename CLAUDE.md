@@ -172,6 +172,10 @@ uv run scripts/hevy.py fetch --force # 行数が減っていても上書きす�
 uv run scripts/hevy.py show          # 部位別セット数・種目別e1RM・腹囲の週次推移（既定8週）
 uv run scripts/hevy.py show --weeks 12
 
+uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）
+uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（既定は直近7日）
+uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
+
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
 uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
 uv run scripts/mf.py fetch --year 2025  # 指定年を丸ごと取り直す
@@ -237,6 +241,7 @@ stdout）。
 | `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / exercise / activity / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。exercise は platform 重複あり。intraday の steps は4系統同居で素の合算は3.6倍。activity の Fitbit→Google 段差は caloriesOut だけ（steps/distance/*ActiveMinutesは折れ目なし） |
 | `src/lib/exercise_source.py` / 運動系レポート（body / mind）を変更するとき | `data/googlehealth/exercise.csv` が正本。`data/wearable/activity_logs.csv`（Fitbit Web API 廃止で更新停止）はアーカイブとして凍結し統合しない（id空間・distance単位・activeZoneMinutes構造が別物）。platform 重複解決（優先度・閾値）は `exercise_source.py` のモジュール定数を push とレポートで共有する |
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
+| `scripts/tepco.py` を変更するとき | [docs/tepco.md](docs/tepco.md) — 欠測コマは0でなく行を作らない。30分値は約2年で消える。既定 headless では動かない |
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
@@ -271,6 +276,7 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `healthplanet_creds.json` - HealthPlanet API（login_id, password必須）
 - `toggl_creds.json` - Toggl Track API（api_token必須）
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
+- `tepco_state.json` - くらしTEPCO web のブラウザセッション（`tepco.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
