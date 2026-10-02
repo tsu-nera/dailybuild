@@ -88,9 +88,8 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 
 **取得は自宅サーバ vaio だけが走らせる。** mouse（対話マシン）は `daily-routine.sh` も
 `daily-fetch.sh` も自分では走らせない（取得元が2台になると同じ CSV を両側で書き換えて
-merge が壊れる）。唯一の例外が TEPCO で、セッションが1時間もたず無人取得できないため
-`/weekly-review` が mouse で週1回 `tepco.py fetch` を走らせる（vaio は `data/tepco` を
-書かないので書き手は衝突しない）。vaio の起動は2系統:
+merge が壊れる）。TEPCO は無人取得できないので日次から外してあり、取得自体を停止中
+（[docs/tepco.md](docs/tepco.md)）。vaio の起動は2系統:
 
 - `/daily-review` Step 1 が ssh で起動する（起床後にスマホが同期した睡眠・HRV を取るため）
 - vaio の systemd user timer が毎日 12:00 に起動する（review を開かない日の安全網）
@@ -193,7 +192,7 @@ uv run scripts/hevy.py show          # 部位別セット数・種目別e1RM・�
 uv run scripts/hevy.py show --weeks 12
 
 uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）
-uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（CSV の最終日から今日まで。週次・mouse で手動）
+uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（CSV の最終日から今日まで。現在は停止中）
 uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
@@ -386,8 +385,7 @@ git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-priva
 cd ~/repo/dailybuild && uv sync && ./scripts/setup_private_links.sh
 # config/*.json の認証情報を mouse からコピー（gitignore 済みなので clone では来ない）
 uv run playwright install chromium
-uv run scripts/mf.py fetch --login      # GUI セッション（VNC 可）で一度だけ
-uv run scripts/tepco.py fetch --login   # 同上。new headless の chromium が要る（docs/tepco.md）
+uv run scripts/mf.py fetch --login      # GUI セッション（VNC 可）で一度だけ（TEPCO は取得停止中なので不要）
 loginctl enable-linger tsu-nera
 systemctl --user link ~/repo/dailybuild/scripts/ops/systemd/dailybuild-routine.{service,timer}
 systemctl --user enable --now dailybuild-routine.timer

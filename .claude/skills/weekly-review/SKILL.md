@@ -30,7 +30,7 @@ GTDのWeekly Reviewに合わせて**週末に実施する**（土日のどちら
 
 ## Step 1: データ取得とレポート生成
 
-取得は vaio だけが走らせる（TEPCO のみ例外で Step 2.9）。**ssh が失敗したとき（vaio 停止・tailnet 断）は
+取得は vaio だけが走らせる。**ssh が失敗したとき（vaio 停止・tailnet 断）は
 ローカルで取得を代わりに走らせない。** 失敗を報告し、pull 済みのデータで続ける。
 
 ```bash
@@ -142,17 +142,6 @@ uv run python -c "import pandas as pd; d=pd.read_csv('data/daily_evening.csv',pa
 - `n` が3以下の週は参考値。前週差を変化と読まない
 - 数ヶ月分たまるまで、原因の推測・助言は書かない。どの要素が高く、どれが低いかの記述に留める
 
-## Step 2.9: TEPCO（mouse で実行）
-
-取得元が vaio に一本化された中で唯一の例外。セッションが1時間もたたず無人取得できないため mouse で走らせる
-（vaio は `data/tepco` を書かないので書き手は衝突しない）。既定の窓は CSV の最終日から今日まで。
-
-```bash
-uv run scripts/tepco.py fetch
-```
-
-「ログインが必要です」で落ちたら `uv run scripts/tepco.py fetch --login`（ブラウザが開くので本人がログイン）の後に再実行する。
-
 ## Step 3: AIレビュー
 
 生成された3つのREPORT.md と `hevy.py show` の出力（量的データ） + Step 2 のdaily journal（定性的データ）を統合してレビューする。
@@ -262,7 +251,7 @@ Body / Mind 側が見る。混ぜない。
 
 `journal` スキルの weekly モードで記録する。**確認は取らない。**
 
-書き終えたら `dailybuild-private` の変更を commit・push する（TEPCO の CSV と週ファイルの区間外は mouse だけが書く）。
+書き終えたら `dailybuild-private` の変更を commit・push する（週ファイルの区間外は mouse だけが書く）。
 
 ```bash
 git -C ~/repo/dailybuild-private add -A && git -C ~/repo/dailybuild-private commit -m "chore(journal): weekly review YYYY-Wxx" && git -C ~/repo/dailybuild-private push
