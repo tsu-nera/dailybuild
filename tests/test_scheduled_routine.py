@@ -89,3 +89,22 @@ def test_rebase衝突では強制pushせずabortする(env):
     gitdir = private / '.git'
     assert not (gitdir / 'rebase-merge').exists()
     assert not (gitdir / 'rebase-apply').exists()
+
+
+def test_衝突が残ったままの次回も取得してローカルにcommitする(env):
+    remote, private, marker, tmp = env
+    other = clone(remote, tmp / 'other')
+    (other / 'data.csv').write_text('theirs\n')
+    git(other, 'commit', '-q', '-am', 'other')
+    git(other, 'push', '-q', 'origin', 'HEAD:main')
+    # 前回の衝突で push できなかった commit が残っている状態
+    (private / 'data.csv').write_text('mine\n')
+    git(private, 'commit', '-q', '-am', 'stuck')
+    r = run(private, tmp, marker, 'echo fetched > new.csv')
+    assert r.returncode != 0
+    assert marker.exists()
+    assert (private / 'new.csv').exists()
+    assert git(private, 'status', '--porcelain') == ''
+    gitdir = private / '.git'
+    assert not (gitdir / 'rebase-merge').exists()
+    assert not (gitdir / 'rebase-apply').exists()

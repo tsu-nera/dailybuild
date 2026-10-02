@@ -4,7 +4,8 @@
 # private を pull → daily-routine.sh → commit → pull --rebase → push の順に回す。
 # routine が途中で失敗しても取れたソースのデータは正しいので、commit・push は行い、
 # 終了コードは routine のものを返す。rebase が衝突したら abort して非ゼロで止まる
-# （ローカル commit は残り、次回の実行で push が再試行される。強制 push はしない）。
+# （強制 push はしない）。同じ衝突は次回も起きるので、解消は人が行う。それまでの
+# 取得はローカルに commit され続け、窓の短いソースも欠測にならない。
 #
 # Usage:
 #   scripts/ops/scheduled-routine.sh --days 7   # 引数は daily-routine.sh へそのまま渡す
@@ -22,10 +23,11 @@ if ! flock -n 9; then
   exit 75
 fi
 
-# 取得は diverged な tree の上に重ねない
+# pull に失敗しても取得は止めない。git の問題で取得を止めると、Toggl のように
+# 窓の短いソースが欠測になる。rebase 途中の状態だけは残さない
 if ! git -C "$PRIVATE" pull --rebase; then
-  echo "エラー: private の pull --rebase に失敗。取得せずに中止する" >&2
-  exit 1
+  git -C "$PRIVATE" rebase --abort 2>/dev/null
+  echo "警告: private の pull --rebase に失敗。取得は続け、ローカルに commit する" >&2
 fi
 
 OUT="$(mktemp)"
