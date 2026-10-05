@@ -8,27 +8,17 @@
 
 import json
 import logging
-import os
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
+
+from lib.utils.env import MissingEnvError, require_env
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = 'https://habitica.com/api/v3'
 APP_NAME = 'dailybuild'
 MAX_RETRY_WAIT = 90.0
-
-# 認証情報は repo の外に置く。gtd / titan からも同じ規則で参照するため
-# （gsheets_client が ~/.config/gcp/gdrive-creds.json を見るのと同じ形）。
-# public repo に置かないこと自体が目的でもある
-DEFAULT_CREDS = Path.home() / '.config' / 'habitica' / 'creds.json'
-
-
-def creds_path() -> Path:
-    env = os.environ.get('HABITICA_CREDS')
-    return Path(env) if env else DEFAULT_CREDS
 
 
 class HabiticaError(RuntimeError):
@@ -46,18 +36,14 @@ class HabiticaClient:
         }
 
     @classmethod
-    def from_config(cls, path: Path) -> 'HabiticaClient':
-        if not path.exists():
-            raise HabiticaError(
-                f"認証情報がありません: {path}\n"
-                "https://habitica.com/user/settings/api の User ID と API Token を\n"
-                '{"user_id": "...", "api_token": "..."} の形で置いてください。'
-            )
-        creds = json.loads(path.read_text())
-        missing = [k for k in ('user_id', 'api_token') if not creds.get(k)]
-        if missing:
-            raise HabiticaError(f"{path} に {', '.join(missing)} がありません")
-        return cls(creds['user_id'], creds['api_token'])
+    def from_env(cls, **env_kwargs) -> 'HabiticaClient':
+        """.env の HABITICA_USER_ID / HABITICA_API_TOKEN から作る（env_kwargs はテスト用）"""
+        hint = 'https://habitica.com/user/settings/api の User ID と API Token'
+        try:
+            return cls(require_env('HABITICA_USER_ID', hint=hint, **env_kwargs),
+                       require_env('HABITICA_API_TOKEN', hint=hint, **env_kwargs))
+        except MissingEnvError as exc:
+            raise HabiticaError(str(exc)) from exc
 
     def request(self, method: str, path: str, body: dict | None = None) -> dict:
         """API を叩いて data 部を返す。429 は Retry-After に従って1度だけ待つ。"""

@@ -11,20 +11,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import argparse
-import json
 import pandas as pd
 from lib.clients import healthplanet_unofficial as hp
 from lib.utils import csv_utils
+from lib.utils.env import require_env
 
 BASE_DIR = Path(__file__).parent.parent
-CREDS_FILE = BASE_DIR / 'config/healthplanet_creds.json'
 OUT_FILE = BASE_DIR / 'data/healthplanet_innerscan.csv'
 BP_OUT_FILE = BASE_DIR / 'data/healthplanet_bp.csv'
 
 
-def load_creds():
-    with open(CREDS_FILE, 'r') as f:
-        return json.load(f)
+def load_creds() -> tuple[str, str]:
+    """HealthPlanet のログイン ID とパスワード（.env）"""
+    return require_env('HEALTHPLANET_LOGIN_ID'), require_env('HEALTHPLANET_PASSWORD')
 
 
 def main():
@@ -41,10 +40,10 @@ def main():
     if args.days is None:
         args.days = 60
 
-    creds = load_creds()
+    login_id, password = load_creds()
 
     print("HealthPlanetにログイン中...")
-    session = hp.create_login_session(creds['login_id'], creds['password'])
+    session = hp.create_login_session(login_id, password)
 
     print("体組成計データを取得中...")
     save_records(hp.get_innerscan_data(session, days=args.days, full=args.full),

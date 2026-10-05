@@ -29,11 +29,10 @@ import logging
 import pandas as pd
 import yaml
 
-from lib.clients.habitica_client import HabiticaClient, HabiticaError, creds_path
+from lib.clients.habitica_client import HabiticaClient, HabiticaError
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
-CREDS_FILE = creds_path()
 CRON_LOG = BASE_DIR / 'data' / 'habitica' / 'cron_log.csv'
 HISTORY_CSV = BASE_DIR / 'data' / 'habitica' / 'history.csv'
 TASKS_JSON = BASE_DIR / 'data' / 'habitica' / 'tasks.json'
@@ -120,7 +119,7 @@ def run_cron(client: HabiticaClient) -> dict:
 
 def cmd_cron(_args) -> int:
     require_private_path(CRON_LOG)
-    client = HabiticaClient.from_config(CREDS_FILE)
+    client = HabiticaClient.from_env()
     row = run_cron(client)
 
     if row['cron_posted']:
@@ -253,7 +252,7 @@ def cmd_fetch(_args) -> int:
     require_private_path(HISTORY_CSV)
     require_private_path(TASKS_JSON)
     require_private_path(HABITS_DAILY_CSV)
-    client = HabiticaClient.from_config(CREDS_FILE)
+    client = HabiticaClient.from_env()
 
     old = load_history()
     merged, tasks, new = fetch_history(client)
@@ -617,7 +616,7 @@ def cmd_show(args) -> int:
 
 
 def cmd_status(_args) -> int:
-    client = HabiticaClient.from_config(CREDS_FILE)
+    client = HabiticaClient.from_env()
     user = client.get_user()
     stats = user.get('stats', {})
     prefs = user.get('preferences', {})

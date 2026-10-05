@@ -296,8 +296,6 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 ## Configuration
 
 認証情報は`config/`ディレクトリにJSONファイルとして配置:
-- `healthplanet_creds.json` - HealthPlanet API（login_id, password必須）
-- `toggl_creds.json` - Toggl Track API（api_token必須）
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
 - `tepco_state.json` - くらしTEPCO web のブラウザセッション（`tepco.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
@@ -309,8 +307,8 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 
 **新しい API キー・token は `config/*.json` でなくリポジトリ直下の `.env` に置く**（他プロジェクトと同じ
 python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは `lib.utils.env` の
-`get_env` / `require_env` に統一し、client ごとに読み込み処理を書かない。現状 `.env` を読むのは Home Assistant
-（`HA_URL` / `HA_TOKEN`）だけで、上の `*_creds.json` は移行前のもの。OAuth の token・ブラウザ
+`get_env` / `require_env` に統一し、client ごとに読み込み処理を書かない。キーは `.env.example` が一覧
+（Home Assistant / Toggl / HealthPlanet / Habitica）。`tuya_creds.json` は Tuya 削除（#196）まで残す。OAuth の token・ブラウザ
 セッション・Google 配布の JSON は機械が書く状態なのでファイルのまま `config/` に置く。
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
@@ -374,7 +372,7 @@ cd scripts/gas && clasp push   # .clasp.json の scriptId へ反映
 
 **設定はデータと違い、既定は public 側（`config/` 直下）。** private へ回すのは
 `config/private/habits.yaml` のように**設定の中身そのものが非公開**なとき
-（習慣名は本人の生活と信条をそのまま含む）。認証情報は `config/*.json` として
+（習慣名は本人の生活と信条をそのまま含む）。認証情報は `.env` と `config/*.json` として
 `.gitignore` 済みなので、private へ移す必要はない。
 
 ### セットアップ（新マシン・worktree）
@@ -393,7 +391,7 @@ git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-priva
 git clone git@github.com:tsu-nera/dailybuild.git ~/repo/dailybuild
 git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-private
 cd ~/repo/dailybuild && uv sync && ./scripts/setup_private_links.sh
-# config/*.json の認証情報を mouse からコピー（gitignore 済みなので clone では来ない）
+# .env と config/*.json（OAuth token・セッション）を mouse からコピー（gitignore 済みなので clone では来ない）
 uv run playwright install chromium
 uv run scripts/mf.py fetch --login      # GUI セッション（VNC 可）で一度だけ（TEPCO は取得停止中なので不要）
 loginctl enable-linger tsu-nera
