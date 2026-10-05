@@ -1,0 +1,7 @@
+# Home Assistant から5分値を取得する statistic_id（scripts/fetch_homeassistant.py）
+# センサーを増やすときは HA に入れてここへ1行足す。dailybuild 側のコードは触らない。
+statistic_ids:
+  - sensor.remo_nature_remo_remo_temperature   # 室温 (°C)
+  - sensor.remo_nature_remo_remo_humidity      # 湿度 (%)
+  # 照度は単位が空。Remo のセンサー相対値であって lux ではない（lux と書かない）
+  - sensor.remo_nature_remo_remo_illuminance

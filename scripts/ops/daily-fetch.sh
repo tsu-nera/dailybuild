@@ -70,6 +70,7 @@ step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 step "Hevy"          uv run python scripts/hevy.py fetch
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
+step "Home Assistant" uv run python scripts/fetch_homeassistant.py
 step "日次記録（朝）" uv run scripts/daily.py morning fetch --non-interactive
 step "日次記録（夜）" uv run scripts/daily.py evening fetch --non-interactive
 step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
