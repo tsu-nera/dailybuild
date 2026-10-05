@@ -269,7 +269,7 @@ def test_cmd_fetchはHABITS_DAILY_CSVをreports配下に書きdata配下では�
     monkeypatch.setattr(habitica, 'load_config', lambda: {'habits': ROSTER})
 
     fake_client = FakeFetchClient(TASKS)
-    monkeypatch.setattr(habitica.HabiticaClient, 'from_config', staticmethod(lambda _p: fake_client))
+    monkeypatch.setattr(habitica.HabiticaClient, 'from_env', staticmethod(lambda: fake_client))
 
     rc = habitica.cmd_fetch(None)
     assert rc == 0

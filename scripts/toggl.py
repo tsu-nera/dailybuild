@@ -37,7 +37,6 @@ show は既定では API を一切叩かないので fetch のレートリミッ
 
 import argparse
 import datetime as dt
-import json
 import logging
 import sys
 import webbrowser
@@ -54,25 +53,23 @@ from lib.toggl import sources as toggl_sources
 from lib.toggl import store
 from lib.toggl import render
 from lib.toggl import timer as toggl_timer
+from lib.utils.env import MissingEnvError, require_env
 from lib.utils.report_args import filter_dataframe_by_period, parse_period_args
 
 BASE_DIR = Path(__file__).parent.parent
-CREDS_FILE = BASE_DIR / 'config' / 'toggl_creds.json'
-
 # --update で CSV の最終日から遡って取り直す日数。
 # 過去日のエントリを後から追加・編集することがあるため、最終日ちょうどではなく
 # 少し重ねて取る（マージは id で keep='last' なので編集は上書きされる）
 UPDATE_OVERLAP_DAYS = 2
 
 
-def load_creds(out: IO[str]) -> dict:
-    if not CREDS_FILE.exists():
-        print(f"⚠️ 認証情報ファイルが見つかりません: {CREDS_FILE}", file=out)
-        print("以下の形式で作成してください:", file=out)
-        print('  { "api_token": "..." }', file=out)
+def load_api_token(out: IO[str]) -> str:
+    try:
+        return require_env('TOGGL_API_TOKEN',
+                           hint='https://track.toggl.com/profile の API Token')
+    except MissingEnvError as exc:
+        print(f"⚠️ {exc}", file=out)
         sys.exit(1)
-    with open(CREDS_FILE, 'r') as f:
-        return json.load(f)
 
 
 def resolve_period(args, out: IO[str]) -> tuple[dt.date, dt.date]:
@@ -100,14 +97,14 @@ def run_fetch(args, out: IO[str]) -> None:
     # toggl_client がクォータ残量を logger.info で出す。設定しないと握り潰される
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=out)
 
-    creds = load_creds(out)
+    api_token = load_api_token(out)
 
     start, end = resolve_period(args, out)
     print(f"Togglタイムエントリ取得: {start} ～ {end}", file=out)
 
     tz = toggl_push.load_timezone()
-    entries = toggl_client.fetch_time_entries(creds['api_token'], start, end, tz)
-    projects = toggl_client.fetch_projects(creds['api_token'])
+    entries = toggl_client.fetch_time_entries(api_token, start, end, tz)
+    projects = toggl_client.fetch_projects(api_token)
 
     # 取得できた時点で窓を記録する。0件でも「その期間は取りに行った」は事実で、
     # push の削除検出はこの記録だけを根拠にする（CSV の min/max では代用不可）
@@ -273,8 +270,7 @@ def run_push(args, out: IO[str]) -> None:
 
     api_token = None
     if not args.dry_run:
-        creds = load_creds(out)
-        api_token = creds['api_token']
+        api_token = load_api_token(out)
 
     result = toggl_push.push_intervals(
         intervals=intervals,
@@ -349,7 +345,7 @@ def cmd_start(args) -> None:
     # 進捗・クォータ残量は stderr。stdout には結果の1行だけを出す
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
-    api_token = load_creds(sys.stderr)['api_token']
+    api_token = load_api_token(sys.stderr)
 
     workspace_id, projects, from_cache = load_projects_for_timer(
         api_token, sys.stderr, refresh=args.refresh_projects)
@@ -392,7 +388,7 @@ def cmd_start(args) -> None:
 def cmd_stop(args) -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
-    api_token = load_creds(sys.stderr)['api_token']
+    api_token = load_api_token(sys.stderr)
 
     entry = toggl_client.fetch_current_entry(api_token)
     if entry is None:
@@ -418,7 +414,7 @@ def cmd_stop(args) -> None:
 def cmd_current(args) -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
-    api_token = load_creds(sys.stderr)['api_token']
+    api_token = load_api_token(sys.stderr)
 
     entry = toggl_client.fetch_current_entry(api_token)
     if entry is None:
@@ -436,7 +432,7 @@ def cmd_projects(args) -> None:
 
     cached = toggl_timer.load_project_cache()
     if args.refresh or cached is None:
-        api_token = load_creds(sys.stderr)['api_token']
+        api_token = load_api_token(sys.stderr)
         _, projects, _ = load_projects_for_timer(api_token, sys.stderr, refresh=True)
     else:
         projects = cached[1]

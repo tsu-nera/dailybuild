@@ -2,10 +2,11 @@
 
 行動の実行記録を持たせる先。dailybuild が「結果指標（不随意な観測）」を持つのに対し、
 Habitica は「行動（随意の実行）」を持つ。**取得はまだ実装していない**（2026-08-29 時点で
-API の性質を実測した段階）。認証情報は **repo の外**の
-`~/.config/habitica/creds.json`（環境変数 `HABITICA_CREDS` で上書き可）。
-gtd / titan からも同じ規則で参照するため repo 内に置かない。解決は
-`src/lib/clients/habitica_client.py` の `creds_path()`。
+API の性質を実測した段階）。認証情報はリポジトリ直下の `.env`
+（`HABITICA_USER_ID` / `HABITICA_API_TOKEN`）。読み込みは `lib.utils.env`。
+以前は gtd / titan と共有する前提で `~/.config/habitica/creds.json` に置いていたが、
+実際に参照するコードは無く、2026-10-05 に `.env` へ移した。他リポジトリで使うなら
+そちらの `.env` に置く（置き場所を共有しない）。
 
 必須ヘッダは `x-api-user` / `x-api-key` / `x-client: <UserID>-<AppName>`。
 

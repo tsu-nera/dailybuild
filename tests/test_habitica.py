@@ -163,12 +163,12 @@ def test_待ち時間が長すぎるときは待たずに落ちる(monkeypatch):
 
 
 def test_認証情報が無ければ落ちる(tmp_path):
-    with pytest.raises(HabiticaError, match='認証情報がありません'):
-        HabiticaClient.from_config(tmp_path / 'nope.json')
+    with pytest.raises(HabiticaError, match='HABITICA_USER_ID'):
+        HabiticaClient.from_env(env_file=tmp_path / 'none', environ={})
 
 
 def test_認証情報が欠けていれば落ちる(tmp_path):
-    path = tmp_path / 'creds.json'
-    path.write_text('{"user_id": "u"}')
-    with pytest.raises(HabiticaError, match='api_token'):
-        HabiticaClient.from_config(path)
+    path = tmp_path / '.env'
+    path.write_text('HABITICA_USER_ID=u\n')
+    with pytest.raises(HabiticaError, match='HABITICA_API_TOKEN'):
+        HabiticaClient.from_env(env_file=path, environ={})
