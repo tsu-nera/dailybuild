@@ -20,7 +20,9 @@
 - 1 entity が1時間以上の窓で0行なら故障とみなして exit 1（取れた分は保存する）
 - 認証: `config/homeassistant_creds.json`（`token` 必須、`url` 省略時 `http://localhost:8123`）。
   HA のプロフィール → セキュリティ → 長期アクセストークンを dailybuild 用に発行し、
-  vaio にだけ置く。sqlite は直接読まない（DB 構造は HA 内部のもの）
+  mouse（開発）と vaio（日次取得）に同じファイルを置く。url は両機から届く tailnet 名
+  （`localhost` だと mouse から繋がらない）。sample からは `cp` で作る（`git mv` すると
+  追跡対象になり `.gitignore` が効かず token を commit しうる）。sqlite は直接読まない（DB 構造は HA 内部のもの）
 - HA の recorder は `purge_keep_days: 400` で保持する。取得と保持は HA の仕事
 - **抽象化は HA に置く。** センサーを増やすときは HA に入れて `config/homeassistant.yaml`
   に1行足すだけ。取得元ごとの fetcher は作らない

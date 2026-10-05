@@ -302,7 +302,7 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `tepco_state.json` - くらしTEPCO web のブラウザセッション（`tepco.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
-- `homeassistant_creds.json` - Home Assistant（token必須、url省略時 `http://localhost:8123`。長期アクセストークンを dailybuild 用に発行し vaio にだけ置く）
+- `homeassistant_creds.json` - Home Assistant（token必須、url省略時 `http://localhost:8123`。長期アクセストークンを dailybuild 用に発行し、mouse・vaio に同じファイルを置く。url は両機から届く tailnet 名にする。sample は `cp` で作り `git mv` しない＝追跡されて gitignore が効かなくなる）
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
