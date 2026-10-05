@@ -48,7 +48,7 @@ from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 CREDS_FILE = BASE_DIR / 'config' / 'tuya_creds.json'
-CSV_FILE = require_private_path(BASE_DIR / 'data' / 'indoor.csv')
+CSV_FILE = require_private_path(BASE_DIR / 'data' / 'indoor_tuya_2026-08.csv')
 
 COLUMNS = ['datetime'] + list(CODE_TO_COLUMN.values())
 

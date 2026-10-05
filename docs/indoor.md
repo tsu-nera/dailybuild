@@ -1,12 +1,37 @@
-# 室内環境（CO2/温度/湿度）
+# 室内環境
 
-**`data/indoor.csv`（室内）と `data/weather.csv`（外気）は別物。** どちらにも温度と
+**室内（`data/homeassistant/`）と外気（`data/weather.csv`）は別物。** どちらにも温度と
 湿度が入っているので取り違えやすい。室温を見たいときに外気温を読むと結論が変わる
 （睡眠と外気温の関係は既に分析済みで、あれは**外気温であって室温ではない**）。
-ファイル名で内外を判別できるよう `environment` ではなく `indoor` にしてある。
 
-就寝中のCO2を測るのが目的。LSENLTY の Tuya 系センサーから `data/indoor.csv` に
-5分刻みで蓄積する。ハマりどころ:
+## Home Assistant（現行）
+
+自宅 HA（vaio 上の Docker）の statistics を5分値で取る。`scripts/fetch_homeassistant.py`
+が `daily-fetch.sh` から日次で走る（取得は vaio だけ）。
+
+- 取得対象: `config/homeassistant.yaml` の `statistic_ids`（Nature Remo の室温・湿度・照度）
+- 保存先: `data/homeassistant/statistics_5min/YYYY-MM.csv`（JST の月で分割）
+- 列: `start,entity_id,mean,min,max`。縦持ちなのでセンサーが増減しても列は動かない。
+  `start` は JST の tz-naive。HA が返した行だけを書き、補間も0埋めもしない
+- マージは `(start, entity_id)` で行置換。新データに含まれる月のファイルだけ触り、
+  過去の月は書き換えない。取得開始は保存済みの最終 `start` の1時間前
+  （保存済みが無ければ `--days`、既定30日）
+- **照度は単位が空。** Remo のセンサー相対値であって lux ではない。lux と書かない
+- 1 entity が1時間以上の窓で0行なら故障とみなして exit 1（取れた分は保存する）
+- 認証: `config/homeassistant_creds.json`（`token` 必須、`url` 省略時 `http://localhost:8123`）。
+  HA のプロフィール → セキュリティ → 長期アクセストークンを dailybuild 用に発行し、
+  vaio にだけ置く。sqlite は直接読まない（DB 構造は HA 内部のもの）
+- HA の recorder は `purge_keep_days: 400` で保持する。取得と保持は HA の仕事
+- **抽象化は HA に置く。** センサーを増やすときは HA に入れて `config/homeassistant.yaml`
+  に1行足すだけ。取得元ごとの fetcher は作らない
+
+## Tuya（2026-09-05 に運用停止）
+
+以下は停止済みの Tuya 取得の記録。凍結ファイルは `data/indoor_tuya_2026-08.csv`
+（2026-08-24〜26、読むコードは無い）。コード（`fetch_indoor.py` 等）は保留で残してある。
+
+就寝中のCO2を測るのが目的だった。LSENLTY の Tuya 系センサーから
+5分刻みで蓄積していた。ハマりどころ:
 
 - **デバイスは値が変化しなくても1秒ごとに送る。** 1日約26万件になり、素直に全件取得
   すると約2,600コール・27分。API 側に集計・リサンプル機能は無い（統計APIは別サブスク
