@@ -148,18 +148,9 @@ def test_client_returns_result_and_sends_tz_aware_times():
     assert ws.sent[1]['start_time'].endswith('+09:00')
 
 
-def test_settings_reads_json_and_defaults_url(tmp_path):
-    p = tmp_path / 'c.json'
-    p.write_text(json.dumps({'token': 'abc'}))
-    assert load_settings(p) == (DEFAULT_URL, 'abc')
-    p.write_text(json.dumps({'token': 'abc', 'url': 'http://x:1'}))
-    assert load_settings(p) == ('http://x:1', 'abc')
-
-
-def test_settings_missing_token_raises(tmp_path):
-    p = tmp_path / 'c.json'
-    p.write_text(json.dumps({'url': 'http://x'}))
+def test_settings_defaults_url_and_wraps_missing_token(tmp_path):
+    p = tmp_path / '.env'
+    p.write_text('HA_TOKEN=abc\n')
+    assert load_settings(env_file=p, environ={}) == (DEFAULT_URL, 'abc')
     with pytest.raises(HomeAssistantError):
-        load_settings(p)
-    with pytest.raises(HomeAssistantError):
-        load_settings(tmp_path / 'none.json')
+        load_settings(env_file=tmp_path / 'none', environ={})

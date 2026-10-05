@@ -302,11 +302,16 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `tepco_state.json` - くらしTEPCO web のブラウザセッション（`tepco.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
-- `homeassistant_creds.json` - Home Assistant（token必須、url省略時 `http://localhost:8123`。長期アクセストークンを dailybuild 用に発行し、mouse・vaio に同じファイルを置く。url は両機から届く tailnet 名にする。sample は `cp` で作り `git mv` しない＝追跡されて gitignore が効かなくなる）
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
 - `private/habits.yaml` - 習慣レビューの対象と週の目標値。**実体は dailybuild-private**（`config/private` は symlink。習慣名が非公開なため）
+
+**新しい API キー・token は `config/*.json` でなくリポジトリ直下の `.env` に置く**（他プロジェクトと同じ
+python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは `lib.utils.env` の
+`get_env` / `require_env` に統一し、client ごとに読み込み処理を書かない。現状 `.env` を読むのは Home Assistant
+（`HA_URL` / `HA_TOKEN`）だけで、上の `*_creds.json` は移行前のもの。OAuth の token・ブラウザ
+セッション・Google 配布の JSON は機械が書く状態なのでファイルのまま `config/` に置く。
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
 

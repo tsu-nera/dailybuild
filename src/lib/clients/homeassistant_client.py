@@ -1,32 +1,30 @@
 """Home Assistant WebSocket API クライアント（statistics 取得のみ）
 
-認証情報は config/homeassistant_creds.json（url は省略可）。
+認証情報は .env の HA_TOKEN（必須）と HA_URL（省略可）。読み込みは lib.utils.env。
 """
 
 import json
 from datetime import datetime
-from pathlib import Path
+
+from lib.utils.env import MissingEnvError, get_env, require_env
 
 DEFAULT_URL = 'http://localhost:8123'
-CREDS_FILE = Path(__file__).parent.parent.parent.parent / 'config' / 'homeassistant_creds.json'
 
 
 class HomeAssistantError(Exception):
     pass
 
 
-def load_settings(path: Path = CREDS_FILE) -> tuple[str, str]:
-    """(url, token) を返す。config/homeassistant_creds.json から読む"""
-    guide = (
-        "HA のプロフィール → セキュリティ → 長期アクセストークンを dailybuild 用に発行し、"
-        f"{path.name} に置く（{path.name}.sample を参照）"
-    )
-    if not path.exists():
-        raise HomeAssistantError(f"認証情報がありません: {path}\n  {guide}")
-    creds = json.loads(path.read_text(encoding='utf-8'))
-    if not creds.get('token'):
-        raise HomeAssistantError(f"{path} に token がありません。{guide}")
-    return creds.get('url') or DEFAULT_URL, creds['token']
+def load_settings(**env_kwargs) -> tuple[str, str]:
+    """(url, token) を返す。env_kwargs は lib.utils.env へそのまま渡す（テスト用）"""
+    try:
+        token = require_env(
+            'HA_TOKEN',
+            hint='HA のプロフィール → セキュリティ → 長期アクセストークンを dailybuild 用に発行する',
+            **env_kwargs)
+    except MissingEnvError as exc:
+        raise HomeAssistantError(str(exc)) from exc
+    return get_env('HA_URL', DEFAULT_URL, **env_kwargs), token
 
 
 def _ws_url(url: str) -> str:
