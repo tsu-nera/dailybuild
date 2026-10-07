@@ -88,6 +88,9 @@ step "Habitica"     uv run python scripts/habitica.py cron
 # 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、
 # ここが書くのは skeleton マーカーの内側だけ
 step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
+# 行動イベントの正規化ストリーム（reports/events.jsonl）。取得の後でないと当日分が欠ける。
+# 期待するソースが 0 件なら失敗扱いになり、ここで fetch の沈黙故障が表に出る
+step "行動イベント"   uv run python scripts/events.py build
 
 echo ""
 echo "Finished at $(date)"
