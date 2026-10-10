@@ -26,7 +26,35 @@
   sqlite は直接読まない（DB 構造は HA 内部のもの）
 - HA の recorder は `purge_keep_days: 400` で保持する。取得と保持は HA の仕事
 - **抽象化は HA に置く。** センサーを増やすときは HA に入れて `config/homeassistant.yaml`
-  に1行足すだけ。取得元ごとの fetcher は作らない
+  に1行足すだけ。取得元ごとの fetcher は作らない。statistics を持たない state 型
+  （on/off・文字列・device_tracker の位置）も下の state 履歴で同じく1行で済む
+
+### state 履歴
+
+同じ `fetch_homeassistant.py` が statistics に続けて取る（`daily-fetch.sh` のステップは1つのまま）。
+WebSocket の `history/history_during_period`。
+
+- 取得対象: `config/homeassistant.yaml` の `entities`。要素は entity_id の文字列か
+  `{entity_id: ..., attributes: [保存するキー]}`。attributes の指定が無ければ保存しない
+- 保存先: `data/homeassistant/states/YYYY-MM.csv`（JST の月で分割）
+- 列: `time,entity_id,state,attributes`。縦持ち
+  - `time` は HA の `last_updated` を JST の tz-naive にしたもの。**マイクロ秒まで残す**
+    （同じ entity で秒まで同一の更新が実在する）。`last_changed` でなく `last_updated` なのは
+    attributes だけの更新（座標の変化）を落とさないため。同じ理由で significant changes 限定にしない
+  - `state` は HA の文字列そのまま。**`unavailable` / `unknown` も捨てない**（端末が止まっていた
+    唯一の記録）。自由文字列なので読むときは `dtype=str, keep_default_na=False`
+    （既定だと `None` `NA` や空欄が NaN に化ける）
+  - `attributes` は指定キーだけの JSON（キー順は yaml の順）。指定外のキーは入らない
+- マージは `(time, entity_id)` で行置換。取得開始は state 側 CSV の最終 `time` の1時間前
+  （statistics の最終時刻とは共有しない）。長い窓は7日ごとに区切る
+- **窓の開始時点の state は保存しない。** 開始時点の state も含めて取るが、HA はその行の
+  `last_updated` を実際の更新時刻ではなく要求した start に丸めて返す。保存すると日次実行の
+  たびに存在しない更新が1行ずつ増える。この行は存在確認だけに使う
+- 存在する entity は開始時点の state で必ず1行返る。**1行も返らない entity は entity_id の誤り
+  として exit 1**（取れた分は保存する）。変化0回は失敗にしない（家から出なかった日の
+  device_tracker は正常に変化0）
+- 更新はイベント駆動で疎ら。行が無い区間は直前の行の state が続いている（0埋め・補間はしない）。
+  HA の state 履歴は 2026-10-01 21:15 JST 以降しか無い
 
 ## Tuya（2026-09-05 に運用停止）
 

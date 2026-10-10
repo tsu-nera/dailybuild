@@ -59,17 +59,23 @@ class HomeAssistantClient:
         })
 
     def history_during_period(self, start: datetime, end: datetime,
-                              entity_ids: list[str]) -> dict[str, list[dict]]:
+                              entity_ids: list[str],
+                              attributes: bool = False) -> dict[str, list[dict]]:
         """history/history_during_period を呼ぶ。statistics を持たない文字列・真偽の state 用
 
         返り値は {entity_id: [{'s': state, 'lu': epoch秒, 'lc'?: epoch秒}, ...]}。
-        先頭要素は start 時点の state（変化時刻ではない）。
+        存在しない entity はキーごと無い。先頭要素は start 時点の state（変化時刻ではない。
+        lu は実際の更新時刻ではなく start に丸められている）。
+        attributes=True で各行に 'a'（attributes）が付き、lu は last_updated になる
+        （'lc' は last_changed が lu と違うときだけ）。attributes だけの更新を落とさないよう
+        significant changes 限定にはしない。
         """
         return self._call(start, end, {
             'type': 'history/history_during_period',
             'entity_ids': list(entity_ids),
-            'minimal_response': True,
-            'no_attributes': True,
+            'include_start_time_state': True,
+            'minimal_response': not attributes,
+            'no_attributes': not attributes,
             'significant_changes_only': False,
         })
 

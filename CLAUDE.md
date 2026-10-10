@@ -207,7 +207,7 @@ uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン�
 uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（CSV の最終日から今日まで。現在は停止中）
 uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
 
-uv run python scripts/fetch_homeassistant.py  # HA の室温・湿度・照度の5分値（daily-fetch.sh が日次で実行）
+uv run python scripts/fetch_homeassistant.py  # HA の室温・湿度・照度の5分値と state 履歴（daily-fetch.sh が日次で実行）
 uv run python scripts/fetch_homeassistant.py --since 2026-10-01  # 開始日を指定
 
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
@@ -278,7 +278,7 @@ stdout）。
 | `scripts/tepco.py` を変更するとき | [docs/tepco.md](docs/tepco.md) — 欠測コマは0でなく行を作らない。30分値は約2年で消える。既定 headless では動かない |
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
-| `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物 |
+| `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）・HA の state 履歴を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物。state 履歴の開始時点の行は時刻が丸められているので保存しない |
 | `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | 習慣の phase / 目標値 / 移行判断を扱うとき | [docs/habits.md](docs/habits.md) — 達成率の分母は `target_per_week` であって `is_due` ではない |

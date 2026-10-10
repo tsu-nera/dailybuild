@@ -1,7 +1,20 @@
-# Home Assistant から5分値を取得する statistic_id（scripts/fetch_homeassistant.py）
+# Home Assistant から取得する対象（scripts/fetch_homeassistant.py）
 # センサーを増やすときは HA に入れてここへ1行足す。dailybuild 側のコードは触らない。
+# statistics（数値 sensor の5分値）
 statistic_ids:
   - sensor.remo_nature_remo_remo_temperature   # 室温 (°C)
   - sensor.remo_nature_remo_remo_humidity      # 湿度 (%)
   # 照度は単位が空。Remo のセンサー相対値であって lux ではない（lux と書かない）
   - sensor.remo_nature_remo_remo_illuminance
+
+# state 履歴を取る entity（statistics を持たない on/off・文字列・位置など）
+# data/homeassistant/states/YYYY-MM.csv へ縦持ちで入る。ここも1行足すだけでよい。
+# attributes は保存するキー（省略時は保存しない）。指定外のキーは入らない
+entities:
+  - binary_sensor.xiaomi_interactive
+  - binary_sensor.cachyos_idle
+  - sensor.xiaomi_last_used_app
+  - sensor.cachyos_active_app
+  - sensor.cachyos_active_window_title
+  - {entity_id: device_tracker.xiaomi, attributes: [latitude, longitude, gps_accuracy]}
+  - {entity_id: device_tracker.bv5200_pro, attributes: [latitude, longitude, gps_accuracy]}
