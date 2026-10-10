@@ -191,6 +191,8 @@ uv run scripts/habitica.py show --weeks 4  # 週ごとの回数・達成（/habi
 uv run scripts/habitica.py show --unit month --months 3  # 月ごと（長期の傾向を見るとき）
 uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
 uv run scripts/events.py build       # 行動イベントを reports/events.jsonl へ全上書き（daily-fetch.sh が実行）
+uv run scripts/early_rising.py laps   # 夜（帰宅〜入眠）と朝（起床〜カフェ到着）の lap 表、直近7日（/early-rising が使う）
+uv run scripts/early_rising.py timeline --date 2026-10-10  # 1晩の時系列（HA の state 変化 + events.jsonl）
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）
 uv run scripts/food.py sync-sheet    # food_master に全件を流し込む（成分表＋手動登録＋レシピ＋seed）
