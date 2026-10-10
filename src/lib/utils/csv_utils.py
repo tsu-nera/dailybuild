@@ -57,7 +57,8 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
                          key_columns: list[str],
                          parse_dates: list[str] | None = None,
                          sort_by: list[str] | None = None,
-                         preserve_existing_on_nan: bool = False) -> pd.DataFrame:
+                         preserve_existing_on_nan: bool = False,
+                         read_csv_kwargs: dict | None = None) -> pd.DataFrame:
     """
     既存CSVとマージ（複数列で重複判定）
 
@@ -83,6 +84,9 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         sort_by: ソートに使う列名リスト
         preserve_existing_on_nan: True でセル単位マージ（opt-in）。既定 False は
             従来通りの行単位置換
+        read_csv_kwargs: 既存CSVの読み込みに追加で渡す引数。自由文字列の列で
+            `None` `NA` が NaN に化けるのを防ぐとき
+            （`{'dtype': str, 'keep_default_na': False}`）に使う
 
     Returns:
         マージ済みDataFrame（重複は新しいデータを優先）
@@ -93,7 +97,7 @@ def merge_csv_by_columns(df_new: pd.DataFrame, csv_path: Path,
         # kind='stable' は必須（下の sort_values と同じ理由）
         return df_new.sort_values(sort_by, kind='stable') if sort_by else df_new
 
-    df_old = pd.read_csv(csv_path, parse_dates=parse_dates or [])
+    df_old = pd.read_csv(csv_path, parse_dates=parse_dates or [], **(read_csv_kwargs or {}))
 
     # df_newもparse_datesで指定された列をdatetime型に変換して型を統一
     df_new_copy = df_new.copy()
