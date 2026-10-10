@@ -43,7 +43,7 @@ JST = dt.timezone(dt.timedelta(hours=9))
 PHONE_SCREEN = 'binary_sensor.xiaomi_interactive'
 PHONE_APP = 'sensor.xiaomi_last_used_app'
 PHONE_HOME = 'device_tracker.xiaomi'
-LIGHTS = ('light.denkyu_chuo', 'light.denkyu_hidari', 'light.denkyu_migi', 'light.kansetsu_shoumei')
+LIGHTS = ('light.ceiling_center', 'light.ceiling_left', 'light.ceiling_right', 'light.indirect_light')
 # タイムラインにだけ出す（lap には使わない）。PC の前面アプリは15秒粒度で多すぎるので入れない
 TIMELINE_ONLY = ('switch.kyoshitsu_monitor', 'binary_sensor.cachyos_idle', 'counter.bedtime_interrupt_fired')
 
