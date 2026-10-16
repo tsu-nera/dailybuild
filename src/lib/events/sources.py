@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from lib import exercise_source
+from lib import exercise_source, gcalendar
 
 JST = dt.timezone(dt.timedelta(hours=9))
 
@@ -152,3 +152,21 @@ def habitica_events(history_csv: Path) -> list[dict]:
         })
         for row in df.to_dict('records')
     ]
+
+
+def calendar_events(csv_path: Path) -> list[dict]:
+    """Google Calendar の予定。終日は日付の JST 00:00 〜 排他端の JST 00:00
+
+    cancelled の行は写しの時点で消えているのでここでは見ない。
+    """
+    df = gcalendar.load(csv_path)
+    events = []
+    for row in df.to_dict('records'):
+        start, end = gcalendar.bounds(row)
+        events.append(_event(
+            start, end if end != start else None, 'calendar',
+            'all_day' if row['all_day'] == 'True' else 'timed',
+            row['summary'],
+            {'location': row['location'], 'event_type': row['event_type']},
+        ))
+    return events

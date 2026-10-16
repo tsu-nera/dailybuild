@@ -20,6 +20,7 @@ EXERCISE_HEADER = (
     'calories,distance_m,average_heart_rate\n'
 )
 SLEEP_HEADER = 'dateOfSleep,startTime,endTime,minutesAsleep,minutesAwake,efficiency,logId,isMainSleep\n'
+CALENDAR_HEADER = 'id,calendar_id,summary,location,start,end,all_day,event_type,status,updated\n'
 HABITICA_HEADER = (
     'date,ts,task_id,task_type,task_name,value,is_due,completed,scored_up,scored_down\n'
 )
@@ -33,6 +34,7 @@ def paths(tmp_path):
         exercise=tmp_path / 'exercise.csv',
         sleep=tmp_path / 'sleep.csv',
         habitica_history=tmp_path / 'history.csv',
+        calendar=tmp_path / 'calendar.csv',
     )
     p.toggl_entries.write_text(
         TOGGL_HEADER
@@ -67,6 +69,12 @@ def paths(tmp_path):
         + '2026-10-05,2026-10-05T12:00:00,ddd,habit,押してない,0.0,,,0,0\n'
         # completed を持たない古い行は実行の有無が分からないので入れない
         + '2023-02-12,2023-02-12T17:48:36,eee,daily,古い行,1.7,,,,\n'
+    )
+    p.calendar.write_text(
+        CALENDAR_HEADER
+        + 'a1,primary,宿泊,,2026-10-13,2026-10-16,True,default,confirmed,2026-10-01T00:00:00Z\n'
+        + 'a2,primary,会食,渋谷,2026-10-11T19:00:00+09:00,2026-10-11T21:30:00+09:00,'
+          'False,default,confirmed,2026-10-01T00:00:00Z\n'
     )
     return p
 
@@ -166,3 +174,19 @@ def test_build_does_not_modify_inputs(paths, tmp_path):
     before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     build_lines(paths, tmp_path)
     assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs} == before
+
+
+def test_calendar_events_are_aware_with_kinds(paths, tmp_path):
+    lines = [line for line in build_lines(paths, tmp_path) if line['source'] == 'calendar']
+    by_name = {line['name']: line for line in lines}
+    assert by_name['宿泊']['kind'] == 'all_day'
+    assert by_name['宿泊']['start'] == '2026-10-13T00:00:00+09:00'
+    assert by_name['宿泊']['end'] == '2026-10-16T00:00:00+09:00'
+    assert by_name['会食']['kind'] == 'timed'
+    assert by_name['会食']['start'] == '2026-10-11T19:00:00+09:00'
+    assert by_name['会食']['attrs'] == {'location': '渋谷', 'event_type': 'default'}
+
+
+def test_empty_calendar_is_reported_as_empty_source(paths):
+    paths.calendar.write_text(CALENDAR_HEADER)
+    assert 'calendar' in build.empty_sources(build.collect(paths))

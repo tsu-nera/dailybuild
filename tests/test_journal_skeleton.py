@@ -565,3 +565,45 @@ def test_collect_metrics_includes_evening_five_specs(metrics_root):
     assert metrics['主観 mind(夜)']['today'] == 5.0
     assert metrics['満足感']['today'] == 4.0
     assert metrics['達成感']['today'] == 3.0
+
+
+# --- 予定（Google Calendar） ---
+
+CALENDAR_HEADER = 'id,calendar_id,summary,location,start,end,all_day,event_type,status,updated\n'
+
+
+def _write_calendar(root, rows):
+    (root / 'data' / 'calendar').mkdir(parents=True, exist_ok=True)
+    (root / 'data' / 'calendar' / 'events.csv').write_text(CALENDAR_HEADER + ''.join(rows),
+                                                           encoding='utf-8')
+
+
+def _stub_other_sections(monkeypatch):
+    monkeypatch.setattr(js, 'collect_metrics', lambda target: [])
+    monkeypatch.setattr(js, 'collect_missing', lambda target: [])
+    monkeypatch.setattr(js, 'collect_comment', lambda target: None)
+    monkeypatch.setattr(js, 'collect_bowel', lambda target: None)
+    monkeypatch.setattr(js, 'collect_last_seen', lambda target: [])
+
+
+def test_skeleton_shows_schedule_line_for_covered_day(data_root, monkeypatch):
+    _stub_other_sections(monkeypatch)
+    _write_calendar(data_root, [
+        'a1,primary,宿泊,,2026-10-13,2026-10-16,True,default,confirmed,\n',
+        'a2,primary,移動,,2026-10-14T12:20:00+09:00,2026-10-14T14:00:00+09:00,'
+        'False,default,confirmed,\n',
+    ])
+    out = js.render_skeleton(dt.date(2026, 10, 14))
+    assert '**予定**: 宿泊（終日）、移動 12:20-14:00' in out
+
+
+def test_skeleton_omits_schedule_line_when_no_event(data_root, monkeypatch):
+    _stub_other_sections(monkeypatch)
+    _write_calendar(data_root, [
+        'a1,primary,宿泊,,2026-10-13,2026-10-16,True,default,confirmed,\n',
+    ])
+    # 排他端の日にはかからない
+    assert '**予定**' not in js.render_skeleton(dt.date(2026, 10, 16))
+    # CSV が無い環境でも行を出さずに通る
+    (data_root / 'data' / 'calendar' / 'events.csv').unlink()
+    assert '**予定**' not in js.render_skeleton(dt.date(2026, 10, 14))
