@@ -83,6 +83,8 @@ step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
 # Habitica の日付をまたぐ処理（cron）を確定させる。Daily の未完了はこれでしか
 # history に残らないので、走らせない日は「未達」でなく「欠測」になる
 step "Habitica"     uv run python scripts/habitica.py cron
+# Google Calendar（primary）の読み取り専用の写し。骨組みと events.jsonl が予定を読むので、それらより前
+step "Google Calendar" uv run python scripts/gcalendar.py fetch --days "$DAYS"
 
 # 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
 # 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、

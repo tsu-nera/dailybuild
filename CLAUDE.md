@@ -140,7 +140,7 @@ STATE.md のストリーク用途に閉じ込めてある。**「便利だから
 1行1イベントで `{start, end, source, kind, name, attrs}`、`start` 昇順。`start` / `end` は
 必ず tz-aware（`+09:00`。naive な入力は JST として解釈する）、点イベントの `end` は `null`。
 ソースは Toggl（`toggl push` 由来を除く）・exercise（platform 重複解決済み）・メイン睡眠・
-Habitica（Daily は完了行、Habit は押下のある行のみ）。どれかが0件なら更新せず非ゼロ終了する。
+Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar（終日は日付の JST 00:00 〜 排他端）。どれかが0件なら更新せず非ゼロ終了する。
 日次に潰すと4分の筋トレと63分の通勤が区別できないので `metrics_daily.csv` には混ぜない。
 **`data/` には置かない**。
 
@@ -210,6 +210,10 @@ uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
 uv run python scripts/fetch_homeassistant.py  # HA の室温・湿度・照度の5分値と state 履歴（daily-fetch.sh が日次で実行）
 uv run python scripts/fetch_homeassistant.py --since 2026-10-01  # 開始日を指定
 
+uv run scripts/gcalendar.py fetch --login   # Google Calendar 初回認可（ブラウザが開く）
+uv run scripts/gcalendar.py fetch           # 直近2日（--days N）の予定を data/calendar/events.csv へ
+uv run scripts/gcalendar.py fetch --since 2026-01-01  # 過去分の一括取得
+
 uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
 uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
 uv run scripts/mf.py fetch --year 2025  # 指定年を丸ごと取り直す
@@ -241,6 +245,11 @@ uv run scripts/mf.py show --update           # 取得してから表示
 `mf.py fetch` は明細と一緒に資産推移（`data/mf/資産推移.csv`）も毎回取る。MF は
 **当月しか日次を返さない**ため、月をまたぐとその月の日次は永久に失われる。
 表示は `mf.py assets`。
+
+`gcalendar.py` の写し（`data/calendar/events.csv`）は**読み取り専用で primary のみ**。
+`description`（予約番号が入る）と attendees は保存しない。行を消すのは API が
+`status=cancelled` で返した予定だけで、窓内でも返らなかった既存行は残す。
+ファイル名を `calendar.py` にしないのは標準ライブラリ `calendar` を shadow するため。
 
 `scripts/toggl.py` と `scripts/mf.py` は time と money の対で、fetch/show の
 サブコマンド構成も markdown の形式も揃えてある（取得ログは stderr、markdown は
@@ -312,6 +321,7 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `tepco_state.json` - くらしTEPCO web のブラウザセッション（`tepco.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
+- `gcalendar_token.json` - Google Calendar（readonly）のトークン（`gcalendar.py fetch --login` が生成。`gforms_token.json` とスコープを分けてある）
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
@@ -406,6 +416,7 @@ cd ~/repo/dailybuild && uv sync && ./scripts/setup_private_links.sh
 # .env と config/*.json（OAuth token・セッション）を mouse からコピー（gitignore 済みなので clone では来ない）
 uv run playwright install chromium
 uv run scripts/mf.py fetch --login      # GUI セッション（VNC 可）で一度だけ（TEPCO は取得停止中なので不要）
+# config/gcalendar_token.json は mouse で `gcalendar.py fetch --login` して作り、vaio へコピーする（無いと日次の Google Calendar ステップが失敗する）
 loginctl enable-linger tsu-nera
 systemctl --user link ~/repo/dailybuild/scripts/ops/systemd/dailybuild-routine.{service,timer}
 systemctl --user enable --now dailybuild-routine.timer

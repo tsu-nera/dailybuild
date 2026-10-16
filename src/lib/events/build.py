@@ -23,6 +23,7 @@ class SourcePaths:
     exercise: Path
     sleep: Path
     habitica_history: Path
+    calendar: Path
 
     @classmethod
     def default(cls, root: Path = REPO_ROOT) -> 'SourcePaths':
@@ -33,6 +34,7 @@ class SourcePaths:
             exercise=data / 'googlehealth' / 'exercise.csv',
             sleep=data / 'wearable' / 'sleep.csv',
             habitica_history=data / 'habitica' / 'history.csv',
+            calendar=data / 'calendar' / 'events.csv',
         )
 
 
@@ -43,6 +45,7 @@ def collect(paths: SourcePaths) -> dict[str, list[dict]]:
         'googlehealth_exercise': sources.exercise_events(paths.exercise),
         'wearable_sleep': sources.sleep_events(paths.sleep),
         'habitica': sources.habitica_events(paths.habitica_history),
+        'calendar': sources.calendar_events(paths.calendar),
     }
 
 

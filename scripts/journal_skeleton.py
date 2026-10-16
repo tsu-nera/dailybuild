@@ -43,6 +43,7 @@ sys.path.insert(0, str(project_root / 'src'))
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
+from lib import gcalendar  # noqa: E402
 from lib.emotion import render as emotion_render  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
 
@@ -369,6 +370,19 @@ def collect_bowel(target: dt.date) -> dict | None:
     }
 
 
+def collect_schedule(target: dt.date) -> list[str]:
+    """対象日にかかる予定を「名前（終日）」「名前 HH:MM-HH:MM」で返す。無ければ空"""
+    df = gcalendar.load(BASE_DIR / 'data' / 'calendar' / 'events.csv')
+    items = []
+    for _, row in gcalendar.events_on(df, target).iterrows():
+        if row['all_day'] == 'True':
+            items.append(f"{row['summary']}（終日）")
+        else:
+            start, end = gcalendar.bounds(row)
+            items.append(f"{row['summary']} {start:%H:%M}-{end:%H:%M}")
+    return items
+
+
 def collect_comment(target: dt.date) -> str | None:
     man = _read('data/daily_morning.csv', 'date')
     if man.empty or 'comment' not in man.columns:
@@ -422,6 +436,10 @@ def render_skeleton(target: dt.date) -> str:
             f"| {_fmt_delta(m['recent'], m['prior'], m['unit'], m['digits'])} |"
         )
     lines.append('')
+    schedule = collect_schedule(target)
+    if schedule:
+        lines.append(f"**予定**: {'、'.join(schedule)}")
+        lines.append('')
     if bowel:
         lines.append(f'**排便**: {_fmt_bowel(bowel)}')
         lines.append('')
