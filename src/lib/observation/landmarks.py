@@ -115,15 +115,17 @@ def sleep_onset(d: DayData, sleep) -> Landmark:
 def rise(d: DayData, ref: dt.datetime) -> tuple[Landmark, tuple | None]:
     """照度の急上昇（カーテン）と生活音が重なる最初の時刻。重ならなければ生活音だけで取る"""
     within = d.minutes('rise_match_within_min')
-    acts = [b for b in activity_bursts(d) if b[0] >= ref]
-    jumps = [t for t in illuminance_jumps(d) if t >= ref]
+    # 外泊の朝に帰宅後の夜の生活音を離床と取らない（10-15 は 23:02 が離床と出た）
+    until = ref + dt.timedelta(hours=d.cfg['landmarks']['rise_within_hours'])
+    acts = [b for b in activity_bursts(d) if ref <= b[0] <= until]
+    jumps = [t for t in illuminance_jumps(d) if ref <= t <= until]
     for b in acts:
         near = [j for j in jumps if abs(j - b[0]) <= within or b[0] <= j <= b[1]]
         if near:
             return Landmark('離床', min(b[0], near[0]), '照度の急上昇＋生活音'), b
     if acts:
         return Landmark('離床', acts[0][0], '生活音のみ（照度の上昇なし）'), acts[0]
-    return Landmark('離床', None, '起床後の生活音なし'), None
+    return Landmark('離床', None, '起床後の生活音なし（外泊・不在の可能性）'), None
 
 
 def _exercises_between(d: DayData, lo, hi):

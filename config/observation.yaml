@@ -39,6 +39,7 @@ landmarks:
   home_quiet_before_min: 60     # その前は生活音が無い（不在だった）こと
   lights_off_after_sleep_min: 60
   rise_match_within_min: 10     # 離床＝照度の急上昇と生活音がこの分以内で重なる
+  rise_within_hours: 4          # 最終覚醒からこの時間内に限る（10-17 は 2h14m）
   final_wake_min: 10            # 睡眠記録の末尾の覚醒がこれ未満なら記録終了を最終覚醒とする
   depart_chain_gap_min: 15      # 離床後の生活音の塊をつなぐ間隔。途切れたところが出発
   depart_quiet_after_min: 60    # 出発の後、この分は生活音が無いこと
