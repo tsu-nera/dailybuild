@@ -193,6 +193,8 @@ uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変�
 uv run scripts/events.py build       # 行動イベントを reports/events.jsonl へ全上書き（daily-fetch.sh が実行）
 uv run scripts/early_rising.py laps   # 夜（帰宅〜入眠）と朝（起床〜カフェ到着）の lap 表、直近7日（/early-rising が使う）
 uv run scripts/early_rising.py timeline --date 2026-10-10  # 1晩の時系列（HA の state 変化 + events.jsonl）
+uv run scripts/observation.py build  # 観察日記（reports/observation/YYYY-MM-DD.md）を昨日・一昨日ぶん全上書き（daily-fetch.sh は --days 3）
+uv run scripts/observation.py eval   # labels.csv（答え合わせ）と推定のズレ
 uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
 uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）
 uv run scripts/food.py sync-sheet    # food_master に全件を流し込む（成分表＋手動登録＋レシピ＋seed）
@@ -293,6 +295,7 @@ stdout）。
 | 習慣の phase / 目標値 / 移行判断を扱うとき | [docs/habits.md](docs/habits.md) — 達成率の分母は `target_per_week` であって `is_due` ではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | 行動活性化（BATD-R）を再開・再設計するとき | [docs/batdr.md](docs/batdr.md) — 日次帳票の実装は2026-09-07に廃止済み。同じ形を作り直す前に廃案の節を読む |
+| 観察日記（`scripts/observation.py` / `reports/observation/`）を扱うとき | [docs/observation.md](docs/observation.md) — 材料が欠けた区切りは別の材料で埋めない。判定を変えたら `eval` で答え合わせとのズレを比べる |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
 
 ## Report Generation

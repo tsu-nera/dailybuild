@@ -93,6 +93,8 @@ step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
 # 行動イベントの正規化ストリーム（reports/events.jsonl）。取得の後でないと当日分が欠ける。
 # 期待するソースが 0 件なら失敗扱いになり、ここで fetch の沈黙故障が表に出る
 step "行動イベント"   uv run python scripts/events.py build
+# 観察日記（reports/observation/）。events.jsonl を読むのでその後。遅れて届く同期を拾うため3日ぶん書き直す
+step "観察日記"       uv run python scripts/observation.py build --days 3
 
 echo ""
 echo "Finished at $(date)"

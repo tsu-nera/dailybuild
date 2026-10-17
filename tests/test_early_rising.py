@@ -60,5 +60,5 @@ def test_alive_phone_is_counted():
 def test_noise_bursts_join_within_gap():
     series = [(t(16, 22, 15), '-26', False), (t(16, 22, 18), '-35', False),
               (t(16, 22, 30), '-30', False), (t(16, 22, 31), 'unavailable', False)]
-    bursts = er.noise_bursts(series)
+    bursts = er.noise_bursts(series, er.NOISE_LOUD_DBFS, er.NOISE_GAP)
     assert [b[0] for b in bursts] == [t(16, 22, 15), t(16, 22, 30)]

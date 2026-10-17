@@ -29,11 +29,8 @@ import argparse
 import datetime as dt
 import json
 
-from lib.clients.homeassistant_client import (
-    HomeAssistantClient,
-    HomeAssistantError,
-    load_settings,
-)
+from lib.clients.homeassistant_client import HomeAssistantError
+from lib.observation.ha import NO_DATA, fetch_history, last_seen, noise_bursts
 from lib.utils.private_data import require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
@@ -66,7 +63,6 @@ MORNING_LEAD = dt.timedelta(minutes=30)
 CYCLING_TYPES = ('OUTDOOR_BIKE', 'BIKING', 'SPINNING')
 # 朝の最初の自転車の終了＝勉強カフェ到着（本人確認 2026-10-09）
 ARRIVAL_WINDOW = (4, 12)
-NO_DATA = ('unavailable', 'unknown')
 # パッケージ名の末尾だけでは読めないもの（io.homeassistant.companion.android → android など）
 APP_LABELS = {
     'io.homeassistant.companion.android': 'homeassistant',
@@ -108,20 +104,6 @@ def commute(events: list[dict], wake_date: dt.date) -> dict | None:
     return None
 
 
-def fetch_history(start: dt.datetime, end: dt.datetime, entity_ids) -> dict[str, list[tuple]]:
-    """{entity_id: [(時刻, state, 窓の開始時点の値か)]}。変化時刻は last_changed"""
-    url, token = load_settings()
-    raw = HomeAssistantClient(url, token).history_during_period(start, end, list(entity_ids))
-    out = {}
-    for eid, rows in raw.items():
-        series = []
-        for i, r in enumerate(rows):
-            ts = r.get('lc', r['lu'])
-            t = dt.datetime.fromtimestamp(ts, JST)
-            series.append((t, r['s'], i == 0 and t <= start))
-        out[eid] = series
-    return out
-
 
 def transitions(series, state, lo, hi):
     """lo〜hi の間に state へ変わった時刻（窓の開始時点の値は変化に数えない）"""
@@ -156,10 +138,7 @@ def covered(series) -> bool:
 
 
 def phone_last_seen(hist) -> dt.datetime | None:
-    """スマホから最後に何かが届いた時刻。Companion App が止まると値は最後のまま残り、
-    画面 on が窓の終わりまで続いたように見える（2026-10-15 夜から止まって 593分と出た）"""
-    seen = [t for eid in PHONE_ENTITIES for t, s, initial in hist.get(eid, ()) if not initial]
-    return max(seen) if seen else None
+    return last_seen(hist, PHONE_ENTITIES)
 
 
 def night_window(wake_date: dt.date) -> tuple[dt.datetime, dt.datetime]:
@@ -277,24 +256,6 @@ def cmd_laps(args) -> int:
     return 0
 
 
-def noise_bursts(series) -> list[tuple]:
-    """閾値を超えた分を NOISE_GAP 以内でつないだ塊 [(開始, 'noise', '生活音〜終了 (max)')]"""
-    loud = []
-    for t, s, _ in series:
-        try:
-            v = float(s)
-        except ValueError:
-            continue
-        if v >= NOISE_LOUD_DBFS:
-            loud.append((t, v))
-    out = []
-    for t, v in loud:
-        if out and t - out[-1][1] <= NOISE_GAP:
-            out[-1][1], out[-1][2] = t, max(out[-1][2], v)
-        else:
-            out.append([t, t, v])
-    return [(a, 'noise', f'生活音〜{b:%H:%M} (max {m:.0f}dBFS)') for a, b, m in out]
-
 
 def cmd_timeline(args) -> int:
     wake = dt.date.fromisoformat(args.date) if args.date else dt.date.today()
@@ -308,7 +269,8 @@ def cmd_timeline(args) -> int:
     last_seen = phone_last_seen(hist)
     if last_seen is None or last_seen < hi - dt.timedelta(hours=6):
         rows.append((lo, 'phone', f"スマホから {_hm(last_seen) if last_seen else '窓の間'} 以降何も届いていない（Companion App の停止）"))
-    rows += noise_bursts(hist.pop(NOISE, []))
+    rows += [(a, 'noise', f'生活音〜{b:%H:%M} (max {m:.0f}dBFS)')
+             for a, b, m in noise_bursts(hist.pop(NOISE, []), NOISE_LOUD_DBFS, NOISE_GAP)]
     hist.pop(PHONE_BATTERY, None)
     for eid, series in hist.items():
         for t, s, initial in series:
