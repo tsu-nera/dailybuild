@@ -130,6 +130,12 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days 2"'
 （`pd.read_csv(..., index_col='date').corr()`）。**`data/` には置かない**
 （あちらは取得の正本で、派生を混ぜると意味が壊れる）。
 
+体重の全期間は `reports/weight_daily.csv`（`date, weight, source`。同じく毎日**全上書き**）。
+`metrics_daily.csv` の `weight` は HealthPlanet だけで 2020-01 より前が無いので、長期の体重はこちらを読む。
+経路は `lib.analytics.weight_daily.SOURCES` の優先順で日ごとに1つ採る（HealthPlanet → Google Health）。
+`data/wearable/body_weight.csv`（Fitbit）は Google Health に全日が含まれるので使わない。体脂肪率は機器ごとに
+推定式が違うので入れない。新しい体重計を足すときは `SOURCES` に1行足す。
+
 `positive`（陽性ラベル件数）と `sleep_debt` は**意図的に入れていない**。
 どちらも欠測日を 0 で埋めており（前者は「陽性がN日途切れている」を数えるため、
 後者は睡眠0hとして計上）、相関では実データとして扱われてしまう。0埋めは
