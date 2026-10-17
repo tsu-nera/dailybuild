@@ -205,6 +205,9 @@ uv run scripts/hevy.py fetch --force # 行数が減っていても上書きす�
 uv run scripts/hevy.py show          # 部位別セット数・種目別e1RM・腹囲の週次推移（既定8週）
 uv run scripts/hevy.py show --weeks 12
 
+uv run scripts/timeline.py fetch     # Timeline の export を Drive から取り込み data/timeline/visits.csv へ（daily-fetch.sh が日次で実行。Drive 側が前回と同じなら何もしない）
+uv run scripts/timeline.py show --start 2026-10-01 --end 2026-10-07  # 期間の場所別 訪問日数・滞在時間と、前期間との入れ替わり
+
 uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）
 uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（CSV の最終日から今日まで。現在は停止中）
 uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
@@ -291,6 +294,7 @@ stdout）。
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）・HA の state 履歴を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物。state 履歴の開始時点の行は時刻が丸められているので保存しない |
 | `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
+| `scripts/timeline.py` / 場所ごとの訪問（Google マップ Timeline の export）を扱うとき | [docs/timeline.md](docs/timeline.md) — 同じ訪問が hierarchyLevel 違いで重複する。座標は度記号付きの文字列。取得は手動 export 頼み。場所の名前は未解決 |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | 習慣の phase / 目標値 / 移行判断を扱うとき | [docs/habits.md](docs/habits.md) — 達成率の分母は `target_per_week` であって `is_due` ではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
