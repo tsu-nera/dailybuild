@@ -43,6 +43,7 @@ sys.path.insert(0, str(project_root / 'src'))
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
+from lib.analytics.weight_daily import load_weight_daily  # noqa: E402
 from lib import gcalendar  # noqa: E402
 from lib.emotion import render as emotion_render  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
@@ -52,6 +53,7 @@ JOURNAL_DIR = BASE_DIR / 'reports' / 'journal'
 INDEX_FILE = JOURNAL_DIR / 'JOURNAL.md'
 STATE_FILE = JOURNAL_DIR / 'STATE.md'
 METRICS_FILE = BASE_DIR / 'reports' / 'metrics_daily.csv'
+WEIGHT_FILE = BASE_DIR / 'reports' / 'weight_daily.csv'
 ACTIONS_FILE = JOURNAL_DIR / 'ACTIONS.md'
 EMOTION_DEF = BASE_DIR / 'config' / 'emotion_def.yaml'
 
@@ -1002,6 +1004,18 @@ def write_metrics_csv() -> str:
     return str(path)
 
 
+def write_weight_csv() -> str:
+    """reports/weight_daily.csv を生成する（全上書き）
+
+    metrics_daily.csv の weight は HealthPlanet だけなので 2020-01 より前が無い。
+    全期間の体重はこちらを読む。経路の優先順は lib.analytics.weight_daily.SOURCES
+    """
+    path = require_private_write(WEIGHT_FILE)
+    ensure_dir(path.parent)
+    load_weight_daily(BASE_DIR).to_csv(path, index=False, date_format='%Y-%m-%d')
+    return str(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Journal skeleton writer')
     parser.add_argument('--date', type=dt.date.fromisoformat, default=None,
@@ -1026,10 +1040,11 @@ def main():
             print(f'{day} {week_file(day).name}: {action} (index: {index})')
             day += dt.timedelta(days=1)
 
-    # STATE.md / metrics_daily.csv はどちらも生成物なので毎回まるごと差し替える。
+    # STATE.md / metrics_daily.csv / weight_daily.csv はどれも生成物なので毎回まるごと差し替える。
     # 遡り生成でも「いまの状態」は1つしか無いので、対象日ではなく最終日ぶんだけを書く
     print(f'STATE: {write_state(end)}')
     print(f'METRICS: {write_metrics_csv()}')
+    print(f'WEIGHT: {write_weight_csv()}')
 
     for w in warn_unwritten(end):
         print(f'\u26a0\ufe0f {w}', file=sys.stderr)
