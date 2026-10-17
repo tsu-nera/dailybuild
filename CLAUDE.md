@@ -216,7 +216,7 @@ uv run scripts/timeline.py names --limit 100  # 訪問日数の多い未解決�
 uv run scripts/timeline.py show --start 2026-10-01 --end 2026-10-07  # 期間の場所別 訪問日数・滞在時間と、前期間との入れ替わり
 
 uv run scripts/purchases.py fetch --login --since 2009-01-01  # Gmail 初回認可（gmail.readonly、ブラウザが開く）と全期間の取得
-uv run scripts/purchases.py fetch      # Gmail の注文確認（Amazon 現行書式・楽天市場）の直近7日（--days N）を data/purchases/gmail.csv へマージ。書式が合わないメールは行を作らず警告
+uv run scripts/purchases.py fetch      # Gmail の注文確認（Amazon 現行書式・楽天市場）を前回の続き（gmail.csv の最終行の3日前）から data/purchases/gmail.csv へマージ。書式が合わないメールは行を作らず警告。メールは消えないので日次に入れず、使う前に実行する
 uv run scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"  # Amazon の開示データ（物の注文、全期間）を data/purchases/amazon.csv へ全置き換え。既存の注文が export に無ければ書かない（--force で上書き）
 
 uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）

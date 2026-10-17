@@ -3,6 +3,8 @@
 """購入履歴
 
 fetch: Gmail の注文確認（Amazon・楽天市場）を data/purchases/gmail.csv へマージする。
+既定では CSV の最後の行の数日前から取るので、何ヶ月空けても1回で追いつく
+（メールは消えないので定期実行しない。使う前に実行すればよい）。
 同じ message_id の行は差し替え、取得窓に無い既存行は残す。書式が合わないメールは
 行を作らず警告だけ出す（終了コードは 0 のまま）。
 
@@ -15,7 +17,8 @@ export に1件でも無ければ書き込まない（欠けた export で正本�
 
 Usage:
     python scripts/purchases.py fetch --login --since 2025-10-01  # 初回認可（ブラウザが開く）
-    python scripts/purchases.py fetch              # 直近 --days 日（既定7）
+    python scripts/purchases.py fetch              # 前回の続きから
+    python scripts/purchases.py fetch --days 30    # 直近30日を取り直す
     python scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"
     python scripts/purchases.py import-amazon <Order History.csv> --force
 """
@@ -102,8 +105,13 @@ def cmd_fetch(args) -> int:
     csv_path = require_private_path(GMAIL_CSV)
     if args.since:
         start = dt.date.fromisoformat(args.since)
-    else:
+    elif args.days is not None:
         start = dt.datetime.now(gmail.JST).date() - dt.timedelta(days=args.days)
+    else:
+        start = gmail.catchup_start(csv_path)
+        if start is None:
+            logger.error('%s が無いので続きが分からない。初回は --since を付ける', csv_path)
+            return 1
     since = dt.datetime.combine(start, dt.time(), gmail.JST)
 
     try:
@@ -119,7 +127,7 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_fetch = sub.add_parser('fetch', help='Gmail の注文確認を data/purchases/gmail.csv へマージする')
-    p_fetch.add_argument('--days', type=int, default=7, help='今日から何日前まで取るか（既定 7）')
+    p_fetch.add_argument('--days', type=int, help='今日から何日前まで取るか（既定は前回の続きから）')
     p_fetch.add_argument('--since', help='開始日 YYYY-MM-DD（過去分の一括取得。--days より優先）')
     p_fetch.add_argument('--login', action='store_true',
                          help='初回認可（ブラウザが開く）。無ければ非対話で、トークンが無いと失敗する')
