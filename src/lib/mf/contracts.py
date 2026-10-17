@@ -385,7 +385,7 @@ def render_reconciliation(contracts: list[Contract], entries: pd.DataFrame,
     if after_end:
         body += _table(['名前', '解約日', '請求日', '金額'],
                        [[render.truncate(c.name), c.ended.isoformat(),
-                         d.isoformat(), format_amount(amt, c.currency)]
+                         d.isoformat(), render.format_yen(amt)]
                         for c, d, amt in after_end])
     else:
         body += 'なし'
