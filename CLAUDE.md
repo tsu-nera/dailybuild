@@ -238,6 +238,8 @@ uv run scripts/mf.py assets          # 資産残高の推移（直近12ヶ月・
 uv run scripts/mf.py assets --unit year          # 年次（既定で全期間）
 uv run scripts/mf.py assets --unit day --days 30 # 日次（当月ぶんだけ日次で残る）
 uv run scripts/mf.py assets --all                # 全期間（月次・2015-04 から）
+uv run scripts/mf.py contracts                   # 定期契約の台帳: 月割り・更新予定・MF 明細との照合
+uv run scripts/mf.py contracts --within 90       # 更新が近い契約を90日以内で見る（既定45）
 
 # サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
 uv run scripts/toggl.py show --days 7        # Toggl 日次サマリ
@@ -345,6 +347,7 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
 - `private/habits.yaml` - 習慣レビューの対象と週の目標値。**実体は dailybuild-private**（`config/private` は symlink。習慣名が非公開なため）
+- `private/contracts.yaml` - 定期契約の台帳（`mf.py contracts` が読む）。**実体は dailybuild-private**。`config/contracts.yaml.sample` を `config/private/contracts.yaml` へ `cp` して作る
 
 **新しい API キー・token は `config/*.json` でなくリポジトリ直下の `.env` に置く**（他プロジェクトと同じ
 python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは `lib.utils.env` の
