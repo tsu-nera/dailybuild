@@ -33,6 +33,9 @@ Usage:
     python scripts/mf.py assets --unit day --days 30  # 日次（当月ぶんのみ日次で残る）
     python scripts/mf.py assets --all               # 全期間（月次・2015-04 から）
 
+    python scripts/mf.py contracts                  # 定期契約の台帳（月割り・更新予定・照合）
+    python scripts/mf.py contracts --within 90      # 更新が近い契約を90日以内で見る
+
 show は既定では MF に一切アクセスしないので、セッション切れの影響を受けない。
 """
 
@@ -393,6 +396,31 @@ def cmd_assets(args) -> None:
     print()
 
 
+def cmd_contracts(args) -> None:
+    from lib.mf import contracts
+
+    try:
+        ledger = contracts.load_contracts()
+    except (FileNotFoundError, contracts.ContractError) as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    today = dt.date.today()
+    print(contracts.render_contracts(ledger, today))
+    print()
+    print(contracts.render_upcoming(ledger, today, args.within))
+    print()
+
+    entries = store.load_entries()
+    if entries.empty:
+        print("## 照合\n\nMF の明細がないため照合は省略した"
+              "（uv run scripts/mf.py fetch で取得する）")
+        return
+    print(contracts.render_reconciliation(ledger, entries, today))
+    print()
+    print(contracts.render_unlisted(ledger, entries, today))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='MoneyForward ME CLI（fetch / show）')
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -459,6 +487,13 @@ def build_parser() -> argparse.ArgumentParser:
     assets_parser.add_argument('--update', action='store_true',
                                help='表示前に fetch で最新データを取得する')
     assets_parser.set_defaults(func=cmd_assets)
+
+    contracts_parser = subparsers.add_parser(
+        'contracts', help='定期契約の台帳から月割り・更新予定・MF 明細との照合を表示')
+    contracts_parser.add_argument('--within', type=int, default=45,
+                                  help='更新が近い契約とみなす日数（デフォルト: 45。'
+                                       '周期12ヶ月以上の契約が対象）')
+    contracts_parser.set_defaults(func=cmd_contracts)
 
     return parser
 

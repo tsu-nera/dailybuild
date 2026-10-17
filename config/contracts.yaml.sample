@@ -1,0 +1,71 @@
+# 定期契約の台帳（サンプル。中身はすべてダミー）
+#
+# 使い方:
+#   cp config/contracts.yaml.sample config/private/contracts.yaml
+#   実体は dailybuild-private 側に置く（契約名は本人の生活をそのまま含むため）。
+#   表示: uv run scripts/mf.py contracts [--within 45]
+#
+# 台帳が正本。MF の明細は照合（請求が無い・解約後の請求・台帳に無い繰り返し）にだけ使う。
+# 月割り = amount / cycle_months。通貨は換算せず、合計は通貨ごとに出す。
+# 税・社会保険は契約ではないので書かない。
+#
+# 1契約1要素のリスト。
+#
+#   キー          必須  内容
+#   name          ○    表示名
+#   amount        ○    1回の請求額（周期あたり。正の数）
+#   currency            JPY（既定）/ USD など
+#   cycle_months  ○    請求周期の月数（正の整数。1 / 12 / 24 など）
+#   anchor        ○    請求日の基準日（YYYY-MM-DD）。次回更新日は anchor から
+#                       cycle_months ずつ進めて求める（月末は月末に丸める）。
+#                       更新のたびに書き換えなくてよい
+#   kind          ○    living（生活）/ business（事業経費）
+#   payment             支払い手段（カード名・口座名）
+#   mf_match            MF 明細の「内容」列に含まれる文字列（部分一致）。
+#                       無ければ照合の対象外
+#   cancel_url          解約・管理画面の URL
+#   ended               解約日（YYYY-MM-DD）。あれば一覧・月割りの対象外。
+#                       照合では解約後の請求を警告する
+#
+# 未知のキーは typo を防ぐためエラーになる。
+
+- name: 動画配信（サンプル）
+  amount: 990
+  cycle_months: 1
+  anchor: 2025-01-31      # 月末の anchor は 2月28日、3月31日…と丸められる
+  kind: living
+  payment: サンプルカードA
+  mf_match: サンプル動画
+
+- name: ドメイン（サンプル）
+  amount: 1800
+  cycle_months: 12
+  anchor: 2024-11-20
+  kind: business
+  payment: サンプルカードB
+  mf_match: SAMPLE DOMAIN
+  cancel_url: https://example.com/domains
+
+- name: セキュリティソフト（サンプル）
+  amount: 9800
+  cycle_months: 24
+  anchor: 2025-03-01
+  kind: living
+  mf_match: サンプルセキュリティ
+
+- name: クラウド開発ツール（サンプル）
+  amount: 20
+  currency: USD
+  cycle_months: 1
+  anchor: 2025-02-05
+  kind: business
+  payment: サンプルカードB
+  mf_match: SAMPLE CLOUD
+
+- name: 解約済みの会員（サンプル）
+  amount: 500
+  cycle_months: 1
+  anchor: 2023-04-10
+  kind: living
+  mf_match: サンプル会員
+  ended: 2025-09-30
