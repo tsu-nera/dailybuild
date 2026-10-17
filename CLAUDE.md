@@ -215,6 +215,8 @@ uv run scripts/timeline.py fetch     # Timeline の export を Drive から取�
 uv run scripts/timeline.py names --limit 100  # 訪問日数の多い未解決の place ID の名前を Places API で引き data/timeline/places.csv へ（daily-fetch.sh が日次で実行。GOOGLE_MAPS_API_KEY が無ければ warning で終了コード0）
 uv run scripts/timeline.py show --start 2026-10-01 --end 2026-10-07  # 期間の場所別 訪問日数・滞在時間と、前期間との入れ替わり
 
+uv run scripts/purchases.py fetch --login --since 2009-01-01  # Gmail 初回認可（gmail.readonly、ブラウザが開く）と全期間の取得
+uv run scripts/purchases.py fetch      # Gmail の注文確認（Amazon 現行書式・楽天市場）の直近7日（--days N）を data/purchases/gmail.csv へマージ。書式が合わないメールは行を作らず警告
 uv run scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"  # Amazon の開示データ（物の注文、全期間）を data/purchases/amazon.csv へ全置き換え。既存の注文が export に無ければ書かない（--force で上書き）
 
 uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）
@@ -338,6 +340,7 @@ python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8�
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
 - `gcalendar_token.json` - Google Calendar（readonly）のトークン（`gcalendar.py fetch --login` が生成。`gforms_token.json` とスコープを分けてある）
+- `gmail_token.json` - Gmail（readonly）のトークン（`purchases.py fetch --login` が生成。gtd の modify トークンとは別）
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
