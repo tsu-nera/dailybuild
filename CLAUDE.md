@@ -215,6 +215,8 @@ uv run scripts/timeline.py fetch     # Timeline の export を Drive から取�
 uv run scripts/timeline.py names --limit 100  # 訪問日数の多い未解決の place ID の名前を Places API で引き data/timeline/places.csv へ（daily-fetch.sh が日次で実行。GOOGLE_MAPS_API_KEY が無ければ warning で終了コード0）
 uv run scripts/timeline.py show --start 2026-10-01 --end 2026-10-07  # 期間の場所別 訪問日数・滞在時間と、前期間との入れ替わり
 
+uv run scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"  # Amazon の開示データ（物の注文、全期間）を data/purchases/amazon.csv へ全置き換え。既存の注文が export に無ければ書かない（--force で上書き）
+
 uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）
 uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（CSV の最終日から今日まで。現在は停止中）
 uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
