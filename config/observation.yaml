@@ -1,0 +1,50 @@
+# 観察日記（scripts/observation.py）の材料と判定ルール。
+# 判定を変えたら `uv run scripts/observation.py eval` で答え合わせ（reports/observation/labels.csv）との
+# ズレが良くなったか悪くなったかを見る。値の根拠は 2026-10-16〜17 の答え合わせ（#209）
+
+# 生活日の境界。夜ふかしの入眠を前日に入れるため 0時ではなく 4時で切る
+day_start_hour: 4
+
+entities:
+  # 照明は自動化が進んでいて単独では本人の行動を表さない。生活音と重ねて読む
+  lights: [light.ceiling_center, light.ceiling_left, light.ceiling_right, light.indirect_light]
+  # vaio のマイクの1分 Leq（saru9000 home/noise.py）。在宅の主計器
+  noise: sensor.noise_leq
+  # Remo の照度（lux ではない相対値）。朝の急上昇はカーテン
+  illuminance: sensor.remo_nature_remo_remo_illuminance
+  # 入眠用の音のループ再生。paused / off は本人の操作
+  speaker: media_player.main_speaker
+  # 夜に使うスマホ。battery は生存確認だけに使う（BV5200 Pro は画面が自動で点くので入れない）
+  phone:
+    screen: binary_sensor.xiaomi_interactive
+    app: sensor.xiaomi_last_used_app
+    battery: sensor.xiaomi_battery_level
+  pc:
+    app: sensor.cachyos_active_app
+    power: sensor.cachyos_power_state
+  # Remo の人感（sensor.remo_nature_remo_remo_motion）は不在中にも反応するので使わない
+
+noise:
+  loud_dbfs: -40       # 塊の境界。平常は -45 前後
+  activity_dbfs: -33   # 在宅の生活音とみなす塊の max。不在中も外の音で -34 前後の塊が出る
+  gap_min: 5
+
+illuminance:
+  jump: 100            # window_min 以内にこれだけ上がったらカーテン（10-17 は 61→248）
+  window_min: 10
+  show_delta: 80       # 時系列に出す変化の下限。日中は日差しで ±50 程度ゆれる
+
+landmarks:
+  home_noise_within_min: 10     # 帰宅＝照明点灯の前後この分以内に生活音
+  home_quiet_before_min: 60     # その前は生活音が無い（不在だった）こと
+  lights_off_after_sleep_min: 60
+  rise_match_within_min: 10     # 離床＝照度の急上昇と生活音がこの分以内で重なる
+  final_wake_min: 10            # 睡眠記録の末尾の覚醒がこれ未満なら記録終了を最終覚醒とする
+  depart_chain_gap_min: 15      # 離床後の生活音の塊をつなぐ間隔。途切れたところが出発
+  depart_quiet_after_min: 60    # 出発の後、この分は生活音が無いこと
+  depart_by_hour: 14
+  evening_from_hour: 15
+
+phone_stale_hours: 6   # 窓の終わりからこれ以上届いていなければ停止とみなす
+pc_session_gap_min: 10
+unknown_gap_min: 90    # 起きている間に何の記録も無い区間をこれ以上で「不明」に出す

@@ -6,6 +6,8 @@ statistic_ids:
   - sensor.remo_nature_remo_remo_humidity      # 湿度 (%)
   # 照度は単位が空。Remo のセンサー相対値であって lux ではない（lux と書かない）
   - sensor.remo_nature_remo_remo_illuminance
+  # vaio のマイクの1分 Leq（dBFS、saru9000 home/noise.py）。在宅中の生活音。観察日記の主計器
+  - sensor.noise_leq
 
 # state 履歴を取る entity（statistics を持たない on/off・文字列・位置など）
 # data/homeassistant/states/YYYY-MM.csv へ縦持ちで入る。ここも1行足すだけでよい。
@@ -18,3 +20,10 @@ entities:
   - sensor.cachyos_active_window_title
   - {entity_id: device_tracker.xiaomi, attributes: [latitude, longitude, gps_accuracy]}
   - {entity_id: device_tracker.bv5200_pro, attributes: [latitude, longitude, gps_accuracy]}
+  # 観察日記の材料（照明・入眠用の音・スマホの生存確認）
+  - light.ceiling_center
+  - light.ceiling_left
+  - light.ceiling_right
+  - light.indirect_light
+  - media_player.main_speaker
+  - sensor.xiaomi_battery_level

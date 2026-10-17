@@ -247,6 +247,11 @@ Body / Mind 側が見る。混ぜない。
 具体的なアクション（2-3個）。今週のLessons Learnedと中長期目標の残差を踏まえる。
 ```
 
+## 観察日記の週次（確認不要）
+
+健康のレビューとは別枠。手順は [docs/observation.md](../../../docs/observation.md) の「週次」。
+`reports/observation/YYYY-Wxx.md` に行動のパターンを書き、不明区間と答え合わせのズレから判定を直す。
+
 ## ジャーナルへ記録（確認不要）
 
 `journal` スキルの weekly モードで記録する。**確認は取らない。**
