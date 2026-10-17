@@ -43,9 +43,20 @@ JST = dt.timezone(dt.timedelta(hours=9))
 PHONE_SCREEN = 'binary_sensor.xiaomi_interactive'
 PHONE_APP = 'sensor.xiaomi_last_used_app'
 PHONE_HOME = 'device_tracker.xiaomi'
+# 生存確認だけに使う。充電中も放電中も数十分おきに変わる
+PHONE_BATTERY = 'sensor.xiaomi_battery_level'
+PHONE_ENTITIES = (PHONE_SCREEN, PHONE_APP, PHONE_HOME, PHONE_BATTERY)
 LIGHTS = ('light.ceiling_center', 'light.ceiling_left', 'light.ceiling_right', 'light.indirect_light')
 # タイムラインにだけ出す（lap には使わない）。PC の前面アプリは15秒粒度で多すぎるので入れない
-TIMELINE_ONLY = ('switch.kyoshitsu_monitor', 'binary_sensor.cachyos_idle', 'counter.bedtime_interrupt_fired')
+TIMELINE_ONLY = ('switch.kyoshitsu_monitor', 'binary_sensor.cachyos_idle', 'counter.bedtime_interrupt_fired',
+                 'media_player.main_speaker', 'sensor.remo_nature_remo_remo_illuminance')
+# vaio のマイク（saru9000 home/noise.py）の1分 Leq。在宅中の生活音の主計器で、帰宅・身支度・出発が出る。
+# 1分ごとで多すぎるので、閾値を超えた分を塊にまとめて出す
+NOISE = 'sensor.noise_leq'
+NOISE_LOUD_DBFS = -40.0
+NOISE_GAP = dt.timedelta(minutes=5)
+# 再生中のループで毎時出る中間状態
+SPEAKER_SKIP = ('idle', 'buffering')
 
 # 前夜の窓。起床日 D に対して D-1 の15時から
 NIGHT_START_HOUR = 15
@@ -144,6 +155,13 @@ def covered(series) -> bool:
     return any(initial and s not in NO_DATA for t, s, initial in series)
 
 
+def phone_last_seen(hist) -> dt.datetime | None:
+    """スマホから最後に何かが届いた時刻。Companion App が止まると値は最後のまま残り、
+    画面 on が窓の終わりまで続いたように見える（2026-10-15 夜から止まって 593分と出た）"""
+    seen = [t for eid in PHONE_ENTITIES for t, s, initial in hist.get(eid, ()) if not initial]
+    return max(seen) if seen else None
+
+
 def night_window(wake_date: dt.date) -> tuple[dt.datetime, dt.datetime]:
     lo = dt.datetime.combine(wake_date - dt.timedelta(days=1), dt.time(NIGHT_START_HOUR), JST)
     return lo, dt.datetime.combine(wake_date, dt.time(12), JST)
@@ -160,6 +178,10 @@ def night_row(events, hist, wake_date: dt.date) -> dict:
     row['sleep_start'], row['sleep_end'] = sleep['start'], sleep['end']
     lo, _ = night_window(wake_date)
     hi = sleep['start'] + AFTER_SLEEP_GRACE
+    # 入眠より後に届いていなければ、その夜のスマホの値は途中で止まっている
+    last_seen = phone_last_seen(hist)
+    if last_seen is None or last_seen < sleep['start']:
+        hist = {}
 
     home = hist.get(PHONE_HOME, [])
     if covered(home):
@@ -183,7 +205,7 @@ def night_row(events, hist, wake_date: dt.date) -> dict:
     # 朝。起床の記録より先に画面を点けることがあるので少しさかのぼる
     m_lo = sleep['end'] - MORNING_LEAD
     m_hi = row.get('depart') or dt.datetime.combine(wake_date, dt.time(ARRIVAL_WINDOW[1]), JST)
-    if covered(screen):
+    if covered(screen) and last_seen > sleep['end']:
         ons = transitions(screen, 'on', m_lo, m_hi)
         if ons:
             row['first_screen'] = ons[0]
@@ -221,7 +243,7 @@ def cmd_laps(args) -> int:
     nights = {}
     try:
         for d in dates:
-            nights[d] = fetch_history(*night_window(d), (PHONE_SCREEN, PHONE_APP, PHONE_HOME))
+            nights[d] = fetch_history(*night_window(d), PHONE_ENTITIES)
     except HomeAssistantError as exc:
         print(f'エラー: HA の履歴を読めない: {exc}', file=sys.stderr)
         return 1
@@ -255,17 +277,43 @@ def cmd_laps(args) -> int:
     return 0
 
 
+def noise_bursts(series) -> list[tuple]:
+    """閾値を超えた分を NOISE_GAP 以内でつないだ塊 [(開始, 'noise', '生活音〜終了 (max)')]"""
+    loud = []
+    for t, s, _ in series:
+        try:
+            v = float(s)
+        except ValueError:
+            continue
+        if v >= NOISE_LOUD_DBFS:
+            loud.append((t, v))
+    out = []
+    for t, v in loud:
+        if out and t - out[-1][1] <= NOISE_GAP:
+            out[-1][1], out[-1][2] = t, max(out[-1][2], v)
+        else:
+            out.append([t, t, v])
+    return [(a, 'noise', f'生活音〜{b:%H:%M} (max {m:.0f}dBFS)') for a, b, m in out]
+
+
 def cmd_timeline(args) -> int:
     wake = dt.date.fromisoformat(args.date) if args.date else dt.date.today()
     lo, hi = night_window(wake)
     try:
-        hist = fetch_history(lo, hi, (PHONE_SCREEN, PHONE_APP, PHONE_HOME, *LIGHTS, *TIMELINE_ONLY))
+        hist = fetch_history(lo, hi, (*PHONE_ENTITIES, *LIGHTS, *TIMELINE_ONLY, NOISE))
     except HomeAssistantError as exc:
         print(f'エラー: HA の履歴を読めない: {exc}', file=sys.stderr)
         return 1
     rows = []
+    last_seen = phone_last_seen(hist)
+    if last_seen is None or last_seen < hi - dt.timedelta(hours=6):
+        rows.append((lo, 'phone', f"スマホから {_hm(last_seen) if last_seen else '窓の間'} 以降何も届いていない（Companion App の停止）"))
+    rows += noise_bursts(hist.pop(NOISE, []))
+    hist.pop(PHONE_BATTERY, None)
     for eid, series in hist.items():
         for t, s, initial in series:
+            if eid.startswith('media_player.') and s in SPEAKER_SKIP:
+                continue
             rows.append((t, eid.split('.', 1)[1], s + (' (窓の開始時点)' if initial else '')))
     for e in load_events():
         if lo <= e['start'] <= hi:
