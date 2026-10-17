@@ -112,6 +112,19 @@ def to_rows(message: dict, text: str) -> list[dict] | None:
              **item, 'message_id': message['id']} for item in items]
 
 
+# 最後の行より少し前から取り直す。message_id で差し替えるので重なっても二重にならない
+CATCHUP_MARGIN_DAYS = 3
+
+
+def catchup_start(csv_path: Path) -> dt.date | None:
+    """前回の続きから取るための開始日。CSV が無い・空なら None（初回は --since が要る）"""
+    existing = load(csv_path)
+    if existing.empty:
+        return None
+    last = dt.datetime.fromisoformat(existing['order_date'].max()).date()
+    return last - dt.timedelta(days=CATCHUP_MARGIN_DAYS)
+
+
 def load(csv_path: Path) -> pd.DataFrame:
     if not csv_path.exists():
         return pd.DataFrame(columns=COLUMNS)

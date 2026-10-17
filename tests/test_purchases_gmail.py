@@ -201,6 +201,26 @@ def test_unmounted_private_dir_fails_before_api(tmp_path, monkeypatch):
         raise AssertionError('API を叩いてはいけない')
 
     monkeypatch.setattr(gmail_client, 'create_service', boom)
-    args = argparse.Namespace(since=None, days=7, login=False)
+    args = argparse.Namespace(since=None, days=None, login=False)
     with pytest.raises(FileNotFoundError):
         script.cmd_fetch(args)
+
+
+def test_catchup_starts_before_the_last_row(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    assert gmail.catchup_start(csv) is None
+    run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_BODY,
+                             received='2026-10-05T09:09:26+00:00')]), csv)
+    assert gmail.catchup_start(csv) == dt.date(2026, 10, 2)
+
+
+def test_first_fetch_without_since_fails_before_api(tmp_path, monkeypatch):
+    monkeypatch.setattr(script, 'GMAIL_CSV', tmp_path / 'gmail.csv')
+    monkeypatch.setattr(script, 'require_private_path', lambda p: p)
+
+    def boom(**_):
+        raise AssertionError('API を叩いてはいけない')
+
+    monkeypatch.setattr(gmail_client, 'create_service', boom)
+    args = argparse.Namespace(since=None, days=None, login=False)
+    assert script.cmd_fetch(args) == 1
