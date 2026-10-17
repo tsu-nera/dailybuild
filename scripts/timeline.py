@@ -8,10 +8,12 @@ Timeline は端末内保存で API が無く、アプリからの手動 export�
 
 Usage:
     python scripts/timeline.py fetch    # Drive から最新の export を取り込む
+    python scripts/timeline.py names [--limit N]
+                                        # 訪問日数の多い未解決の place ID の名前を Places API で引く
     python scripts/timeline.py show --start 2026-10-01 --end 2026-10-07
                                         # 期間の場所別 訪問日数・滞在時間を stdout へ
 
-daily-fetch.sh から日次で fetch する運用。export は月1回ほどなので、Drive 側の
+daily-fetch.sh から日次で fetch / names する運用。export は月1回ほどなので、Drive 側の
 modifiedTime が前回取り込んだものと同じなら何もしない（数十MBを毎日落とさない）。
 """
 
@@ -29,13 +31,15 @@ import pandas as pd
 import yaml
 
 from lib import timeline
-from lib.clients import gdrive_client
+from lib.clients import gdrive_client, places_client
 from lib.utils import csv_utils
+from lib.utils.env import get_env
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 PERSONAL_YAML = BASE_DIR / 'config' / 'personal.yaml'
 VISITS_CSV = BASE_DIR / 'data' / 'timeline' / 'visits.csv'
+PLACES_CSV = BASE_DIR / 'data' / 'timeline' / 'places.csv'
 STATE_JSON = BASE_DIR / 'data' / 'timeline' / 'fetch_state.json'
 
 DRIVE_NAME = 'タイムライン.json'
@@ -116,6 +120,54 @@ def fetch(service=None):
     return 0
 
 
+def _api_key():
+    return get_env('GOOGLE_MAPS_API_KEY')
+
+
+def names(limit=100, session=None):
+    """訪問日数の多い未解決の place ID の名前を引き places.csv に足す
+
+    キーが無ければ warning を出して 0 で終わる（日次を失敗させない）。
+    API エラーでは、それまでに引いた分を書いてから 1 を返す。
+    """
+    api_key = _api_key()
+    if not api_key:
+        logger.warning('GOOGLE_MAPS_API_KEY が無いので場所の名前を引かない')
+        return 0
+
+    require_private_path(PLACES_CSV)
+    require_private_path(VISITS_CSV)
+    if not VISITS_CSV.exists():
+        logger.error('%s が無い。先に fetch を実行する', VISITS_CSV)
+        return 1
+
+    visits = pd.read_csv(VISITS_CSV, dtype={'place_id': str, 'semantic_type': str})
+    targets = timeline.places_to_resolve(
+        visits, timeline.read_places(PLACES_CSV), limit)
+
+    kwargs = {} if session is None else {'session': session}
+    rows = []
+    for place_id in targets:
+        resolved_at = dt.datetime.now(dt.timezone.utc).astimezone().isoformat(
+            timespec='seconds')
+        try:
+            place = places_client.get_place(place_id, api_key, **kwargs)
+            row = {'place_id': place_id, **place, 'status': 'ok'}
+        except places_client.PlaceNotFound:
+            row = {'place_id': place_id, 'display_name': '', 'primary_type': '',
+                   'status': 'not_found'}
+        except Exception as exc:  # 認証・クォータ・5xx・通信断。引けた分は残して止める
+            timeline.append_places(PLACES_CSV, rows)
+            logger.error('%s の取得に失敗した（%d 件は保存済み）: %r',
+                         place_id, len(rows), exc)
+            return 1
+        rows.append({**row, 'resolved_at': resolved_at})
+
+    timeline.append_places(PLACES_CSV, rows)
+    logger.info('%s に %d 件を足した（対象 %d 件）', PLACES_CSV.name, len(rows), len(targets))
+    return 0
+
+
 def _hours(minutes):
     return f'{minutes / 60:.1f}'
 
@@ -123,14 +175,15 @@ def _hours(minutes):
 def show(start, end):
     """期間の場所別 訪問日数・滞在時間と、前期間との入れ替わりを markdown で stdout へ出す
 
-    API は叩かず data/timeline/visits.csv だけを読む。判断語は書かない（数値のみ）。
+    API は叩かず data/timeline/ の visits.csv と places.csv（あれば）だけを読む。判断語は書かない（数値のみ）。
     """
     if not VISITS_CSV.exists():
         logger.error('%s が無い。先に fetch を実行する', VISITS_CSV)
         return 1
 
     visits = pd.read_csv(VISITS_CSV, dtype={'place_id': str, 'semantic_type': str})
-    result = timeline.summarize(visits, start, end)
+    places = timeline.read_places(PLACES_CSV)
+    result = timeline.summarize(visits, start, end, places=places)
     labels = result['labels']
 
     print(f'# 場所別の訪問（{start} 〜 {end}）\n')
@@ -173,6 +226,9 @@ def main():
 
     sub.add_parser('fetch', help='Drive から最新の export を取り込む')
 
+    p_names = sub.add_parser('names', help='place ID の名前を Places API で引き places.csv へ足す')
+    p_names.add_argument('--limit', type=int, default=100, help='1回に引く上限（既定 100）')
+
     p_show = sub.add_parser('show', help='期間の場所別サマリを markdown で stdout へ出す')
     p_show.add_argument('--start', type=_date, required=True, help='開始日 YYYY-MM-DD')
     p_show.add_argument('--end', type=_date, required=True, help='終了日 YYYY-MM-DD')
@@ -184,6 +240,8 @@ def main():
 
     if args.command == 'fetch':
         return fetch()
+    if args.command == 'names':
+        return names(args.limit)
     if args.command == 'show':
         return show(args.start, args.end)
     return 1
