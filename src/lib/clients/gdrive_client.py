@@ -136,7 +136,7 @@ def latest_file(service, folder_id: str, name: str) -> dict:
 
     Drive は同名アップロードを上書きせず別 ID で並べる（Hevy の export は
     毎回新しいファイルになる）。名前では1件に決まらないので createdTime の
-    降順で先頭を取る。返すのは `id` `name` `createdTime` `size`。
+    降順で先頭を取る。返すのは `id` `name` `createdTime` `modifiedTime` `size`。
 
     **フォルダは ID で指定する。** 親（`gdrive.folder_id` の dailybuild）は
     service account に共有されておらず 404 になるため、名前でパスを辿れない。
@@ -144,7 +144,7 @@ def latest_file(service, folder_id: str, name: str) -> dict:
     query = f"'{folder_id}' in parents and name = '{name}' and trashed = false"
     files = service.files().list(
         q=query,
-        fields='files(id, name, createdTime, size)',
+        fields='files(id, name, createdTime, modifiedTime, size)',
         orderBy='createdTime desc',
         pageSize=10,
     ).execute().get('files', [])

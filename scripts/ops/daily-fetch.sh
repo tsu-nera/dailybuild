@@ -68,6 +68,9 @@ step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 # Hevy の export 取得。セッションの有無は Health Connect 経由で exercise.csv に
 # 入るが、部位別セット数の内訳は export にしか無い（Hevy に API は無い）
 step "Hevy"          uv run python scripts/hevy.py fetch
+# Timeline の export 取得。月1回ほどの手動 export なので、Drive 側が前回と同じなら
+# 何もせず終わる（場所ごとの訪問は export にしか無い）
+step "Timeline"      uv run python scripts/timeline.py fetch
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "Home Assistant" uv run python scripts/fetch_homeassistant.py
