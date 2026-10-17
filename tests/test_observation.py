@@ -83,3 +83,10 @@ def test_sleep_started_before_window_is_not_an_unknown_gap():
     rows = items(d)
     gaps = unknown_gaps(d, rows)
     assert all(not (a < t(17, 9) < b) for a, b in gaps)
+
+
+def test_rise_is_not_taken_from_evening_noise_after_staying_out():
+    # 外泊の朝: 家の生活音は夜に帰宅してから
+    hist = {E['noise']: noise(*[(t(17, 23) + dt.timedelta(minutes=i), -26) for i in range(10)])}
+    lms = by_name(day_data(hist, [MORNING_SLEEP]))
+    assert lms['離床'].time is None
