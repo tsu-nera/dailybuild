@@ -71,6 +71,8 @@ step "Hevy"          uv run python scripts/hevy.py fetch
 # Timeline の export 取得。月1回ほどの手動 export なので、Drive 側が前回と同じなら
 # 何もせず終わる（場所ごとの訪問は export にしか無い）
 step "Timeline"      uv run python scripts/timeline.py fetch
+# 訪問日数の多い未解決の place ID の名前を Places API で引く（キーが無ければ warning だけで 0）
+step "Timeline names" uv run python scripts/timeline.py names
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "Home Assistant" uv run python scripts/fetch_homeassistant.py
