@@ -395,7 +395,7 @@ def test_empty_entries_do_not_crash():
     assert ct.find_missing_charges([c], empty, TODAY) == [(c, D(2026, 10, 1))]
 
 
-# ---- 生活費の固定・従量・変動 ----
+# ---- 生活費の固定・変動 ----
 
 def _bucketed(rows):
     exp = _entries(rows)
@@ -414,10 +414,10 @@ def test_classify_expenses_uses_ended_contracts_and_first_match_wins():
     exp = _bucketed([
         ('2026-03-10', 'エポス 3月分家賃', -40000),
         ('2026-05-27', 'SMBC(ヤチン 家賃', -50000),   # 両方に一致 → 先に書いた家賃
-        ('2026-05-10', 'デンキ', -2000),
+        ('2026-05-10', 'デンキ', -2000),               # 従量は変動
         ('2026-05-11', 'スーパー', -3000),
     ])
-    assert list(ct.classify_expenses(exp, cs)) == ['固定', '固定', '従量', '変動']
+    assert list(ct.classify_expenses(exp, cs)) == ['固定', '固定', '変動', '変動']
 
 
 def test_render_split_rows_sum_and_delta_on_variable():
@@ -434,7 +434,6 @@ def test_render_split_rows_sum_and_delta_on_variable():
     rows = {cells[0]: cells[1:] for cells in
             ([c.strip() for c in line.strip('|').split('|')]
              for line in out.splitlines() if line.startswith('| 2026'))}
-    assert rows['2026-08'][:4] == ['¥50,000', '¥2,000', '¥10,000', '¥62,000']
+    assert rows['2026-08'][:3] == ['¥50,000', '¥12,000', '¥62,000']
     # 増減は変動だけで見る（家賃の計上ズレに引きずられない）
-    assert '+¥5,000' in out
-    assert '+50.0%' in out
+    assert rows['2026-09'][3:] == ['+¥3,000', '+25.0%']

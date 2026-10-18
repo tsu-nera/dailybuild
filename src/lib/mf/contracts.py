@@ -392,19 +392,19 @@ def find_unlisted_recurring(contracts: list[Contract], entries: pd.DataFrame,
     return sorted(out, key=lambda x: (-x[1], x[0]))
 
 
-# ---- 生活費の固定・従量・変動 ----
+# ---- 生活費の固定・変動 ----
 
 SPLIT_FIXED = '固定'
-SPLIT_METERED = '従量'
 SPLIT_VARIABLE = '変動'
-SPLIT_LABELS = (SPLIT_FIXED, SPLIT_METERED, SPLIT_VARIABLE)
+SPLIT_LABELS = (SPLIT_FIXED, SPLIT_VARIABLE)
 
 
 def classify_expenses(expenses: pd.DataFrame, contracts: list[Contract]) -> pd.Series:
-    """明細ごとに 固定 / 従量 / 変動 を付ける。台帳の mf_match に一致すれば契約の側。
+    """明細ごとに 固定 / 変動 を付ける。台帳の固定の契約の mf_match に一致すれば固定。
 
+    従量の契約は変動に入れる（使った分で額が決まり、増減の読み方が変動と同じ）。
+    従量も一致の判定には使う（台帳で先に書いた方を優先するため）。
     解約済みの契約も使う（過去の期間の明細は、当時は契約の請求だったため）。
-    複数の契約に一致したら台帳で先に書いた方。
     """
     labels = pd.Series(SPLIT_VARIABLE, index=expenses.index)
     if expenses.empty:
@@ -412,13 +412,13 @@ def classify_expenses(expenses: pd.DataFrame, contracts: list[Contract]) -> pd.S
     names = expenses[COL_NAME].astype(str)
     for c in reversed([c for c in contracts if c.mf_match]):
         hit = names.str.contains(c.mf_match, regex=False)
-        labels[hit] = SPLIT_METERED if is_metered(c) else SPLIT_FIXED
+        labels[hit] = SPLIT_VARIABLE if is_metered(c) else SPLIT_FIXED
     return labels
 
 
 def render_split(expenses: pd.DataFrame, contracts: list[Contract],
                  bucket_name: str) -> str:
-    """bucket ごとの生活費を 固定 / 従量 / 変動 に割った表。
+    """bucket ごとの生活費を 固定 / 変動 に割った表。
 
     expenses は render.expenses() 済み（金額が正）で bucket 列を持つもの。
     明細の「固定」は計上月がずれるので、増減は「変動」で見る。固定費の水準は台帳の月割り。
@@ -442,7 +442,7 @@ def render_split(expenses: pd.DataFrame, contracts: list[Contract],
     fixed = monthly_totals(contracts).get(('JPY', 'living'), 0.0)
     note = (f"台帳の固定費（生活・月割り）: {render.format_yen(fixed)}/月。"
             "明細の固定は計上月がずれるので、増減は変動で見る。"
-            "台帳に無い過去の契約は変動に入る")
+            "従量（光熱・通話料）と台帳に無い過去の契約は変動に入る")
     return f"{note}\n\n{out.to_markdown()}"
 
 
