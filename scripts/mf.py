@@ -263,7 +263,7 @@ def cmd_fetch(args) -> None:
 
 
 def print_split(exp_focus: pd.DataFrame, focus_label: str, unit: str) -> None:
-    """生活費を契約台帳で 固定 / 従量 / 変動 に割る。台帳が無ければ節ごと省く"""
+    """生活費を契約台帳で 固定 / 変動 に割る。台帳が無ければ節ごと省く"""
     from lib.mf import contracts
 
     try:
@@ -273,7 +273,7 @@ def print_split(exp_focus: pd.DataFrame, focus_label: str, unit: str) -> None:
     except contracts.ContractError as e:
         print(f"警告: 契約台帳を読めないので固定・変動の節を省いた: {e}", file=sys.stderr)
         return
-    print(f"## {focus_label}の固定・従量・変動\n")
+    print(f"## {focus_label}の固定・変動\n")
     print(contracts.render_split(exp_focus, ledger, render.bucket_label(unit)))
     print()
 
