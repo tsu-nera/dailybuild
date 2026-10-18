@@ -199,6 +199,10 @@ def test_state_only_does_not_touch_week_files(tmp_path, monkeypatch):
     monkeypatch.setattr(js, 'JOURNAL_DIR', tmp_path)
     monkeypatch.setattr(js, 'STATE_FILE', tmp_path / 'STATE.md')
     monkeypatch.setattr(js, 'render_state', lambda target: 'x\n')
+    # 実データ全期間から reports/ の生成物を作り直さない（この1件で約49秒かかっていた）
+    monkeypatch.setattr(js, 'write_metrics_csv', lambda: 'stub')
+    monkeypatch.setattr(js, 'write_weight_csv', lambda: 'stub')
+    monkeypatch.setattr(js, 'warn_unwritten', lambda target: [])
     monkeypatch.setattr(sys, 'argv', ['journal_skeleton.py', '--state-only',
                                       '--date', '2026-09-05'])
     calls = []
