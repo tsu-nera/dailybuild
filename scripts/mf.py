@@ -75,10 +75,10 @@ DEFAULT_ASSETS_MONTHS = 12
 
 # show のセクション。--sections で選ぶ。名前は ASCII に揃える（表の見出しは
 # 日本語だが、指定側に全角を要求するとタイプもエスケープも面倒になる）
-SECTIONS = ['balance', 'change', 'matrix', 'category',
+SECTIONS = ['balance', 'split', 'change', 'matrix', 'category',
             'subcategory', 'merchant', 'account']
 # 既定は全体像まで。列挙系（中項目・店舗・金融機関）は指定したときだけ出す
-DEFAULT_SECTIONS = ['balance', 'matrix', 'category']
+DEFAULT_SECTIONS = ['balance', 'split', 'matrix', 'category']
 
 # MF に明細が存在する最古の年（2015-02 が初出。それ以前は 0 件）。
 # --unit year の既定期間を全期間にするために使う
@@ -262,6 +262,22 @@ def cmd_fetch(args) -> None:
     run_fetch(args, sys.stdout)
 
 
+def print_split(exp_focus: pd.DataFrame, focus_label: str, unit: str) -> None:
+    """生活費を契約台帳で 固定 / 従量 / 変動 に割る。台帳が無ければ節ごと省く"""
+    from lib.mf import contracts
+
+    try:
+        ledger = contracts.load_contracts()
+    except FileNotFoundError:
+        return
+    except contracts.ContractError as e:
+        print(f"警告: 契約台帳を読めないので固定・変動の節を省いた: {e}", file=sys.stderr)
+        return
+    print(f"## {focus_label}の固定・従量・変動\n")
+    print(contracts.render_split(exp_focus, ledger, render.bucket_label(unit)))
+    print()
+
+
 def cmd_show(args) -> None:
     if args.update:
         # show の parser は fetch のオプションを持たないため、fetch 相当の引数を組み立てる。
@@ -322,6 +338,9 @@ def cmd_show(args) -> None:
         print(f"## {unit_label}収支\n")
         print(render.render_balance(df, args.unit, excluded, focus_label))
         print()
+
+    if 'split' in sections:
+        print_split(exp_focus, focus_label, args.unit)
 
     if 'change' in sections:
         # 比較相手は表示期間の外から取る（既定の表示は当月だけなので）
