@@ -406,12 +406,12 @@ def cmd_contracts(args) -> None:
         sys.exit(1)
 
     today = dt.date.today()
-    print(contracts.render_contracts(ledger, today))
+    entries = store.load_entries()
+    print(contracts.render_contracts(ledger, entries, today))
     print()
     print(contracts.render_upcoming(ledger, today, args.within))
     print()
 
-    entries = store.load_entries()
     if entries.empty:
         print("## 照合\n\nMF の明細がないため照合は省略した"
               "（uv run scripts/mf.py fetch で取得する）")

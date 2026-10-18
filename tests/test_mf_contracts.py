@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from lib.mf import contracts as ct
-from lib.mf.store import COL_AMOUNT, COL_NAME
+from lib.mf.store import COL_AMOUNT, COL_CATEGORY, COL_NAME, COL_SUBCATEGORY
 
 D = dt.date
 TODAY = D(2026, 10, 17)
@@ -24,8 +24,11 @@ def _c(name='x', amount=1000, cycle=1, anchor=D(2026, 1, 15), kind='living', **k
 
 
 def _entries(rows):
-    """rows: (YYYY-MM-DD, 内容, 金額)。load_entries と同じ列・正規化済み日付"""
-    df = pd.DataFrame(rows, columns=['d', COL_NAME, COL_AMOUNT])
+    """rows: (YYYY-MM-DD, 内容, 金額[, 大項目, 中項目])。load_entries と同じ列・正規化済み日付。
+    分類を省いた行は台帳に無い繰り返しの候補になる分類（通信費 > インターネット）"""
+    rows = [r if len(r) == 5 else (*r, '通信費', 'インターネット') for r in rows]
+    df = pd.DataFrame(rows, columns=['d', COL_NAME, COL_AMOUNT,
+                                     COL_CATEGORY, COL_SUBCATEGORY])
     df['date'] = pd.to_datetime(df['d']).dt.normalize()
     return df.drop(columns='d')
 
@@ -91,6 +94,96 @@ def test_monthly_totals_split_by_currency_and_kind_and_skip_ended():
         ('JPY', 'business'): 1000,
         ('USD', 'business'): 20,
     }
+
+
+def test_monthly_totals_skip_metered():
+    cs = [_c('a', 1000, 1), _c('電気', None, 1, billing='metered', mf_match='電気')]
+    assert ct.monthly_totals(cs) == {('JPY', 'living'): 1000}
+
+
+# ---- 従量 ----
+
+def test_metered_actual_uses_median_and_last_12_months():
+    c = _c('電気', None, 1, billing='metered', mf_match='デンキ')
+    entries = _entries([
+        ('2025-10-17', 'デンキ', -99999),    # 12ヶ月の範囲外（境界は含まない）
+        ('2026-01-10', 'デンキ', -3000),
+        ('2026-02-10', 'デンキ', -1000),
+        ('2026-03-10', 'デンキ', -2000),
+        ('2026-04-10', 'デンキ', 500),       # 返金（収入）は対象外
+    ])
+    got = ct.metered_actual(c, entries, TODAY)
+    assert (got.charges, got.median, got.total) == (3, 2000, 6000)
+    assert got.monthly == 2000
+
+
+def test_metered_monthly_divides_by_cycle_not_by_window():
+    # 範囲の途中で始まった2ヶ月周期の契約。合計 ÷ 12 なら 250 と過小になる
+    c = _c('水道', None, 2, billing='metered', mf_match='スイドウ')
+    entries = _entries([('2026-10-02', 'スイドウ', -3000)])
+    assert ct.metered_actual(c, entries, TODAY).monthly == 1500
+    assert ct.metered_actual(c, _entries([]), TODAY) is None
+
+
+def test_metered_totals_by_kind_and_missing_actual_is_zero():
+    cs = [
+        _c('電気', None, 1, billing='metered', mf_match='デンキ'),
+        _c('水道', None, 2, billing='metered', mf_match='スイドウ'),   # 実績なし
+        _c('API', None, 1, kind='business', billing='metered', mf_match='API'),
+        _c('固定', 1000, 1),
+        _c('旧', None, 1, billing='metered', mf_match='デンキ', ended=D(2026, 1, 1)),
+    ]
+    entries = _entries([('2026-09-10', 'デンキ', -1200), ('2026-09-10', 'API', -2400)])
+    assert ct.metered_totals(cs, entries, TODAY) == {'living': 1200, 'business': 2400}
+
+
+def test_render_contracts_separates_metered_from_fixed():
+    cs = [_c('固定', 1000, 1), _c('電気', None, 1, billing='metered', mf_match='デンキ')]
+    entries = _entries([('2026-09-10', 'デンキ', -1200)])
+    out = ct.render_contracts(cs, entries, TODAY)
+    assert '従量 ¥1,200' in out
+    assert '- 固定 JPY: ¥1,000' in out
+    assert '- 従量 JPY: ¥1,200' in out
+    assert '従量 -' in ct.render_contracts(cs, pd.DataFrame(), TODAY)
+
+
+METERED = """
+- name: 電気
+  billing: metered
+  cycle_months: 1
+  anchor: 2026-01-10
+  kind: living
+  mf_match: デンキ
+"""
+
+
+def test_load_metered_without_amount(tmp_path):
+    (c,) = ct.load_contracts(_write(tmp_path, METERED))
+    assert ct.is_metered(c)
+    assert c.amount is None
+
+
+@pytest.mark.parametrize('extra, drop, message', [
+    ('  amount: 100\n', None, 'amount を書かない'),
+    ('', 'mf_match', 'mf_match'),
+    ('  currency: USD\n', None, 'JPY'),
+    ('  billing_typo: 1\n', None, '未知のキー'),
+])
+def test_metered_invalid(tmp_path, extra, drop, message):
+    text = METERED + extra
+    if drop:
+        text = '\n'.join(l for l in text.splitlines() if not l.strip().startswith(drop))
+    with pytest.raises(ct.ContractError, match=message):
+        ct.load_contracts(_write(tmp_path, text))
+
+
+def test_fixed_still_requires_amount_and_billing_is_checked(tmp_path):
+    no_amount = METERED.replace('  billing: metered\n', '')
+    with pytest.raises(ct.ContractError, match='amount'):
+        ct.load_contracts(_write(tmp_path, no_amount))
+    bad = METERED.replace('metered', 'usage')
+    with pytest.raises(ct.ContractError, match='billing'):
+        ct.load_contracts(_write(tmp_path, bad))
 
 
 def test_format_amount_does_not_use_yen_for_other_currency():
@@ -280,12 +373,18 @@ def test_unlisted_recurring_candidates():
         ('2026-08-05', '給与', 300000),
         ('2026-09-05', '給与', 300000),
         # 3ヶ月出る → 月数が多い方が先
-        ('2026-07-07', '定食屋', -900),
-        ('2026-08-07', '定食屋', -900),
-        ('2026-09-07', '定食屋', -1000),
+        ('2026-07-07', '回線', -900),
+        ('2026-08-07', '回線', -900),
+        ('2026-09-07', '回線', -1000),
+        # 契約の入らない分類（普段の買い物）→ 毎月でも候補外
+        ('2026-07-07', '定食屋', -900, '食費', '外食'),
+        ('2026-08-07', '定食屋', -900, '食費', '外食'),
+        # サブスクは大項目が年で変わるので中項目で拾う
+        ('2026-07-20', '音楽B', -500, '趣味・娯楽', 'サブスクリプション'),
+        ('2026-08-20', '音楽B', -500, '趣味・娯楽', 'サブスクリプション'),
     ])
     got = ct.find_unlisted_recurring([listed, ended], entries, TODAY)
-    assert got == [('定食屋', 3, 1000), ('ジム', 2, 8800)]
+    assert got == [('回線', 3, 1000), ('ジム', 2, 8800), ('音楽B', 2, 500)]
 
 
 def test_empty_entries_do_not_crash():
