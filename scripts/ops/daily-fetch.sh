@@ -83,6 +83,7 @@ step "PHQ-9"         uv run python scripts/phq9.py fetch --non-interactive
 step "排便記録"       uv run python scripts/bowel.py fetch --non-interactive
 step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
+step "Todoist"       uv run python scripts/todoist.py fetch --update
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
 step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
 # Habitica の日付をまたぐ処理（cron）を確定させる。Daily の未完了はこれでしか
