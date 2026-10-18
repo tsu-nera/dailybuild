@@ -6,6 +6,10 @@
 （明細は計上ズレで暴れ、年契約は更新月にしか出ないため）。
 
 通貨は換算せず、合計は通貨ごとに出す。税・社会保険は契約ではないので対象外。
+
+従量（billing: metered。光熱・通話料など使った分を相手が周期的に請求する契約）は
+金額を台帳に書かず、MF の直近の実績から出す。手書きの1回分は代表値にならず、すぐ古くなるため。
+固定費の月割りとは足さず、別に合計する。
 """
 
 import calendar
@@ -17,7 +21,7 @@ import pandas as pd
 import yaml
 
 from lib.mf import render
-from lib.mf.store import COL_AMOUNT, COL_NAME
+from lib.mf.store import COL_AMOUNT, COL_CATEGORY, COL_NAME, COL_SUBCATEGORY
 from lib.utils.private_data import require_private_path
 
 BASE_DIR = Path(__file__).resolve().parents[3]
@@ -28,8 +32,11 @@ CONTRACTS_YAML = BASE_DIR / 'config' / 'private' / 'contracts.yaml'
 KINDS = ('living', 'business')
 KIND_LABEL = {'living': '生活', 'business': '事業経費'}
 
+BILLINGS = ('fixed', 'metered')
+
+# amount は固定のときだけ必須、mf_match は従量のときだけ必須（_required_keys）
 REQUIRED_KEYS = ('name', 'amount', 'cycle_months', 'anchor', 'kind')
-OPTIONAL_KEYS = ('currency', 'payment', 'mf_match', 'cancel_url', 'ended')
+OPTIONAL_KEYS = ('billing', 'currency', 'payment', 'mf_match', 'cancel_url', 'ended')
 
 # 照合の許容日数。期待日 ±N 日に明細があれば請求ありとみなす
 TOLERANCE_DAYS = 10
@@ -37,6 +44,13 @@ TOLERANCE_DAYS = 10
 UNLISTED_MONTHS = 24
 # 更新が近い契約として扱う最短の周期（月次契約は毎月更新なので対象外）
 UPCOMING_MIN_CYCLE = 12
+# 従量の実績を取る範囲（月）。1年で季節の振れをならす
+METERED_MONTHS = 12
+# 台帳に無い繰り返し支払いの候補にする分類。食費・日用品は同じ店に毎月行くだけで
+# 契約ではなく、候補を埋めてしまう。サブスクの中項目は年によって大項目が変わるので
+# 中項目名で指す
+CANDIDATE_CATEGORIES = ('住宅', '水道・光熱費', '通信費', '保険')
+CANDIDATE_SUBCATEGORIES = ('サブスクリプション', '年サブスク他', 'フィットネス', '事業経費')
 
 
 class ContractError(ValueError):
@@ -46,10 +60,11 @@ class ContractError(ValueError):
 @dataclass(frozen=True)
 class Contract:
     name: str
-    amount: float
+    amount: float | None    # 従量は None（実績から出す）
     cycle_months: int
     anchor: dt.date
     kind: str
+    billing: str = 'fixed'
     currency: str = 'JPY'
     payment: str | None = None
     mf_match: str | None = None
@@ -97,7 +112,12 @@ def last_expected(c: Contract, today: dt.date) -> dt.date | None:
     return renewal_date(c, k)
 
 
+def is_metered(c: Contract) -> bool:
+    return c.billing == 'metered'
+
+
 def monthly_amount(c: Contract) -> float:
+    """固定の契約の月割り。従量は metered_actual を使う"""
     return c.amount / c.cycle_months
 
 
@@ -129,15 +149,29 @@ def _parse_contract(index: int, raw) -> Contract:
     unknown = sorted(set(raw) - set(REQUIRED_KEYS) - set(OPTIONAL_KEYS))
     if unknown:
         raise ContractError(f"{label}: 未知のキー {unknown}（綴りの誤りの可能性）")
-    missing = [k for k in REQUIRED_KEYS if k not in raw or raw[k] is None]
+
+    billing = raw.get('billing', 'fixed')
+    if billing not in BILLINGS:
+        raise ContractError(
+            f"{label}: billing は {' / '.join(BILLINGS)} のどちらか: {billing!r}")
+    metered = billing == 'metered'
+
+    required = [k for k in REQUIRED_KEYS if not (metered and k == 'amount')]
+    if metered:
+        required.append('mf_match')
+    missing = [k for k in required if k not in raw or raw[k] is None]
     if missing:
         raise ContractError(f"{label}: 必須キーがない {missing}")
 
     if not isinstance(name, str) or not name.strip():
         raise ContractError(f"{label}: name は空でない文字列")
 
-    amount = raw['amount']
-    if isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:
+    amount = raw.get('amount')
+    if metered:
+        if amount is not None:
+            raise ContractError(
+                f"{label}: 従量（billing: metered）は amount を書かない（MF の実績から出す）")
+    elif isinstance(amount, bool) or not isinstance(amount, (int, float)) or amount <= 0:
         raise ContractError(f"{label}: amount は正の数: {amount!r}")
 
     cycle = raw['cycle_months']
@@ -151,6 +185,9 @@ def _parse_contract(index: int, raw) -> Contract:
     currency = raw.get('currency', 'JPY')
     if not isinstance(currency, str) or not currency:
         raise ContractError(f"{label}: currency は文字列: {currency!r}")
+    if metered and currency != 'JPY':
+        raise ContractError(
+            f"{label}: 従量の実績は MF の円建てなので currency は JPY: {currency!r}")
 
     for key in ('payment', 'mf_match', 'cancel_url'):
         value = raw.get(key)
@@ -164,6 +201,7 @@ def _parse_contract(index: int, raw) -> Contract:
         cycle_months=cycle,
         anchor=_to_date(raw['anchor'], label, 'anchor'),
         kind=kind,
+        billing=billing,
         currency=currency,
         payment=raw.get('payment'),
         mf_match=raw.get('mf_match'),
@@ -199,11 +237,50 @@ def active_contracts(contracts: list[Contract]) -> list[Contract]:
 
 
 def monthly_totals(contracts: list[Contract]) -> dict[tuple[str, str], float]:
-    """(通貨, kind) ごとの月割り合計。通貨は換算せず足さない"""
+    """固定の契約の (通貨, kind) ごとの月割り合計。通貨は換算せず足さない"""
     totals: dict[tuple[str, str], float] = {}
     for c in active_contracts(contracts):
+        if is_metered(c):
+            continue
         key = (c.currency, c.kind)
         totals[key] = totals.get(key, 0.0) + monthly_amount(c)
+    return totals
+
+
+@dataclass(frozen=True)
+class MeteredActual:
+    charges: int        # 直近 METERED_MONTHS ヶ月の請求の件数
+    median: float       # 1回の請求額の中央値
+    total: float        # 直近 METERED_MONTHS ヶ月の合計
+    cycle_months: int
+
+    @property
+    def monthly(self) -> float:
+        """1回の平均 ÷ 周期。合計 ÷ 12 だと範囲の途中で始まった契約（引越し後の
+        水道など）を過小に出す。請求の無かった月（通話しない月）は平均に入らない"""
+        return self.total / self.charges / self.cycle_months
+
+
+def metered_actual(c: Contract, entries: pd.DataFrame, today: dt.date,
+                   months: int = METERED_MONTHS) -> MeteredActual | None:
+    """従量の契約の直近 months ヶ月の実績。一致する明細が無ければ None"""
+    hits = _matching(_window(_expenses(entries), today, months), c.mf_match)
+    if hits.empty:
+        return None
+    amounts = hits[COL_AMOUNT].abs()
+    return MeteredActual(charges=len(hits), median=float(amounts.median()),
+                         total=float(amounts.sum()), cycle_months=c.cycle_months)
+
+
+def metered_totals(contracts: list[Contract], entries: pd.DataFrame,
+                   today: dt.date) -> dict[str, float]:
+    """従量の契約の kind ごとの月平均（JPY）。実績の無い契約は 0 として扱う"""
+    totals: dict[str, float] = {}
+    for c in active_contracts(contracts):
+        if not is_metered(c):
+            continue
+        actual = metered_actual(c, entries, today)
+        totals[c.kind] = totals.get(c.kind, 0.0) + (actual.monthly if actual else 0.0)
     return totals
 
 
@@ -226,6 +303,15 @@ def _expenses(entries: pd.DataFrame) -> pd.DataFrame:
     if entries is None or entries.empty:
         return pd.DataFrame(columns=[COL_NAME, COL_AMOUNT, 'date'])
     return entries[entries[COL_AMOUNT] < 0]
+
+
+def _window(expenses: pd.DataFrame, today: dt.date, months: int) -> pd.DataFrame:
+    """today から months ヶ月前（含まない）〜 today（含む）の明細"""
+    if expenses.empty:
+        return expenses
+    start = pd.Timestamp(add_months(today, -months))
+    return expenses[(expenses['date'] > start)
+                    & (expenses['date'] <= pd.Timestamp(today))]
 
 
 def _matching(expenses: pd.DataFrame, mf_match: str) -> pd.DataFrame:
@@ -283,14 +369,14 @@ def find_unlisted_recurring(contracts: list[Contract], entries: pd.DataFrame,
     """台帳に無い繰り返し支払いの候補: (内容, 出現月数, 直近の金額)。
 
     固定か変動かは判定しない（出現率では判定できない）。候補を見て台帳に足す。
+    分類は CANDIDATE_CATEGORIES / CANDIDATE_SUBCATEGORIES に絞る（普段の買い物を除く）。
     解約済みの契約の mf_match も除外に使う（解約後の請求は別の節で出すため）。
     """
-    expenses = _expenses(entries)
-    if expenses.empty:
+    window = _window(_expenses(entries), today, months)
+    if window.empty:
         return []
-    start = pd.Timestamp(add_months(today, -months))
-    window = expenses[(expenses['date'] > start)
-                      & (expenses['date'] <= pd.Timestamp(today))]
+    window = window[window[COL_CATEGORY].isin(CANDIDATE_CATEGORIES)
+                    | window[COL_SUBCATEGORY].isin(CANDIDATE_SUBCATEGORIES)]
     matches = [c.mf_match for c in contracts if c.mf_match]
 
     out = []
@@ -322,7 +408,24 @@ def _table(columns: list[str], rows: list[list]) -> str:
     return pd.DataFrame(rows, columns=columns).to_markdown(index=False)
 
 
-def render_contracts(contracts: list[Contract], today: dt.date) -> str:
+def _amount_cells(c: Contract, entries: pd.DataFrame, today: dt.date) -> list[str]:
+    """一覧の「金額」「月割り」。従量は実績の中央値と月平均"""
+    if not is_metered(c):
+        return [format_amount(c.amount, c.currency),
+                format_amount(monthly_amount(c), c.currency)]
+    actual = metered_actual(c, entries, today)
+    if actual is None:
+        return ['従量 -', '-']
+    return [f"従量 {render.format_yen(actual.median)}",
+            render.format_yen(actual.monthly)]
+
+
+def _kind_breakdown(totals: dict[str, float], fmt) -> str:
+    return ' / '.join(f"{KIND_LABEL[k]} {fmt(totals[k])}" for k in KINDS if k in totals)
+
+
+def render_contracts(contracts: list[Contract], entries: pd.DataFrame,
+                     today: dt.date) -> str:
     active = active_contracts(contracts)
     if not active:
         return '# 定期契約\n\nなし'
@@ -333,23 +436,28 @@ def render_contracts(contracts: list[Contract], today: dt.date) -> str:
         if not group:
             continue
         rows = [[render.truncate(c.name),
-                 format_amount(c.amount, c.currency),
+                 *_amount_cells(c, entries, today),
                  format_cycle(c.cycle_months),
-                 format_amount(monthly_amount(c), c.currency),
                  next_renewal(c, today).isoformat(),
                  c.payment or '-']
                 for c in sorted(group, key=lambda c: c.name)]
         blocks.append(f"## {KIND_LABEL[kind]}\n\n" + _table(
-            ['名前', '金額', '周期', '月割り', '次回更新', '支払い'], rows))
+            ['名前', '金額', '月割り', '周期', '次回更新', '支払い'], rows))
 
     totals = monthly_totals(contracts)
     lines = ['## 月割り合計', '']
     for currency in sorted({cur for cur, _ in totals}):
-        parts = [f"{KIND_LABEL[k]} {format_amount(totals[(currency, k)], currency)}"
-                 for k in KINDS if (currency, k) in totals]
-        total = sum(v for (cur, _), v in totals.items() if cur == currency)
-        lines.append(f"- {currency}: {format_amount(total, currency)}"
-                     f"（{' / '.join(parts)}）")
+        by_kind = {k: v for (cur, k), v in totals.items() if cur == currency}
+        lines.append(
+            f"- 固定 {currency}: {format_amount(sum(by_kind.values()), currency)}"
+            f"（{_kind_breakdown(by_kind, lambda v: format_amount(v, currency))}）")
+    metered = metered_totals(contracts, entries, today)
+    if metered:
+        lines.append(
+            f"- 従量 JPY: {render.format_yen(sum(metered.values()))}"
+            f"（{_kind_breakdown(metered, render.format_yen)}）")
+        lines += ['', f"従量の金額は直近{METERED_MONTHS}ヶ月の請求1回の中央値、"
+                      "月割りは1回の平均 ÷ 周期。固定とは足さない"]
     blocks.append('\n'.join(lines))
     return '\n\n'.join(blocks)
 
@@ -359,7 +467,8 @@ def render_upcoming(contracts: list[Contract], today: dt.date, within: int) -> s
     head = f"## 更新が近い契約（{within}日以内）"
     if not items:
         return f"{head}\n\nなし"
-    rows = [[render.truncate(c.name), format_amount(c.amount, c.currency),
+    rows = [[render.truncate(c.name),
+             '従量' if is_metered(c) else format_amount(c.amount, c.currency),
              nxt.isoformat(), f"{(nxt - today).days}日後", c.cancel_url or '-']
             for c, nxt in items]
     return f"{head}\n\n" + _table(
@@ -395,7 +504,8 @@ def render_reconciliation(contracts: list[Contract], entries: pd.DataFrame,
 
 def render_unlisted(contracts: list[Contract], entries: pd.DataFrame,
                     today: dt.date) -> str:
-    head = f"## 台帳に無い繰り返し支払いの候補（直近{UNLISTED_MONTHS}ヶ月）"
+    head = (f"## 台帳に無い繰り返し支払いの候補"
+            f"（直近{UNLISTED_MONTHS}ヶ月・契約が入り得る分類のみ）")
     items = find_unlisted_recurring(contracts, entries, today)
     if not items:
         return f"{head}\n\nなし"
