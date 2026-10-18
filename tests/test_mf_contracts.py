@@ -393,3 +393,48 @@ def test_empty_entries_do_not_crash():
     assert ct.find_unlisted_recurring([c], empty, TODAY) == []
     assert ct.find_charges_after_end([c], empty) == []
     assert ct.find_missing_charges([c], empty, TODAY) == [(c, D(2026, 10, 1))]
+
+
+# ---- 生活費の固定・従量・変動 ----
+
+def _bucketed(rows):
+    exp = _entries(rows)
+    exp[COL_AMOUNT] = exp[COL_AMOUNT].abs()
+    exp['bucket'] = exp['date'].dt.strftime('%Y-%m')
+    return exp
+
+
+def test_classify_expenses_uses_ended_contracts_and_first_match_wins():
+    cs = [
+        _c('家賃', 50000, mf_match='ヤチン'),
+        _c('旧家賃', 40000, mf_match='家賃', ended=D(2026, 4, 1)),
+        _c('電気', None, billing='metered', mf_match='デンキ'),
+        _c('台帳だけ', 100),    # mf_match なしは分類に使わない
+    ]
+    exp = _bucketed([
+        ('2026-03-10', 'エポス 3月分家賃', -40000),
+        ('2026-05-27', 'SMBC(ヤチン 家賃', -50000),   # 両方に一致 → 先に書いた家賃
+        ('2026-05-10', 'デンキ', -2000),
+        ('2026-05-11', 'スーパー', -3000),
+    ])
+    assert list(ct.classify_expenses(exp, cs)) == ['固定', '固定', '従量', '変動']
+
+
+def test_render_split_rows_sum_and_delta_on_variable():
+    cs = [_c('家賃', 50000, mf_match='ヤチン'),
+          _c('電気', None, billing='metered', mf_match='デンキ')]
+    exp = _bucketed([
+        ('2026-08-27', 'ヤチン', -50000),
+        ('2026-08-10', 'デンキ', -2000),
+        ('2026-08-11', 'スーパー', -10000),
+        ('2026-09-11', 'スーパー', -15000),   # 9月は家賃の計上が無い月
+    ])
+    out = ct.render_split(exp, cs, '月')
+    assert '台帳の固定費（生活・月割り）: ¥50,000/月' in out
+    rows = {cells[0]: cells[1:] for cells in
+            ([c.strip() for c in line.strip('|').split('|')]
+             for line in out.splitlines() if line.startswith('| 2026'))}
+    assert rows['2026-08'][:4] == ['¥50,000', '¥2,000', '¥10,000', '¥62,000']
+    # 増減は変動だけで見る（家賃の計上ズレに引きずられない）
+    assert '+¥5,000' in out
+    assert '+50.0%' in out
