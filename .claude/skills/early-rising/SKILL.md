@@ -27,7 +27,10 @@ cd ~/repo/dailybuild-private && git stash -q; git pull --ff-only -q; git stash p
 ```bash
 uv run scripts/early_rising.py laps --nights 7
 uv run scripts/early_rising.py timeline    # 今朝に終わった夜
+cat reports/observation/$(date -d yesterday +%F).md   # 前夜の区切り（laps が `-` の帰宅などを補う）
 ```
+
+観察日記は 04:00 区切りで完了した日しか作られないので、今朝の覚醒・離床は入っていない。
 
 `laps` は「夜」と「朝」の2表を出す。夜は入眠までに、朝は起床から出発までに時間が溶けた
 区間を見る。`-` はデータが無いことを示す（HA の state 履歴は 2026-10-01 夜以降、スマホの画面は
@@ -38,8 +41,12 @@ uv run scripts/early_rising.py timeline    # 今朝に終わった夜
   ので、使用時間は画面 on の区間で読む
 - 寝坊した夜だけでなく、寝坊しなかった夜と並べて違いを見る。寝坊した夜だけ見ても、
   何が効いているのかは分からない
-- 「起床」は Fitbit の睡眠終了で、離床ではない。離床は timeline で照度の急上昇（カーテン）と
-  生活音の立ち上がりが重なる時刻（10-17 は Fitbit 09:28、本人の離床 10:05）。両方を分けて出す
+- 「起床」は Fitbit の睡眠終了で、離床ではない。睡眠終了は末尾の wake ステージ込みなので、
+  覚醒は `data/wearable/sleep_levels.csv` の最後の wake の開始で取る。離床は生活音の立ち上がりと
+  `data/wearable/steps_intraday.csv` の歩数の出始め（照度の急上昇＝カーテンは無い朝もある）。
+  覚醒・睡眠終了・離床を分けて出す（10-19 は覚醒 06:29・終了 07:29・離床 08:30 ごろ。skeleton の
+  起床後臥床は終了基準なので過小）
+- スピーカー等が `unavailable` を挟んで一瞬だけ状態を変えるのは接続のぶれ。質問の材料にしない
 - 生活音（noise）が在宅の主計器。不在中も -34dBFS 前後の塊が出るので、帰宅・出発は照明や
   運動と重ねて読む。Remo の人感は不在中にも反応するので使わない
 - timeline の先頭に「スマホから…届いていない」と出たら Companion App が止まっている。
@@ -62,5 +69,7 @@ uv run scripts/early_rising.py timeline    # 今朝に終わった夜
   内容はその夜の lap 表の行、本人の回答、解釈。事例の数値は memory に書かない
   （引くときは `grep -n '寝坊分析' reports/journal/*.md`）
 - 仮説ファイルを書き換える。外れた仮説は消し、追記を重ねて積まない（履歴はジャーナルにある）
+- 本人が時刻を言ったら（「6:30〜8:30 布団から立てなかった」）、`reports/observation/labels.csv` に
+  区切りごとに1行足す（観察日記の答え合わせ。日付は朝の暦日）
 - 介入を始めた・やめたときは `ACTIONS.md` に1行。夜の介入の実装は saru9000 の担当
 - private リポジトリを commit・push する
