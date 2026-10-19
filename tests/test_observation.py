@@ -90,3 +90,32 @@ def test_rise_is_not_taken_from_evening_noise_after_staying_out():
     hist = {E['noise']: noise(*[(t(17, 23) + dt.timedelta(minutes=i), -26) for i in range(10)])}
     lms = by_name(day_data(hist, [MORNING_SLEEP]))
     assert lms['離床'].time is None
+
+
+def _automated(**keys):
+    cfg = {**CFG, 'automated_since': keys}
+    lo, hi = window(DAY, CFG['day_start_hour'], JST)
+    return cfg, lo, hi
+
+
+def test_automated_curtain_is_not_taken_as_rise():
+    # 自動のカーテンが 06:00 に開いても、離床は生活音の立ち上がり（08:30）
+    cfg, lo, hi = _automated(illuminance=DAY)
+    hist = {
+        E['noise']: noise(*[(t(17, 8, 30) + dt.timedelta(minutes=i), -30) for i in range(20)]),
+        E['illuminance']: [(t(17, 5, 59), '20', False), (t(17, 6, 0), '200', False)],
+    }
+    d = DayData(day=DAY, lo=lo, hi=hi, cfg=cfg, hist=hist,
+                events=[sleep(t(16, 23, 40), t(17, 5, 50), '2026-10-17')])
+    assert by_name(d)['離床'].time == t(17, 8, 30)
+
+
+def test_automated_lights_give_no_lights_off_and_home_needs_noise():
+    cfg, lo, hi = _automated(lights=DAY)
+    night = sleep(t(17, 23, 40), t(18, 6, 0), '2026-10-18')
+    on_off = [(t(17, 18, 0), 'on', False), (t(17, 23, 0), 'off', False)]
+    hist = {eid: on_off for eid in E['lights']}
+    d = DayData(day=DAY, lo=lo, hi=hi, cfg=cfg, hist=hist, events=[MORNING_SLEEP, night])
+    lms = by_name(d)
+    assert lms['消灯'].time is None
+    assert lms['帰宅'].time is None   # 自動で点いた照明だけでは帰宅にしない

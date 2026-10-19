@@ -34,6 +34,11 @@ class DayData:
     def minutes(self, key, section='landmarks') -> dt.timedelta:
         return dt.timedelta(minutes=self.cfg[section][key])
 
+    def automated(self, key) -> bool:
+        """key（lights / illuminance）が自動化済みの生活日か。自動で変わる材料は本人の行動を表さない"""
+        since = (self.cfg.get('automated_since') or {}).get(key)
+        return since is not None and self.day >= since
+
 
 @dataclass
 class Landmark:
@@ -118,13 +123,14 @@ def rise(d: DayData, ref: dt.datetime) -> tuple[Landmark, tuple | None]:
     # 外泊の朝に帰宅後の夜の生活音を離床と取らない（10-15 は 23:02 が離床と出た）
     until = ref + dt.timedelta(hours=d.cfg['landmarks']['rise_within_hours'])
     acts = [b for b in activity_bursts(d) if ref <= b[0] <= until]
-    jumps = [t for t in illuminance_jumps(d) if ref <= t <= until]
+    jumps = [] if d.automated('illuminance') else [t for t in illuminance_jumps(d) if ref <= t <= until]
     for b in acts:
         near = [j for j in jumps if abs(j - b[0]) <= within or b[0] <= j <= b[1]]
         if near:
             return Landmark('離床', min(b[0], near[0]), '照度の急上昇＋生活音'), b
     if acts:
-        return Landmark('離床', acts[0][0], '生活音のみ（照度の上昇なし）'), acts[0]
+        why = '照度は自動化済み' if d.automated('illuminance') else '照度の上昇なし'
+        return Landmark('離床', acts[0][0], f'生活音のみ（{why}）'), acts[0]
     return Landmark('離床', None, '起床後の生活音なし（外泊・不在の可能性）'), None
 
 
@@ -161,6 +167,11 @@ def home(d: DayData, until: dt.datetime) -> Landmark:
     within = d.minutes('home_noise_within_min')
     quiet = d.minutes('home_quiet_before_min')
     acts = activity_bursts(d)
+    if d.automated('lights'):
+        for b in acts:
+            if lo <= b[0] <= until and not any(b[0] - quiet <= a[1] < b[0] for a in acts if a is not b):
+                return Landmark('帰宅', b[0], '生活音のみ（直前は無音。照明は自動化済み）')
+        return Landmark('帰宅', None, '無音の後の生活音なし（照明は自動化済み）')
     for t in lights_changes(d, 'on'):
         if not lo <= t <= until:
             continue
@@ -184,6 +195,8 @@ def screen_off(d: DayData, sleep) -> Landmark:
 
 
 def lights_off(d: DayData, sleep) -> Landmark:
+    if d.automated('lights'):
+        return Landmark('消灯', None, '照明は自動化済み')
     hi = sleep['start'] + d.minutes('lights_off_after_sleep_min')
     offs = [t for t in lights_changes(d, 'off') if sleep['start'] - dt.timedelta(hours=6) <= t <= hi]
     if not offs:
@@ -225,7 +238,7 @@ def source_status(d: DayData) -> list[tuple[str, str, str]]:
         n = sum(1 for _, s, initial in d.hist.get(eid, ()) if not initial and s not in NO_DATA)
         rows.append((label, 'OK' if n else '記録なし', f'{n}件'))
     n_lights = len(lights_changes(d, 'on')) + len(lights_changes(d, 'off'))
-    rows.append(('照明', 'OK', f'変化 {n_lights}回'))
+    rows.append(('照明', '自動化' if d.automated('lights') else 'OK', f'変化 {n_lights}回'))
     pc = last_seen(d.hist, tuple(d.ent('pc').values()))
     rows.append(('PC', '記録あり' if pc and pc >= d.lo else '記録なし', f'最終 {pc:%m-%d %H:%M}' if pc else '-'))
     srcs = {}

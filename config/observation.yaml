@@ -24,6 +24,12 @@ entities:
     power: sensor.cachyos_power_state
   # Remo の人感（sensor.remo_nature_remo_remo_motion）は不在中にも反応するので使わない
 
+# 自動化した日（YYYY-MM-DD）。この生活日以降、その材料は本人の行動として判定に使わない（時系列には出す）。
+# lights: 帰宅は生活音だけで取り、消灯は出さない。illuminance: 離床は生活音だけで取る（カーテンの自動化も含む）
+automated_since:
+  lights:
+  illuminance:
+
 noise:
   loud_dbfs: -40       # 塊の境界。平常は -45 前後
   activity_dbfs: -33   # 在宅の生活音とみなす塊の max。不在中も外の音で -34 前後の塊が出る
