@@ -23,3 +23,17 @@ targets:
     direction: zero
     review: weekly
     note: "Oura方式の累積睡眠負債（src/lib/analytics/sleep/sleep_debt_clean.py）"
+
+  - key: rise_time
+    target: "05:45"
+    unit: "時刻"
+    direction: down
+    review: weekly
+    note: "布団を出た時刻（Fitbit の睡眠終了ではない。歩数の出始めと生活音で取る）。最終目標 05:00、05:45 から段階的に前倒しする。平日の8割以上で達成した週が2週続いたら15分早める（05:45→05:30→05:15→05:00）。2026-10-19 設定"
+
+  - key: bed_time
+    target: "22:45"
+    unit: "時刻"
+    direction: down
+    review: weekly
+    note: "入床。rise_time と同じ幅で動かす（最終 22:00）。2026-10-19 設定"
