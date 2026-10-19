@@ -26,6 +26,8 @@ from lib.analytics import sleep
 from lib.analytics.nutrition_logging import load_nutrition_with_logging_mode
 from lib.utils.report_args import add_common_report_args, parse_period_args, determine_output_dir
 from lib.utils.private_data import ensure_dir
+from lib.utils.targets import get_target
+from lib.analytics.sleep.rise import load_steps, minutes_late, rise_time
 
 # データファイルパス
 BASE_DIR = project_root
@@ -36,6 +38,7 @@ HRV_INTRADAY_CSV = BASE_DIR / 'data/wearable/hrv_intraday.csv'
 HR_INTRADAY_CSV = BASE_DIR / 'data/wearable/heart_rate_intraday.csv'
 HR_DAILY_CSV = BASE_DIR / 'data/wearable/heart_rate.csv'
 SUN_TIMES_CSV = BASE_DIR / 'data/sun_times.csv'
+STEPS_INTRADAY_CSV = BASE_DIR / 'data/wearable/steps_intraday.csv'
 NUTRITION_CSV = BASE_DIR / 'data/wearable/nutrition.csv'
 NUTRITION_LOGGING_CONFIG = BASE_DIR / 'config/nutrition_logging.yaml'
 
@@ -327,10 +330,11 @@ def prepare_sleep_report_data(results):
             'wakeup_earliest': stats.get('wakeup', {}).get('earliest', '-'),
             'wakeup_latest': stats.get('wakeup', {}).get('latest', '-'),
             'wakeup_std': f"{stats.get('wakeup', {}).get('std_minutes', 0):.0f}",
-            'waketime_mean': stats['waketime']['mean'],
-            'waketime_earliest': stats['waketime']['earliest'],
-            'waketime_latest': stats['waketime']['latest'],
-            'waketime_std': f"{stats['waketime']['std_minutes']:.0f}",
+            'rise_mean': stats['rise'].get('mean', '-'),
+            'rise_earliest': stats['rise'].get('earliest', '-'),
+            'rise_latest': stats['rise'].get('latest', '-'),
+            'rise_std': f"{stats['rise'].get('std_minutes', 0):.0f}",
+            'goal': results['goal'],
             'min_hr_mean': min_hr_mean,
             'min_hr_earliest': min_hr_earliest,
             'min_hr_latest': min_hr_latest,
@@ -483,6 +487,13 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
             if wakeup_times:
                 stats['wakeup'] = sleep.calc_time_stats(wakeup_times)
 
+    # 離床は歩数の出始め（Fitbit の endTime は離床ではない。lib.analytics.sleep.rise）
+    steps = load_steps(STEPS_INTRADAY_CSV) if STEPS_INTRADAY_CSV.exists() else pd.Series(dtype=float)
+    bed_target = get_target('bed_time')
+    rise_target = get_target('rise_time')
+    rise_times = []
+    goal = {'bed': [0, 0], 'rise': [0, 0]}   # 平日の [達成, 判定できた日]
+
     # 日別サマリーテーブル作成（3分割：効率・ステージ・時刻）
     efficiency_data = []
     stages_data = []
@@ -493,7 +504,6 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
         bed_hours = row['timeInBed'] / 60
         # 就寝・起床時刻を抽出
         bedtime = pd.to_datetime(row['startTime']).strftime('%H:%M') if 'startTime' in row else '-'
-        waketime = pd.to_datetime(row['endTime']).strftime('%H:%M') if 'endTime' in row else '-'
         # 入眠潜時・起床後時間
         timing = sleep_timing.get(date, {})
         fall_asleep = timing.get('minutes_to_fall_asleep', 0)
@@ -527,10 +537,20 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
             fall_asleep_time = (pd.to_datetime(row['startTime']) + pd.Timedelta(minutes=fall_asleep)).strftime('%H:%M')
         else:
             fall_asleep_time = '-'
-        if 'endTime' in row and after_wake > 0:
-            wakeup_time = (pd.to_datetime(row['endTime']) - pd.Timedelta(minutes=after_wake)).strftime('%H:%M')
-        else:
-            wakeup_time = '-'
+        end_dt = pd.to_datetime(row['endTime'])
+        wakeup_dt = end_dt - pd.Timedelta(minutes=after_wake)
+        wakeup_time = wakeup_dt.strftime('%H:%M') if after_wake > 0 else '-'
+        rise_dt = rise_time(steps, wakeup_dt)
+        if rise_dt is not None:
+            rise_times.append(rise_dt)
+
+        weekday = pd.to_datetime(date).dayofweek < 5
+        bed_late = minutes_late(pd.to_datetime(row['startTime']), bed_target, evening=True) if bed_target else None
+        rise_late = minutes_late(rise_dt, rise_target) if rise_target and rise_dt is not None else None
+        for key, late in (('bed', bed_late), ('rise', rise_late)):
+            if weekday and late is not None:
+                goal[key][1] += 1
+                goal[key][0] += late <= 0
 
         # 日出・日入をCSVから取得
         if not df_sun.empty and date in df_sun['date'].values:
@@ -547,7 +567,9 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
             '就寝': bedtime,
             '入眠': fall_asleep_time,
             '起床': wakeup_time,
-            '離床': waketime,
+            '離床': rise_dt.strftime('%H:%M') if rise_dt is not None else '-',
+            '就寝差': f"{bed_late:+d}分" if bed_late is not None else '-',
+            '離床差': f"{rise_late:+d}分" if rise_late is not None else '-',
             '日出': sunrise_time,
             '日入': sunset_time,
         })
@@ -555,6 +577,13 @@ def run_analysis(output_dir, days=None, week=None, month=None, year=None, sleep_
     results['efficiency_table'] = pd.DataFrame(efficiency_data)
     results['stages_table'] = pd.DataFrame(stages_data)
     results['timing_table'] = pd.DataFrame(timing_data)
+    stats['rise'] = sleep.calc_time_stats(rise_times)
+    results['goal'] = {
+        'bed_target': bed_target or '-',
+        'rise_target': rise_target or '-',
+        'bed': f"{goal['bed'][0]}/{goal['bed'][1]}",
+        'rise': f"{goal['rise'][0]}/{goal['rise'][1]}",
+    }
 
     # 個別グラフ生成
     if show_charts:

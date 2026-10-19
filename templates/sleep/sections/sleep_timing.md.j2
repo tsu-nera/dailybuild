@@ -2,9 +2,13 @@
 
 | 指標 | 就寝 | 入眠 | 起床 | 離床 | 最低HR | 日出 | 日入 |
 |------|------|------|------|------|--------|------|------|
-| 平均 | **{{ timing.bedtime_mean }}** | **{{ timing.fallasleep_mean }}** | **{{ timing.wakeup_mean }}** | **{{ timing.waketime_mean }}** | {{ timing.min_hr_mean }} | {{ timing.sunrise_mean }} | {{ timing.sunset_mean }} |
-| 最早 | {{ timing.bedtime_earliest }} | {{ timing.fallasleep_earliest }} | {{ timing.wakeup_earliest }} | {{ timing.waketime_earliest }} | {{ timing.min_hr_earliest }} | - | - |
-| 最遅 | {{ timing.bedtime_latest }} | {{ timing.fallasleep_latest }} | {{ timing.wakeup_latest }} | {{ timing.waketime_latest }} | {{ timing.min_hr_latest }} | - | - |
-| ばらつき | ±{{ timing.bedtime_std }}分 | ±{{ timing.fallasleep_std }}分 | ±{{ timing.wakeup_std }}分 | ±{{ timing.waketime_std }}分 | ±{{ timing.min_hr_std }}分 | - | - |
+| 平均 | **{{ timing.bedtime_mean }}** | **{{ timing.fallasleep_mean }}** | **{{ timing.wakeup_mean }}** | **{{ timing.rise_mean }}** | {{ timing.min_hr_mean }} | {{ timing.sunrise_mean }} | {{ timing.sunset_mean }} |
+| 最早 | {{ timing.bedtime_earliest }} | {{ timing.fallasleep_earliest }} | {{ timing.wakeup_earliest }} | {{ timing.rise_earliest }} | {{ timing.min_hr_earliest }} | - | - |
+| 最遅 | {{ timing.bedtime_latest }} | {{ timing.fallasleep_latest }} | {{ timing.wakeup_latest }} | {{ timing.rise_latest }} | {{ timing.min_hr_latest }} | - | - |
+| ばらつき | ±{{ timing.bedtime_std }}分 | ±{{ timing.fallasleep_std }}分 | ±{{ timing.wakeup_std }}分 | ±{{ timing.rise_std }}分 | ±{{ timing.min_hr_std }}分 | - | - |
+
+**目標**（`config/targets.yaml`）: 就寝 {{ timing.goal.bed_target }} → 平日達成 {{ timing.goal.bed }}日 / 離床 {{ timing.goal.rise_target }} → 平日達成 {{ timing.goal.rise }}日
+
+起床は Fitbit の最後の覚醒の始まり、離床は起床後に歩き出した最初の分（Fitbit の睡眠記録の終了ではない）。歩数の記録が無い日は `-`。差は目標からの遅れ（負は早い）。
 
 {{ timing.table }}
