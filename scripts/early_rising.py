@@ -45,7 +45,7 @@ PHONE_BATTERY = 'sensor.xiaomi_battery_level'
 PHONE_ENTITIES = (PHONE_SCREEN, PHONE_APP, PHONE_HOME, PHONE_BATTERY)
 LIGHTS = ('light.ceiling_center', 'light.ceiling_left', 'light.ceiling_right', 'light.indirect_light')
 # タイムラインにだけ出す（lap には使わない）。PC の前面アプリは15秒粒度で多すぎるので入れない
-TIMELINE_ONLY = ('switch.kyoshitsu_monitor', 'binary_sensor.cachyos_idle', 'counter.bedtime_interrupt_fired',
+TIMELINE_ONLY = ('switch.kyoshitsu_monitor', 'binary_sensor.mouse_idle', 'counter.bedtime_interrupt_fired',
                  'media_player.main_speaker', 'sensor.remo_nature_remo_remo_illuminance')
 # vaio のマイク（saru9000 home/noise.py）の1分 Leq。在宅中の生活音の主計器で、帰宅・身支度・出発が出る。
 # 1分ごとで多すぎるので、閾値を超えた分を塊にまとめて出す

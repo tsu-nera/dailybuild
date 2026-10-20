@@ -14,10 +14,13 @@ statistic_ids:
 # attributes は保存するキー（省略時は保存しない）。指定外のキーは入らない
 entities:
   - binary_sensor.xiaomi_interactive
-  - binary_sensor.cachyos_idle
+  - binary_sensor.mouse_idle
   - sensor.xiaomi_last_used_app
-  - sensor.cachyos_active_app
-  - sensor.cachyos_active_window_title
+  - sensor.mouse_active_app
+  - sensor.mouse_active_window_title
+  - binary_sensor.iiyama_idle
+  - sensor.iiyama_active_app
+  - sensor.iiyama_active_window_title
   - {entity_id: device_tracker.xiaomi, attributes: [latitude, longitude, gps_accuracy]}
   - {entity_id: device_tracker.bv5200_pro, attributes: [latitude, longitude, gps_accuracy]}
   # 観察日記の材料（照明・入眠用の音・スマホの生存確認）
