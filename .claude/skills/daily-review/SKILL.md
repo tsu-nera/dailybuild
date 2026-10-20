@@ -64,11 +64,11 @@ rsync・pull・`--state-only` は行う**（vaio の 12:00 の取得結果を受
 ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days <N>"'
 rsync -a vaio:~/repo/dailybuild/logs/daily-routine/ logs/daily-routine/
 git -C ~/repo/dailybuild-private pull --rebase --autostash
-uv run scripts/journal_skeleton.py --state-only   # STATE.md / metrics_daily.csv は追跡外なので mouse で作り直す
+uv run scripts/journal_skeleton.py --state-only   # STATE.md / metrics_daily.csv は追跡外なので手元で作り直す
 ```
 
 STATE.md の「最終実行」「ログの警告」は手元の `logs/` を読む。ログは vaio にしか
-書かれずリポジトリにも入らないので、rsync を省くと mouse に残った古いログが表示される。
+書かれずリポジトリにも入らないので、rsync を省くと手元に残った古いログが表示される。
 
 **ssh が失敗したとき（vaio 停止・tailnet 断）は、ローカルで `daily-routine.sh` / `daily-fetch.sh` を代わりに
 走らせない。** 取得元が2台になると同じ CSV を両側で書き換える。失敗を報告し、
@@ -254,7 +254,7 @@ uv run python scripts/show_targets.py --interval weekly
 その後の会話で深掘りした内容は Discussion に追記する（区間外なので上書きされない）。
 
 書き終えたら `dailybuild-private` の変更を commit・push する。週ファイルは vaio が
-skeleton 区間、mouse が区間外を書くので、mouse が push しないと次の pull で衝突する。
+skeleton 区間、手元（対話マシン）が区間外を書くので、手元が push しないと次の pull で衝突する。
 
 ```bash
 git -C ~/repo/dailybuild-private add -A && git -C ~/repo/dailybuild-private commit -m "chore(journal): daily review YYYY-MM-DD" && git -C ~/repo/dailybuild-private push
