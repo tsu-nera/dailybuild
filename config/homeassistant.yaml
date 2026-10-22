@@ -16,6 +16,7 @@ entities:
   - binary_sensor.xiaomi_interactive
   - binary_sensor.mouse_idle
   - sensor.xiaomi_last_used_app
+  - sensor.xiaomi_next_alarm  # 次に鳴るアラームの時刻。切替時刻を止めた時刻として読む想定（Google 時計で一致するかは未検証。スヌーズと停止は区別できない）
   - sensor.mouse_active_app
   - sensor.mouse_active_window_title
   - binary_sensor.iiyama_idle
