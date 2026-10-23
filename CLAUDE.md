@@ -323,6 +323,7 @@ stdout）。
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | 行動活性化（BATD-R）を再開・再設計するとき | [docs/batdr.md](docs/batdr.md) — 日次帳票の実装は2026-09-07に廃止済み。同じ形を作り直す前に廃案の節を読む |
 | 観察日記（`scripts/observation.py` / `reports/observation/`）を扱うとき | [docs/observation.md](docs/observation.md) — 材料が欠けた区切りは別の材料で埋めない。判定を変えたら `eval` で答え合わせとのズレを比べる |
+| 歯科検診の結果票を `data/dental_checkup.csv` に書くとき | [docs/dental.md](docs/dental.md) — 空欄を推定で埋めない。写真は縮めてから置く |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
 
 ## Report Generation
