@@ -22,7 +22,18 @@ CADENCES = ('daily', 'sparse', 'weekly')
 REVIEWS = ('daily', 'weekly')
 
 REQUIRED = ('key', 'name', 'csv', 'date_column', 'status', 'cadence',
-            'stale_after_days', 'note', 'review', 'fetch', 'show')
+            'stale_after_days', 'note', 'review')
+# 省略すると汎用の forms.py fetch / show（config/<key>_def.yaml だけで動く。
+# lib.forms.generic）。show: null は「show を持たない」
+OPTIONAL = ('fetch', 'show', 'short_name')
+
+
+def generic_fetch_argv(key: str) -> tuple[str, ...]:
+    return ('scripts/forms.py', 'fetch', key)
+
+
+def generic_show_argv(key: str) -> tuple[str, ...]:
+    return ('scripts/forms.py', 'show', key)
 
 
 class RegistryError(ValueError):
@@ -48,8 +59,18 @@ class Form:
     def active(self) -> bool:
         return self.status == 'active'
 
+    @property
+    def generic_fetch(self) -> bool:
+        return self.fetch == generic_fetch_argv(self.key)
 
-def _argv(entry, field, where):
+    @property
+    def generic_show(self) -> bool:
+        return self.show == generic_show_argv(self.key)
+
+
+def _argv(entry, field, where, default):
+    if field not in entry:
+        return default
     value = entry[field]
     if value is None and field == 'show':
         return None
@@ -67,7 +88,7 @@ def _parse(entry, index) -> Form:
     missing = [f for f in REQUIRED if f not in entry]
     if missing:
         raise RegistryError(f"{where}: 必須項目が無い: {', '.join(missing)}")
-    unknown = set(entry) - set(REQUIRED) - {'short_name'}
+    unknown = set(entry) - set(REQUIRED) - set(OPTIONAL)
     if unknown:
         raise RegistryError(f"{where}: 未知の項目: {', '.join(sorted(unknown))}")
     for field in ('key', 'name', 'csv', 'date_column'):
@@ -86,14 +107,15 @@ def _parse(entry, index) -> Form:
     note = entry['note'] or ''
     if not isinstance(note, str):
         raise RegistryError(f'{where}: note は文字列')
-    show = _argv(entry, 'show', where)
+    show = _argv(entry, 'show', where, generic_show_argv(entry['key']))
     if entry['review'] is not None and show is None:
         raise RegistryError(f'{where}: review があるのに show が無い')
     short_name = entry.get('short_name') or entry['name']
     return Form(key=entry['key'], name=entry['name'], csv=entry['csv'],
                 date_column=entry['date_column'], status=entry['status'],
                 cadence=entry['cadence'], stale_after_days=stale, note=note,
-                review=entry['review'], fetch=_argv(entry, 'fetch', where),
+                review=entry['review'],
+                fetch=_argv(entry, 'fetch', where, generic_fetch_argv(entry['key'])),
                 show=show, short_name=short_name)
 
 

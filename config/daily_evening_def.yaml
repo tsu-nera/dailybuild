@@ -6,7 +6,7 @@
 #
 # Issue #167 で questions を「順序付きリスト1本」に統合した（旧
 # questions/grid_rows/grid_required の3箇所複製を廃止）。
-# src/lib/daily/store.py がここから列・型・グリッド行・表示ラベルを
+# src/lib/forms/schema.py がここから列・型・グリッド行・表示ラベルを
 # すべて導出する（コード側に複製を持たない）。
 
 # setup-form が新規作成時に書き戻す。空なら未作成（merge 後に対話で作成する）
@@ -48,7 +48,7 @@ grids:
 #     - grid:   1〜5 のグリッド行（下の score 参照）
 #     - number: 数値入力。Forms API の TextQuestion に数値バリデーションは
 #               無いため、フォーム上はただの自由記述。数値化は fetch 側
-#               （scripts/daily.py build_dataframe）が
+#               （src/lib/forms/schema.py の build_dataframe）が
 #               pd.to_numeric(errors='coerce') で行い、パース不能値は
 #               0 ではなく NA にする（0 は EDA responses のように
 #               正当な実測値でありうるため、欠測と区別する）
@@ -163,4 +163,6 @@ score:
 # date は 5:00 境界（00:00-04:59 の回答は前日に帰属する）。朝と違い暦日の
 # ままにしないのは、夜更かしのチェックアウトが翌日に付かないようにするため
 # （BATD-R Form 1 の帳票日と同じ切り方）。実装は
-# src/lib/daily/store.py の response_date()。
+# src/lib/forms/schema.py の response_date()。
+unit: day
+day_start_hour: 5

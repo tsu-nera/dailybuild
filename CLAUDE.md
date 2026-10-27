@@ -179,6 +179,8 @@ uv run scripts/toggl.py projects         # プロジェクト名一覧（既定�
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
 uv run scripts/forms.py list         # フォームのレジストリ（config/forms.yaml）。追加・廃止は yaml の1エントリ（docs/forms.md）
 uv run scripts/forms.py show --review daily --days 7  # daily-review が読む active フォームの show を順に実行
+uv run scripts/forms.py show daily_evening --days 7   # 1フォームの show。fetch / show を持たないフォームは def yaml だけで動く汎用版（docs/forms.md）
+uv run scripts/forms.py setup-form <key> --update     # 汎用フォームの生成・yaml への同期（新しいフォームは def yaml とレジストリ1行で足す）
 uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得。レジストリで deprecated（fetch だけ続く）
 uv run scripts/emotion.py show       # 気分記録のサマリ（既定は直近7日）
 uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す

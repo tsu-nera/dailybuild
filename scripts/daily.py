@@ -6,443 +6,59 @@
 `daily.py <slot> <action>` の形（slot: morning/evening、action: fetch/show/
 setup-form。morning のみ migrate-manual も持つ）。朝夜は同じ尺度（1〜5・
 高=良好）を共有する1つの概念の半分ずつなので、スクリプトを2本に割らない
-（割ると片方だけ尺度や向きが動いたときに気づけない）。slot 固有の設定は
-src/lib/daily/store.py の SLOTS が持ち、fetch/show/setup-form の本体は共通。
+（割ると片方だけ尺度や向きが動いたときに気づけない）。
 
-setup-form で fetch で回答を直接取得する。data/manual.csv（Google Sheets
-手動入力）の一次入力5列を朝フォームへ移すための取得系（Issue #33 / #135）
-だったが、Issue #157 で朝・夜の2フォームに分割した。
+fetch / show / setup-form の本体は固有処理を持たないフォームと共通
+（lib.forms.generic。scripts/forms.py の `fetch daily_morning` と同じ処理）。
+slot の差（日付境界・source 列）は config/daily_{slot}_def.yaml にある。
+ここに残る固有処理は migrate-manual（data/manual.csv の一次入力5列を朝へ
+移す。Issue #33 / #135）だけ。
 """
 
 import argparse
-import datetime as dt
-import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
-import yaml
-from lib.clients import gdrive_client, gforms_client
-from lib.daily import render, store
-from lib.utils import csv_utils
+from lib.clients import gforms_client  # noqa: F401（テストが monkeypatch する）
+from lib.daily import store
+from lib.forms import cli, defs, generic, schema
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 MANUAL_FILE = require_private_path(BASE_DIR / 'data' / 'manual.csv')
 
-TZ = 'Asia/Tokyo'
+NAMES = {'morning': '日次記録（朝）', 'evening': '日次記録（夜）'}
 
 # スキーマの唯一の正本は config/daily_{slot}_def.yaml（store.load_def が読む）。
 # モジュール global のエイリアスにしておくことで、テストの
 # monkeypatch.setattr(daily, 'load_def', fake_load_def) がそのまま効く
 load_def = store.load_def
-
-
-def save_form_id(slot, form_id):
-    """yaml のコメントを壊さないよう form_id の行だけ置換する"""
-    def_file = store.DEF_FILES[slot]
-    text = def_file.read_text()
-    new_text, n = re.subn(r'^form_id:.*$', f'form_id: {form_id}', text,
-                          count=1, flags=re.MULTILINE)
-    if n != 1:
-        raise ValueError(f'form_id の行が見つからない: {def_file}')
-    def_file.write_text(new_text)
+build_items = schema.build_items
 
 
 def save_question_ids(slot, ids_by_key):
-    """yaml のコメントを壊さないよう question_id だけ行編集で書き戻す（Issue #176）
-
-    save_form_id と同じ「yaml をテキストで読み、対象の値だけ置換する」流儀。
-    yaml.safe_dump で丸ごと書き直すとコメントが全部消えるため使わない。
-
-    questions: 配下の各エントリ（"  - key: <key>" で始まる行）を走査し、
-    ids_by_key（{key: question_id}）にある key のエントリへ question_id を
-    挿入・置換する。エントリの終端は「4スペース以上インデントされた
-    プロパティ行が続く間」で判定する（次のエントリ・次の設問群の前置き
-    コメント・ファイル末尾の空行より前に挿入するため）。既に
-    question_id: 行があれば値だけ置換し、無ければエントリの最後の
-    プロパティ行の直後に挿入する。
-    """
-    def_file = store.DEF_FILES[slot]
-    lines = def_file.read_text().splitlines(keepends=True)
-
-    entry_pattern = re.compile(r'^  - key: (\S+)\s*$')
-    entry_starts = [i for i, line in enumerate(lines) if entry_pattern.match(line)]
-
-    written = 0
-    # 後ろのエントリから書き換える（挿入で行数が増えても、まだ処理していない
-    # 前方のエントリの行インデックスに影響しない）
-    for i in reversed(entry_starts):
-        key = entry_pattern.match(lines[i]).group(1)
-        if key not in ids_by_key:
-            continue
-
-        content_end = i + 1
-        while content_end < len(lines) and re.match(r'^ {4}\S', lines[content_end]):
-            content_end += 1
-
-        qid_line_idx = None
-        for j in range(i + 1, content_end):
-            if re.match(r'^    question_id:', lines[j]):
-                qid_line_idx = j
-                break
-
-        new_line = f'    question_id: {ids_by_key[key]}\n'
-        if qid_line_idx is not None:
-            lines[qid_line_idx] = new_line
-        else:
-            lines.insert(content_end, new_line)
-        written += 1
-
-    if written == 0:
-        raise ValueError(f'question_id を書き込む対象の key が見つからない: '
-                         f'{list(ids_by_key)} / {def_file}')
-
-    def_file.write_text(''.join(lines))
-    return written
+    """question_id だけ yaml へ書き戻す（Issue #176。lib.forms.defs.save_question_ids）"""
+    return defs.save_question_ids(store.DEF_FILES[slot], ids_by_key)
 
 
-def responder_uri(form):
-    return form.get('responderUri', f"https://docs.google.com/forms/d/{form['formId']}/viewform")
-
-
-def build_items(conf):
-    """yaml の定義からフォームの item spec リストを組み立てる
-
-    grid item がまとめて先頭、続けて active な text/number の設問が
-    yaml の並び順で1 item ずつ続く（number は textQuestion として作る。
-    Forms API の TextQuestion に数値バリデーションは無いため、数値化は
-    fetch 側 build_dataframe() が pd.to_numeric(errors='coerce') で行う）。
-
-    yaml に question_id があれば item spec へ明示する（Issue #176）。
-    sync_questions() 側でこれを優先して突き合わせることで、中間の設問を
-    退役させても後続の設問の questionId が付け替わらなくなる。
-    question_id が無い（backfill 前）設問は従来どおり kind-FIFO で
-    対応付く。
-    """
-    s = conf['score']
-    items = [
-        gforms_client.grid_item(title, [e['label'] for e in entries], s['low'], s['high'],
-                                s['low_label'], s['high_label'],
-                                required=[e.get('required', False) for e in entries])
-        for title, entries in store.grid_groups(conf)
-    ]
-    for e in store.text_like_questions(conf):
-        items.append(gforms_client.text_item(
-            e['label'], required=e.get('required', False),
-            question_id=e.get('question_id')))
-    return items
-
-
-def _grid_row_titles(form):
-    """フォームの実際のグリッド行タイトルを出現順で返す（複数グリッドは連結）。
-    無ければ None
-    """
-    titles = [q.get('rowQuestion', {}).get('title')
-              for item in form.get('items', [])
-              for q in item.get('questionGroupItem', {}).get('questions', [])]
-    return titles or None
-
-
-def update_vocab_history(revision_id, labels, path, now=None) -> bool:
-    """グリッド行構成が前回と違えば1行追記する。追記したら True
-
-    emotion.py の同名関数と完全に同じ実装（グリッド行タイトルのリストを
-    labels として渡すだけ）。判定基準・理由は docs/forms.md の気分記録の
-    節を参照。共通化は他フォームとの結合が強まる割に得るものが薄いため、
-    ここでは意図的に重複させている。
-    """
-    path = Path(path)
-    label_str = ';'.join(labels)
-
-    last_labels = None
-    if path.exists():
-        existing = pd.read_csv(path, dtype=str)
-        if not existing.empty:
-            last_labels = existing.iloc[-1]['labels']
-
-    if last_labels is not None and str(last_labels) == label_str:
-        return False
-
-    now = now or dt.datetime.now()
-    row = pd.DataFrame([{
-        'first_seen': now.strftime('%Y-%m-%d %H:%M:%S'),
-        'revision_id': '' if revision_id is None else str(revision_id),
-        'labels': label_str,
-    }])
-
-    ensure_dir(path.parent)
-    if path.exists() and path.stat().st_size > 0:
-        row.to_csv(path, mode='a', header=False, index=False)
-    else:
-        row.to_csv(path, mode='w', header=True, index=False)
-    return True
-
-
-def _move_new_form_to_drive(form_id):
-    """新規作成したフォームを config/personal.yaml の gdrive.folder_id 配下へ移す
-
-    forms.create は親を指定できずマイドライブ直下に作る。移動に失敗しても
-    フォーム自体は作成済みなので form_id は失わせず、warning を出して続行する。
-    """
-    personal_file = BASE_DIR / 'config/personal.yaml'
-    if not personal_file.exists():
-        print(f'警告: {personal_file} が無い。Drive フォルダへの移動をスキップ',
-              file=sys.stderr)
-        return
-    with open(personal_file, encoding='utf-8') as f:
-        personal = yaml.safe_load(f) or {}
-    folder_id = (personal.get('gdrive') or {}).get('folder_id')
-    if not folder_id:
-        print('警告: config/personal.yaml に gdrive.folder_id が無い。'
-              'Drive フォルダへの移動をスキップ', file=sys.stderr)
-        return
-    try:
-        drive_service = gdrive_client.create_service()
-        gdrive_client.move_to_folder(drive_service, form_id, folder_id)
-        print(f'Drive フォルダへ移動した: {folder_id}', file=sys.stderr)
-    except Exception as e:
-        print(f'警告: Drive フォルダへの移動に失敗（フォームは作成済み）: {e}',
-              file=sys.stderr)
-
-
-def _backfill_question_ids(slot, conf, form):
-    """sync 後の form から text/number 設問の questionId を yaml へ書き戻す
-
-    grid 行は対象外（この issue のスコープ外。grid 行は FIFO のまま）。
-    label がフォームに無い設問（退役済みなど）はスキップする。
-    """
-    by_title = gforms_client.question_id_by_title(form)
-    ids_by_key = {}
-    for e in store.text_like_questions(conf):
-        qid = by_title.get(e['label'])
-        if qid is not None:
-            ids_by_key[e['key']] = qid
-    if not ids_by_key:
-        return 0
-    return save_question_ids(slot, ids_by_key)
+def _paths(slot):
+    return generic.Paths(def_file=store.DEF_FILES[slot],
+                         csv_file=store.SLOTS[slot]['csv_file'],
+                         grid_history_file=store.SLOTS[slot]['grid_history_file'])
 
 
 def cmd_setup_form(args):
     slot = args.slot
-    conf = load_def(slot)
-    items = build_items(conf)
-
-    service = gforms_client.create_service()
-
-    if conf.get('form_id'):
-        if not args.update:
-            print(f"フォームは作成済み: {conf['form_id']}")
-            print('選択肢や質問文を yaml に合わせ直すなら --update')
-            return
-        existing_form = gforms_client.get_form(service, conf['form_id'])
-        # フラグの有無にかかわらず、削除される可能性がある質問を先に列挙する
-        # （emotion.py の --allow-kind-replace の出力に倣う）。フラグ無しで
-        # leftover があっても自前で sys.exit はしない。sync_questions の
-        # 既定のガード（GoogleFormsError）が唯一の失敗経路になるほうが
-        # 分岐が増えない
-        leftover = gforms_client.preview_kind_mismatch(items, existing_form)
-        if leftover:
-            print('フォームから外れる（削除対象になりうる）既存の質問:')
-            for i in leftover:
-                print(f"  - {i.get('title')} ({gforms_client._question_kind(i)})")
-        gforms_client.sync_questions(service, conf['form_id'], items,
-                                  existing_form=existing_form,
-                                  allow_kind_replace=args.allow_kind_replace)
-        # 画面タイトルは item ではないので sync_questions が触らない。
-        # questionId には影響しないが、差分があるときだけ叩く
-        current_title = existing_form.get('info', {}).get('title')
-        if current_title != conf['form_title']:
-            gforms_client.update_form_info(service, conf['form_id'],
-                                        conf['form_title'])
-            print(f"タイトルを更新: {current_title} -> {conf['form_title']}")
-        print('フォームを yaml に合わせて更新した')
-        form = gforms_client.get_form(service, conf['form_id'])
-    else:
-        form = gforms_client.create_form(service, conf['form_title'],
-                                      document_title=conf['form_title'])
-        print(f"フォーム作成: {form['formId']}")
-        gforms_client.sync_questions(service, form['formId'], items)
-        save_form_id(slot, form['formId'])
-        # 新規作成時のみ Drive フォルダへの移動を試みる。--update では移動しない
-        _move_new_form_to_drive(form['formId'])
-        form = gforms_client.get_form(service, form['formId'])
-
-    # sync 後に取り直した form から questionId を yaml へ backfill する。
-    # yaml に questionId が埋まると、以後の sync_questions は並び順ではなく
-    # id で突き合わせるようになる（Issue #176）
-    conf = load_def(slot)  # save_form_id 後の form_id を含む最新の yaml
-    n = _backfill_question_ids(slot, conf, form)
-    if n:
-        print(f'question_id を yaml へ書き戻した: {n}件')
-
-    print(f"質問: {list(gforms_client.question_id_by_title(form))}")
-    print(f"回答用URL: {responder_uri(form)}")
-    print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
-
-
-def _with_retired_columns(df, slot, conf):
-    """退役（active: false）した設問の列を欠測として補い、CSV の列順に揃える
-
-    行の組み立ては active な設問だけを見るが、CSV の列は退役分も残す
-    （過去データを読めなくしないため）。補わずに列選択すると、設問を
-    退役させた次の fetch が KeyError で落ちる。
-    """
-    for col in store.columns(slot, conf):
-        if col not in df.columns:
-            df[col] = pd.NA
-    return df[store.columns(slot, conf)]
-
-
-def carry_retired_values(df, existing, conf):
-    """退役（active: false）した設問の値を既存 CSV から引き継ぐ
-
-    fetch は毎回全回答を取り直して date ごとに行を置換するが、
-    build_dataframe は active な設問しか読まないので、退役した列は常に
-    欠測になる。そのまま置換すると、退役前に記録した値が次の fetch で
-    すべて消える。退役した設問は新しい回答を受けないので、既存 CSV が正本。
-    """
-    retired = [q['column'] for q in conf['questions'] if not q.get('active', True)]
-    if not retired or existing is None or existing.empty:
-        return df
-    prev = existing.set_index(pd.to_datetime(existing['date']))
-    dates = pd.to_datetime(df['date'])
-    for col in retired:
-        if col in prev.columns:
-            df[col] = dates.map(prev[col]).to_numpy()
-    return df
-
-
-def build_dataframe(form, responses, conf, slot):
-    """回答リストを CSV スキーマの DataFrame にする
-
-    同一 date に複数回答があるときは最後（updated_at 昇順）のものだけを
-    残す（date が主キーで、CSV に複数行を残さない）。
-
-    date の作り方は slot ごとに違う（store.SLOTS[slot]['day_start_hour']）。
-    朝は暦日のまま、夜は 5:00 境界（store.response_date() を参照）。
-    """
-    slot_conf = store.SLOTS[slot]
-    by_title = gforms_client.question_id_by_title(form)
-    grid_entries = store.grid_rows(conf)
-    text_like_entries = store.text_like_questions(conf)
-    number_cols = [e['column'] for e in text_like_entries if e['type'] == 'number']
-
-    required_titles = [e['label'] for e in grid_entries] + [e['label'] for e in text_like_entries]
-    missing = [t for t in required_titles if t not in by_title]
-    if missing:
-        raise ValueError(
-            f'フォームに質問がない: {missing} / 実際: {list(by_title)}。'
-            'setup-form --update で合わせること')
-
-    rows = []
-    for res in responses:
-        row = {'updated_at': res.get('lastSubmittedTime') or res.get('createTime')}
-        if slot_conf['has_source']:
-            row['source'] = 'form'
-        for e in grid_entries:
-            # 別グリッドへ移した行は questionId が変わる。移す前の回答は
-            # 旧 id のまま API に残るので legacy_question_ids から引く
-            v = []
-            for qid in [by_title[e['label']], *e.get('legacy_question_ids', [])]:
-                v = gforms_client.answer_values(res, qid)
-                if v:
-                    break
-            row[e['column']] = v[0] if v else pd.NA
-        for e in text_like_entries:
-            v = gforms_client.answer_values(res, by_title[e['label']])
-            row[e['column']] = v[0] if v and v[0] else pd.NA
-        rows.append(row)
-
-    base_columns = (['updated_at'] + (['source'] if slot_conf['has_source'] else [])
-                    + [e['column'] for e in grid_entries]
-                    + [e['column'] for e in text_like_entries])
-    df = pd.DataFrame(rows, columns=base_columns)
-    if df.empty:
-        df = df.assign(date=pd.Series(dtype='object'))
-        return _with_retired_columns(df, slot, conf)
-
-    # API は RFC3339 の UTC を返す。他データと揃えて JST の naive にする
-    ts = pd.to_datetime(df['updated_at'], format='ISO8601', utc=True)
-    df['updated_at'] = ts.dt.tz_convert(TZ).dt.tz_localize(None).dt.floor('s')
-    day_start_hour = slot_conf['day_start_hour']
-    df['date'] = df['updated_at'].apply(
-        lambda t: store.response_date(t, day_start_hour))
-    for e in grid_entries:
-        df[e['column']] = pd.to_numeric(df[e['column']], errors='coerce').astype('Int64')
-    for col in number_cols:
-        df[col] = pd.to_numeric(df[col], errors='coerce').astype('Float64')
-
-    # 同一 date に複数回答があれば最後（updated_at 昇順で最後）を採る。
-    # date が主キーなので複数行を残さない
-    df = df.sort_values('updated_at').drop_duplicates(subset=['date'], keep='last')
-
-    df = _with_retired_columns(df, slot, conf)
-    return df.sort_values('date').reset_index(drop=True)
+    generic.setup_form(lambda: load_def(slot), store.DEF_FILES[slot], args,
+                       build_items=build_items)
 
 
 def cmd_fetch(args, out=None):
-    # show --update から呼ぶときは stdout を markdown 専用に保つため stderr を渡す
-    out = out or sys.stdout
-    slot = args.slot
-    conf = load_def(slot)
-    out_file = store.SLOTS[slot]['csv_file']
-    grid_history_file = store.SLOTS[slot]['grid_history_file']
-
-    if not conf.get('form_id'):
-        # 夜フォームは merge 後に対話で作成する運用（Issue #157）。form_id が
-        # 空のうちに daily-fetch.sh から毎日呼ばれても、失敗し続けて
-        # ステップが赤く出るのを避けるため正常終了する
-        print(f'{slot}: form_id が未設定のためスキップ（{store.DEF_FILES[slot]}。'
-              'setup-form で作成すること）', file=sys.stderr)
-        return
-
-    service = gforms_client.create_service(interactive=not args.non_interactive)
-    form = gforms_client.get_form(service, conf['form_id'])
-
-    print(f"回答取得中: {conf['form_id']}", file=sys.stderr)
-    responses = gforms_client.list_responses(service, conf['form_id'])
-    print(f"取得: {len(responses)}件", file=sys.stderr)
-
-    existing = pd.read_csv(out_file) if out_file.exists() else None
-    df = build_dataframe(form, responses, conf, slot)
-    df = carry_retired_values(df, existing, conf)
-
-    # 毎回全件を取り直すので、既存行があるのに0件は取得側の故障を疑う
-    if not responses and existing is not None and len(existing) > 0:
-        print('警告: 既存CSVに行があるのに回答が0件。'
-              'フォームの差し替えかAPIの異常を疑うこと', file=sys.stderr)
-
-    revision_id = form.get('revisionId')
-    if revision_id is None:
-        print('警告: forms.get の応答に revisionId が無い。'
-              'グリッド行構成の版は記録するが版は空になる', file=sys.stderr)
-    grid_rows_titles = _grid_row_titles(form)
-    if grid_rows_titles is None:
-        print('警告: フォームにグリッド質問がない。'
-              'グリッド行構成の履歴を更新できない', file=sys.stderr)
-    elif update_vocab_history(revision_id, grid_rows_titles, grid_history_file):
-        print(f'グリッド行構成の履歴を追記: revision {revision_id} / '
-              f'{len(grid_rows_titles)}行', file=sys.stderr)
-
-    ensure_dir(out_file.parent)
-    # preserve_existing_on_nan は既定の False のまま使う（行単位の置換）。
-    # True（セル単位マージ）にすると、comment を空で送った回答が来たときに
-    # 旧行の comment が生き残り、source=form の行なのに comment だけ移行時の
-    # sheet 由来という壊れた行ができる。date が主キーで、フォームに回答が
-    # ある date は行ごと置換されるべき（migrate-manual の冪等性側で
-    # source=form の行が上書きされないことは別途保証している）
-    df = csv_utils.merge_csv_by_columns(
-        df, out_file,
-        key_columns=['date'],
-        parse_dates=['date'],
-        sort_by=['date'],
-    )
-    df.to_csv(out_file, index=False)
-    print(f"保存完了: {out_file} ({len(df)}件)", file=out)
-    print(df.tail(), file=out)
+    generic.fetch(load_def(args.slot), _paths(args.slot),
+                  non_interactive=args.non_interactive, out=out)
 
 
 def cmd_migrate_manual(args):
@@ -452,7 +68,7 @@ def cmd_migrate_manual(args):
     """
     conf = store.load_def('morning')
     out_file = store.SLOTS['morning']['csv_file']
-    columns = store.columns('morning', conf)
+    columns = schema.columns(conf)
 
     manual = pd.read_csv(MANUAL_FILE, usecols=[
         'date', 'mind_score', 'body_score', 'sleep_score', 'comment'])
@@ -511,46 +127,22 @@ def cmd_show(args):
     if args.update:
         # 取得ログは stderr に寄せ、stdout は markdown 専用に保つ
         cmd_fetch(argparse.Namespace(slot=slot, non_interactive=False), out=sys.stderr)
-
-    df_all = store.load_entries(slot)
-
-    today = dt.date.today()
-    start = today - dt.timedelta(days=args.days - 1)
-    df = df_all[df_all['date'].dt.date >= start].reset_index(drop=True)
-
-    label = {'morning': '朝', 'evening': '夜'}[slot]
-    print(f'# 日次記録（{label}、{start:%Y-%m-%d} 〜 {today:%Y-%m-%d}）\n')
-    print(f"記録 {len(df)}日分（{args.days}日中）\n")
-
-    print('## スコア\n')
-    print(render.render_scores(df, slot))
-    print('\n## コメント\n')
-    print(render.render_comments(df))
-    print('\n## 入力率\n')
-    print(render.render_fill_rates(df, slot, args.days))
+    generic.show(load_def(slot), store.SLOTS[slot]['csv_file'], NAMES[slot], args.days)
 
 
 def _add_action_subparsers(slot_parser, slot):
     sub = slot_parser.add_subparsers(dest='action', required=True)
 
     p_setup = sub.add_parser('setup-form', help='フォームを生成する')
-    p_setup.add_argument('--update', action='store_true',
-                         help='既存フォームの質問文・選択肢を yaml に合わせる')
-    p_setup.add_argument('--allow-kind-replace', action='store_true',
-                         help='退役（active: false）でフォームから外れる設問を'
-                              '実際に削除する。既定では削除せずエラーで止まる')
+    cli.add_setup_arguments(p_setup)
     p_setup.set_defaults(func=cmd_setup_form)
 
     p_fetch = sub.add_parser('fetch', help='回答を取得して CSV に保存する')
-    p_fetch.add_argument('--non-interactive', action='store_true',
-                         help='トークンが無効ならブラウザを開かず落とす（cron 用）')
+    cli.add_fetch_arguments(p_fetch)
     p_fetch.set_defaults(func=cmd_fetch)
 
     p_show = sub.add_parser('show', help='記録のサマリを markdown で表示する')
-    p_show.add_argument('--days', type=int, default=7,
-                        help='直近N日（既定 7）')
-    p_show.add_argument('--update', action='store_true',
-                        help='表示前に fetch で最新データを取得する')
+    cli.add_show_arguments(p_show)
     p_show.set_defaults(func=cmd_show)
 
     if slot == 'morning':

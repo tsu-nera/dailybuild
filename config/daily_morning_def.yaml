@@ -11,7 +11,7 @@
 #
 # Issue #167 で questions を「順序付きリスト1本」に統合した（旧
 # questions/grid_rows/grid_required の3箇所複製を廃止）。
-# src/lib/daily/store.py がここから列・型・グリッド行・表示ラベルを
+# src/lib/forms/schema.py がここから列・型・グリッド行・表示ラベルを
 # すべて導出する（コード側に複製を持たない）。
 
 # setup-form が書き戻す。空なら未作成
@@ -40,7 +40,7 @@ grid_title: 今日はどうだった？
 #     - grid:   1〜5 のグリッド行（下の score 参照）
 #     - number: 数値入力。Forms API の TextQuestion に数値バリデーションは
 #               無いため、フォーム上はただの自由記述。数値化は fetch 側
-#               （scripts/daily.py build_dataframe）が
+#               （src/lib/forms/schema.py の build_dataframe）が
 #               pd.to_numeric(errors='coerce') で行い、パース不能値は
 #               0 ではなく NA にする（0 は EDA responses のように
 #               正当な実測値でありうるため、欠測と区別する）
@@ -112,4 +112,11 @@ score:
 
 # date は回答日（設問はすべて「今日」の状態を尋ねる）。「昨夜の眠り」だけは
 # 例外で、その日の朝までに終わった睡眠を指す。data/wearable/sleep.csv の
-# dateOfSleep（起床日）と同じ向き（前夜からの睡眠をその「起床日」に帰属させる）
+# dateOfSleep（起床日）と同じ向き（前夜からの睡眠をその「起床日」に帰属させる）。
+# だから境界補正はしない（暦日のまま）
+unit: day
+day_start_hour: 0
+
+# source 列（form / sheet）。manual.csv から移した行（migrate-manual）と
+# フォーム回答の行を区別する。夜には無い（sheet 由来の履歴が存在しないため）
+source: form
