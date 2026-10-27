@@ -21,6 +21,7 @@ BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR / 'src'))
 
 from lib.daily import store
+from lib.forms import schema
 from lib.utils import csv_utils
 
 
@@ -68,7 +69,7 @@ def _fake_grid_items(conf):
     """
     items = []
     n = 0
-    for title, entries in store.grid_groups(conf):
+    for title, entries in schema.grid_groups(conf):
         questions = []
         for e in entries:
             questions.append({'questionId': f'q_grid_{n}',
@@ -92,7 +93,7 @@ def _build_fake_form(conf):
     questionId は出現順（FIFO）で割り振る。grid の行は q_grid_i、
     text/number は q_text_i。
     """
-    text_like = [e for e in store.active_questions(conf) if e['type'] in ('text', 'number')]
+    text_like = [e for e in schema.active_questions(conf) if e['type'] in ('text', 'number')]
     items = _fake_grid_items(conf)
     for i, e in enumerate(text_like):
         items.append({
@@ -124,19 +125,19 @@ def _ns(**kwargs):
 # --- response_date（5:00境界・暦日の純関数、単体テスト） ---
 
 def test_response_date_evening_boundary():
-    assert store.response_date(pd.Timestamp('2026-09-01 03:30:00'), 5) \
+    assert schema.response_date(pd.Timestamp('2026-09-01 03:30:00'), 5) \
         == pd.Timestamp('2026-08-31').date()
-    assert store.response_date(pd.Timestamp('2026-09-01 05:30:00'), 5) \
+    assert schema.response_date(pd.Timestamp('2026-09-01 05:30:00'), 5) \
         == pd.Timestamp('2026-09-01').date()
-    assert store.response_date(pd.Timestamp('2026-09-01 04:59:00'), 5) \
+    assert schema.response_date(pd.Timestamp('2026-09-01 04:59:00'), 5) \
         == pd.Timestamp('2026-08-31').date()
-    assert store.response_date(pd.Timestamp('2026-09-01 05:00:00'), 5) \
+    assert schema.response_date(pd.Timestamp('2026-09-01 05:00:00'), 5) \
         == pd.Timestamp('2026-09-01').date()
 
 
 def test_response_date_morning_is_calendar_day_no_shift():
     """朝(day_start_hour=0)は04時台でも当日のまま。前日へずれない（AC の回帰ガード）"""
-    assert store.response_date(pd.Timestamp('2026-09-01 04:30:00'), 0) \
+    assert schema.response_date(pd.Timestamp('2026-09-01 04:30:00'), 0) \
         == pd.Timestamp('2026-09-01').date()
 
 
@@ -172,10 +173,10 @@ def test_build_items_comment_is_first_text_question(slot):
 def test_build_dataframe_assigns_grid_rows_in_yaml_order(slot):
     conf = CONFS[slot]
     form = _build_fake_form(conf)
-    grid_entries = store.grid_rows(conf)
+    grid_entries = schema.grid_rows(conf)
     answers = {e['key']: i + 1 for i, e in enumerate(grid_entries)}
     responses = [_response(conf, form, '2026-09-01T10:00:00Z', **answers)]
-    df = daily.build_dataframe(form, responses, conf, slot)
+    df = schema.build_dataframe(form, responses, conf)
     row = df.iloc[0]
     for i, e in enumerate(grid_entries):
         assert row[e['column']] == i + 1
@@ -185,10 +186,10 @@ def test_build_dataframe_assigns_grid_rows_in_yaml_order(slot):
 def test_build_dataframe_unanswered_grid_row_is_na_not_zero(slot):
     conf = CONFS[slot]
     form = _build_fake_form(conf)
-    grid_entries = store.grid_rows(conf)
+    grid_entries = schema.grid_rows(conf)
     # mind だけ答え、それ以外のグリッド行は無回答のまま
     responses = [_response(conf, form, '2026-09-01T10:00:00Z', mind=3)]
-    df = daily.build_dataframe(form, responses, conf, slot)
+    df = schema.build_dataframe(form, responses, conf)
     row = df.iloc[0]
     for e in grid_entries:
         if e['key'] == 'mind':
@@ -202,7 +203,7 @@ def test_build_dataframe_number_question_unparseable_is_na_not_zero(slot):
     form = _build_fake_form(conf)
     responses = [_response(conf, form, '2026-09-01T10:00:00Z',
                            mind=3, hrv_rmssd='invalid')]
-    df = daily.build_dataframe(form, responses, conf, slot)
+    df = schema.build_dataframe(form, responses, conf)
     assert pd.isna(df.iloc[0]['hrv_rmssd'])
 
 
@@ -213,7 +214,7 @@ def test_build_dataframe_number_question_zero_is_preserved(slot):
     form = _build_fake_form(conf)
     responses = [_response(conf, form, '2026-09-01T10:00:00Z',
                            mind=3, eda_responses=0)]
-    df = daily.build_dataframe(form, responses, conf, slot)
+    df = schema.build_dataframe(form, responses, conf)
     assert df.iloc[0]['eda_responses'] == 0
     assert not pd.isna(df.iloc[0]['eda_responses'])
 
@@ -223,7 +224,7 @@ def test_build_dataframe_number_question_unanswered_is_na(slot):
     conf = CONFS[slot]
     form = _build_fake_form(conf)
     responses = [_response(conf, form, '2026-09-01T10:00:00Z', mind=3)]
-    df = daily.build_dataframe(form, responses, conf, slot)
+    df = schema.build_dataframe(form, responses, conf)
     assert pd.isna(df.iloc[0]['hrv_rmssd'])
     assert pd.isna(df.iloc[0]['eda_responses'])
 
@@ -232,8 +233,8 @@ def test_build_dataframe_number_question_unanswered_is_na(slot):
 def test_build_dataframe_column_order(slot):
     conf = CONFS[slot]
     form = _build_fake_form(conf)
-    df = daily.build_dataframe(form, [], conf, slot)
-    assert list(df.columns) == store.columns(slot, conf)
+    df = schema.build_dataframe(form, [], conf)
+    assert list(df.columns) == schema.columns(conf)
 
 
 # --- 朝: date は暦日のまま ---
@@ -245,7 +246,7 @@ def test_build_dataframe_morning_collapses_same_date_to_last_response():
         _response(conf, form, '2026-09-01T01:00:00Z', mind=2, comment='朝の分'),
         _response(conf, form, '2026-09-01T10:00:00Z', mind=4, comment='夜の分'),
     ]
-    df = daily.build_dataframe(form, responses, conf, 'morning')
+    df = schema.build_dataframe(form, responses, conf)
 
     assert len(df) == 1
     assert df.iloc[0]['mind_score'] == 4
@@ -257,7 +258,7 @@ def test_build_dataframe_morning_date_matches_response_calendar_date():
     conf = CONFS['morning']
     form = _build_fake_form(conf)
     responses = [_response(conf, form, '2026-08-31T22:00:00Z', mind=3, sleep=4)]  # JST 07:00
-    df = daily.build_dataframe(form, responses, conf, 'morning')
+    df = schema.build_dataframe(form, responses, conf)
 
     assert str(df.iloc[0]['date']) == '2026-09-01'
 
@@ -266,7 +267,7 @@ def test_build_dataframe_morning_has_source_column():
     conf = CONFS['morning']
     form = _build_fake_form(conf)
     responses = [_response(conf, form, '2026-09-01T10:00:00Z', mind=1)]
-    df = daily.build_dataframe(form, responses, conf, 'morning')
+    df = schema.build_dataframe(form, responses, conf)
     assert df.iloc[0]['source'] == 'form'
 
 
@@ -277,7 +278,7 @@ def test_build_dataframe_evening_date_uses_5am_boundary():
     form = _build_fake_form(conf)
     # JST 03:30 = UTC 前日 18:30
     responses = [_response(conf, form, '2026-08-31T18:30:00Z', mind=3)]
-    df = daily.build_dataframe(form, responses, conf, 'evening')
+    df = schema.build_dataframe(form, responses, conf)
 
     assert str(df.iloc[0]['date']) == '2026-08-31'
 
@@ -285,7 +286,7 @@ def test_build_dataframe_evening_date_uses_5am_boundary():
 def test_build_dataframe_evening_has_no_source_column():
     conf = CONFS['evening']
     form = _build_fake_form(conf)
-    df = daily.build_dataframe(form, [], conf, 'evening')
+    df = schema.build_dataframe(form, [], conf)
     assert 'source' not in df.columns
 
 
@@ -296,18 +297,18 @@ def test_fetch_merge_replaces_whole_row_for_evening(tmp_path):
     form = _build_fake_form(conf)
     out_file = tmp_path / 'daily_evening.csv'
 
-    df1 = daily.build_dataframe(
+    df1 = schema.build_dataframe(
         form, [_response(conf, form, '2026-09-01T13:00:00Z', mind=2, comment='最初のコメント')],
-        conf, 'evening')
+        conf)
     merged1 = csv_utils.merge_csv_by_columns(
         df1, out_file, key_columns=['date'], parse_dates=['date'], sort_by=['date'])
     merged1.to_csv(out_file, index=False)
     assert merged1.iloc[0]['comment'] == '最初のコメント'
 
     # 同じ date（JST, 5:00境界後）にコメント無しで再送信
-    df2 = daily.build_dataframe(
+    df2 = schema.build_dataframe(
         form, [_response(conf, form, '2026-09-01T14:00:00Z', mind=3)],
-        conf, 'evening')
+        conf)
     merged2 = csv_utils.merge_csv_by_columns(
         df2, out_file, key_columns=['date'], parse_dates=['date'], sort_by=['date'])
 
@@ -324,7 +325,7 @@ def test_fetch_merge_is_idempotent_for_evening(tmp_path):
     responses = [_response(conf, form, '2026-09-01T13:00:00Z', mind=2, comment='メモ')]
 
     for _ in range(2):
-        df = daily.build_dataframe(form, responses, conf, 'evening')
+        df = schema.build_dataframe(form, responses, conf)
         merged = csv_utils.merge_csv_by_columns(
             df, out_file, key_columns=['date'], parse_dates=['date'], sort_by=['date'])
         merged.to_csv(out_file, index=False)
@@ -479,7 +480,7 @@ def test_migrate_manual_twice_never_overwrites_form_row(tmp_path, monkeypatch):
          'sleep_score': None, 'comment': 'sheet由来のコメント'},
     ])
     out_csv = tmp_path / 'daily_morning.csv'
-    columns = store.columns('morning', CONFS['morning'])
+    columns = schema.columns(CONFS['morning'])
     row = {c: pd.NA for c in columns}
     row.update({
         'date': '2026-08-01', 'updated_at': '2026-08-01 07:00:00',
@@ -529,7 +530,7 @@ def test_load_entries_backfills_missing_columns(tmp_path, monkeypatch):
 
     df = store.load_entries('morning')
 
-    assert list(df.columns) == store.columns('morning', CONFS['morning'])
+    assert list(df.columns) == schema.columns(CONFS['morning'])
     assert df['body_score'].isna().all()
     assert df['sleep_score'].isna().all()
 
@@ -541,7 +542,7 @@ def test_load_entries_missing_csv_returns_empty_frame_with_correct_dtypes(tmp_pa
 
     df = store.load_entries('evening')
 
-    assert list(df.columns) == store.columns('evening', CONFS['evening'])
+    assert list(df.columns) == schema.columns(CONFS['evening'])
     assert len(df) == 0
     assert str(df['mind_score'].dtype) == 'Int64'
 
@@ -549,7 +550,7 @@ def test_load_entries_missing_csv_returns_empty_frame_with_correct_dtypes(tmp_pa
 def test_load_entries_number_column_is_float64_and_blank_is_na(tmp_path, monkeypatch):
     """HRV のような数値列は Float64 で、空欄は 0 でなく NA になる"""
     csv = tmp_path / 'daily_morning.csv'
-    columns = store.columns('morning', CONFS['morning'])
+    columns = schema.columns(CONFS['morning'])
     row1 = {c: pd.NA for c in columns}
     row1.update({'date': '2026-08-01', 'mind_score': 3, 'hrv_rmssd': 45.3})
     row2 = {c: pd.NA for c in columns}
@@ -603,11 +604,11 @@ def test_retired_question_keeps_its_csv_column_as_na():
     conf = _conf_with_retired('morning', 'eda_responses')
     form = _build_fake_form(conf)
     res = _response(conf, form, '2026-09-01T23:00:00Z', mind=3, comment='x')
-    df = daily.build_dataframe(form, [res], conf, 'morning')
+    df = schema.build_dataframe(form, [res], conf)
 
     assert 'eda_responses' in df.columns
     assert df['eda_responses'].isna().all()
-    assert list(df.columns) == store.columns('morning', conf)
+    assert list(df.columns) == schema.columns(conf)
 
 
 def test_retired_question_values_survive_refetch():
@@ -622,10 +623,10 @@ def test_retired_question_values_survive_refetch():
         _response(conf, form, '2026-09-01T23:00:00Z', mind=3),
         _response(conf, form, '2026-09-02T23:00:00Z', mind=4),
     ]
-    df = daily.build_dataframe(form, responses, conf, 'morning')
+    df = schema.build_dataframe(form, responses, conf)
     existing = pd.DataFrame({'date': ['2026-09-02'], 'hrv_rmssd': [45.3]})
 
-    df = daily.carry_retired_values(df, existing, conf)
+    df = schema.carry_retired_values(df, existing, conf)
 
     by_date = df.set_index(pd.to_datetime(df['date']))['hrv_rmssd']
     assert by_date[pd.Timestamp('2026-09-02')] == 45.3
@@ -635,8 +636,8 @@ def test_retired_question_values_survive_refetch():
 def test_retired_question_empty_response_list_keeps_column():
     conf = _conf_with_retired('evening', 'hrv_rmssd')
     form = _build_fake_form(conf)
-    df = daily.build_dataframe(form, [], conf, 'evening')
-    assert list(df.columns) == store.columns('evening', conf)
+    df = schema.build_dataframe(form, [], conf)
+    assert list(df.columns) == schema.columns(conf)
 
 
 # --- gforms_client.sync_questions: question_id 明示（Issue #176） ---
@@ -656,7 +657,7 @@ def _conf_with_question_ids(slot, ids_by_key, active_overrides=None):
 def _existing_form_with_text_ids(conf, text_id_by_key):
     """conf の active な設問から、text_id_by_key で指定した questionId を
     持つ既存フォームを作る（grid 行の questionId は連番で適当に振る）"""
-    text_like = store.text_like_questions(conf)
+    text_like = schema.text_like_questions(conf)
     items = _fake_grid_items(conf)
     for i, e in enumerate(text_like):
         items.append({
@@ -908,7 +909,7 @@ def test_moved_grid_row_reads_answer_from_legacy_question_id():
         legacy['achievement']: {'textAnswers': {'answers': [{'value': '2'}]}},
     }}
 
-    df = daily.build_dataframe(form, [res], conf, 'evening')
+    df = schema.build_dataframe(form, [res], conf)
 
     assert df.loc[0, 'satisfaction'] == 4
     assert df.loc[0, 'achievement'] == 2

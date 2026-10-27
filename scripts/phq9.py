@@ -3,9 +3,9 @@
 """
 PHQ-9（週次）
 
-setup-form でフォームを生成し、fetch で回答を直接取得する。
-scripts/emotion.py と同じ構成（Google Form 直読み、回答先スプレッドシートは
-経由しない）。
+setup-form でフォームを生成し、fetch で回答を直接取得する。setup-form /
+fetch の手順は lib.forms と共通。固有処理は設問文を gitignore の yaml から
+読むこと、配点（total）、機能障害の設問、`url` サブコマンド。
 
 設問文の著作権上、config/phq9_def.yaml は追跡対象外（.gitignore 済み）。
 config/phq9_def.yaml.sample をコピーして出典から書き写すこと。
@@ -19,17 +19,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
-import yaml
 from lib.clients import gforms_client
-from lib.utils import csv_utils
-from lib.utils.private_data import ensure_dir, require_private_path
+from lib.forms import cli, defs
+from lib.forms.responses import submitted_at, to_jst
+from lib.utils.private_data import require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 DEF_FILE = BASE_DIR / 'config/phq9_def.yaml'
 SAMPLE_FILE = BASE_DIR / 'config/phq9_def.yaml.sample'
 OUT_FILE = require_private_path(BASE_DIR / 'data/phq9.csv')
-
-TZ = 'Asia/Tokyo'
 
 # yaml の質問キー（q1〜q9）。sync_questions は同型の質問を出現順で
 # 突き合わせるため、この順序を変えてはいけない（docs/forms.md 参照）
@@ -44,23 +42,7 @@ def load_def():
             '（docs/forms.md の「PHQ-9」節を参照）:\n'
             f'  cp {SAMPLE_FILE} {DEF_FILE}'
         )
-    with open(DEF_FILE) as f:
-        return yaml.safe_load(f)
-
-
-def save_form_id(form_id):
-    """yaml のコメントを壊さないよう form_id の行だけ置換する"""
-    import re
-    text = DEF_FILE.read_text()
-    new_text, n = re.subn(r'^form_id:.*$', f'form_id: {form_id}', text,
-                          count=1, flags=re.MULTILINE)
-    if n != 1:
-        raise ValueError(f'form_id の行が見つからない: {DEF_FILE}')
-    DEF_FILE.write_text(new_text)
-
-
-def responder_uri(form):
-    return form.get('responderUri', f"https://docs.google.com/forms/d/{form['formId']}/viewform")
+    return defs.load_def(DEF_FILE)
 
 
 def impairment_enabled(conf):
@@ -82,37 +64,13 @@ def build_items(conf):
     if impairment_enabled(conf):
         imp = conf['impairment']
         items.append(gforms_client.radio_item(imp['question'], imp['choices'],
-                                           required=False))
+                                              required=False))
     return items
 
 
 def cmd_setup_form(args):
-    conf = load_def()
-    items = build_items(conf)
-
-    service = gforms_client.create_service()
-
-    if conf.get('form_id'):
-        if not args.update:
-            print(f"フォームは作成済み: {conf['form_id']}")
-            print('選択肢や質問文を yaml に合わせ直すなら --update')
-            return
-        existing_form = gforms_client.get_form(service, conf['form_id'])
-        gforms_client.sync_questions(service, conf['form_id'], items,
-                                  existing_form=existing_form)
-        print('フォームを yaml に合わせて更新した')
-        form = gforms_client.get_form(service, conf['form_id'])
-    else:
-        form = gforms_client.create_form(service, conf['form_title'],
-                                      document_title=conf['form_title'])
-        print(f"フォーム作成: {form['formId']}")
-        gforms_client.sync_questions(service, form['formId'], items)
-        save_form_id(form['formId'])
-        form = gforms_client.get_form(service, form['formId'])
-
-    print(f"質問: {list(gforms_client.question_id_by_title(form))}")
-    print(f"回答用URL: {responder_uri(form)}")
-    print(f"編集用URL: https://docs.google.com/forms/d/{form['formId']}/edit")
+    cli.setup_form(load_def, DEF_FILE, build_items, update=args.update,
+                   allow_kind_replace=args.allow_kind_replace)
 
 
 def cmd_url(args):
@@ -122,7 +80,7 @@ def cmd_url(args):
         raise SystemExit(f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
     service = gforms_client.create_service(interactive=not args.non_interactive)
     form = gforms_client.get_form(service, conf['form_id'])
-    print(responder_uri(form))
+    print(defs.responder_uri(form))
 
 
 def build_dataframe(form, responses, conf):
@@ -152,7 +110,7 @@ def build_dataframe(form, responses, conf):
     rows = []
     unknown_all = set()
     for res in responses:
-        row = {'timestamp': res.get('lastSubmittedTime') or res.get('createTime')}
+        row = {'timestamp': submitted_at(res)}
         item_scores = []
         for key in QUESTION_KEYS:
             vals = gforms_client.answer_values(res, by_title[q[key]])
@@ -182,9 +140,7 @@ def build_dataframe(form, responses, conf):
     if df.empty:
         return df.assign(date=pd.Series(dtype='object'))[columns]
 
-    # API は RFC3339 の UTC を返す。他データと揃えて JST の naive にする
-    ts = pd.to_datetime(df['timestamp'], format='ISO8601', utc=True)
-    df['timestamp'] = ts.dt.tz_convert(TZ).dt.tz_localize(None).dt.floor('s')
+    df['timestamp'] = to_jst(df['timestamp'])
     df['date'] = df['timestamp'].dt.date
 
     for key in QUESTION_KEYS + ['total']:
@@ -199,27 +155,12 @@ def cmd_fetch(args):
         raise ValueError(
             f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')
 
-    service = gforms_client.create_service(interactive=not args.non_interactive)
-    form = gforms_client.get_form(service, conf['form_id'])
-
-    print(f"回答取得中: {conf['form_id']}", file=sys.stderr)
-    responses = gforms_client.list_responses(service, conf['form_id'])
-    print(f"取得: {len(responses)}件", file=sys.stderr)
-
+    form, responses = cli.fetch_responses(conf['form_id'],
+                                          non_interactive=args.non_interactive)
     # 週1回の質問紙なので大半の日は0件が正常。0件をエラーにしない
     # （data/googlehealth/caffeine.csv と同じ扱い）
     df = build_dataframe(form, responses, conf)
-
-    ensure_dir(OUT_FILE.parent)
-    df = csv_utils.merge_csv_by_columns(
-        df, OUT_FILE,
-        key_columns=['timestamp'],
-        parse_dates=['timestamp'],
-        sort_by=['timestamp'],
-    )
-    df.to_csv(OUT_FILE, index=False)
-    print(f"保存完了: {OUT_FILE} ({len(df)}件)")
-    print(df.tail())
+    cli.save_merged(df, OUT_FILE, 'timestamp')
 
 
 def main():
@@ -227,13 +168,11 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
 
     p_setup = sub.add_parser('setup-form', help='フォームを生成する')
-    p_setup.add_argument('--update', action='store_true',
-                         help='既存フォームの質問文・選択肢を yaml に合わせる')
+    cli.add_setup_arguments(p_setup)
     p_setup.set_defaults(func=cmd_setup_form)
 
     p_fetch = sub.add_parser('fetch', help='回答を取得して CSV に保存する')
-    p_fetch.add_argument('--non-interactive', action='store_true',
-                         help='トークンが無効ならブラウザを開かず落とす（cron 用）')
+    cli.add_fetch_arguments(p_fetch)
     p_fetch.set_defaults(func=cmd_fetch)
 
     p_url = sub.add_parser('url', help='回答用URLを表示する')

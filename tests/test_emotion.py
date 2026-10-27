@@ -4,7 +4,6 @@
 """
 
 import argparse
-import datetime as dt
 import importlib.util
 import sys
 from pathlib import Path
@@ -119,82 +118,6 @@ def test_build_dataframe_empty_has_score_column():
     df = emotion.build_dataframe(_form(), [], CONF)
     assert df.empty
     assert 'score' in df.columns
-
-
-# --- update_vocab_history ---
-
-def test_update_vocab_history_creates_file(tmp_path):
-    path = tmp_path / 'emotion_vocab_history.csv'
-    now = dt.datetime(2026, 8, 26, 10, 0, 0)
-    changed = emotion.update_vocab_history('1', ['楽しい・うれしい', 'イライラ'], path, now=now)
-    assert changed is True
-    df = pd.read_csv(path, dtype=str)
-    assert len(df) == 1
-    assert df.iloc[0]['revision_id'] == '1'
-    assert df.iloc[0]['labels'] == '楽しい・うれしい;イライラ'
-    assert df.iloc[0]['first_seen'] == '2026-08-26 10:00:00'
-
-
-def test_update_vocab_history_same_labels_no_append(tmp_path):
-    path = tmp_path / 'emotion_vocab_history.csv'
-    emotion.update_vocab_history('1', ['楽しい・うれしい'], path)
-    changed = emotion.update_vocab_history('1', ['楽しい・うれしい'], path)
-    assert changed is False
-    assert len(pd.read_csv(path, dtype=str)) == 1
-
-
-def test_update_vocab_history_new_revision_same_labels_no_append(tmp_path):
-    """質問文の変更や setup-form --update の空打ちで revisionId だけが上がる。
-
-    これで行が増えると「いつ語彙が変わったか」を知るのに labels を diff する
-    羽目になり、このファイルの存在意義が消える（実機で発生: 00000008 -> 00000009）。
-    """
-    path = tmp_path / 'emotion_vocab_history.csv'
-    emotion.update_vocab_history('00000008', ['楽しい・うれしい', 'イライラ'], path)
-    changed = emotion.update_vocab_history('00000009', ['楽しい・うれしい', 'イライラ'], path)
-    assert changed is False
-    assert len(pd.read_csv(path, dtype=str)) == 1
-
-
-def test_update_vocab_history_new_labels_append(tmp_path):
-    path = tmp_path / 'emotion_vocab_history.csv'
-    emotion.update_vocab_history('1', ['楽しい・うれしい'], path)
-    changed = emotion.update_vocab_history('2', ['楽しい・うれしい', 'イライラ'], path)
-    assert changed is True
-    df = pd.read_csv(path, dtype=str)
-    assert len(df) == 2
-    assert df.iloc[0]['revision_id'] == '1'
-    assert df.iloc[1]['revision_id'] == '2'
-    # 旧語彙の行が残る（過去データの読み方が失われない）
-    assert df.iloc[0]['labels'] == '楽しい・うれしい'
-
-
-def test_update_vocab_history_label_order_change_is_a_change(tmp_path):
-    """並び替えもフォームの見た目が変わる = 別の版として記録する"""
-    path = tmp_path / 'emotion_vocab_history.csv'
-    emotion.update_vocab_history('1', ['楽しい・うれしい', 'イライラ'], path)
-    changed = emotion.update_vocab_history('2', ['イライラ', '楽しい・うれしい'], path)
-    assert changed is True
-    assert len(pd.read_csv(path, dtype=str)) == 2
-
-
-def test_update_vocab_history_zero_padded_revision_survives_roundtrip(tmp_path):
-    path = tmp_path / 'emotion_vocab_history.csv'
-    emotion.update_vocab_history('00000004', ['楽しい・うれしい'], path)
-    df = pd.read_csv(path, dtype=str)
-    assert df.iloc[0]['revision_id'] == '00000004'
-    changed = emotion.update_vocab_history('00000004', ['楽しい・うれしい'], path)
-    assert changed is False
-
-
-def test_update_vocab_history_records_labels_without_revision(tmp_path):
-    """revisionId が取れなくても語彙は記録する（取りこぼしのほうが高くつく）"""
-    path = tmp_path / 'emotion_vocab_history.csv'
-    changed = emotion.update_vocab_history(None, ['楽しい・うれしい'], path)
-    assert changed is True
-    df = pd.read_csv(path, dtype=str, keep_default_na=False)
-    assert df.iloc[0]['revision_id'] == ''
-    assert df.iloc[0]['labels'] == '楽しい・うれしい'
 
 
 # --- gforms_client.sync_questions ---
@@ -699,28 +622,6 @@ def test_sync_questions_raises_on_unmatched_existing_item_default_flag():
 # 実際に1件失いかけたインシデントの再発防止: 日次 fetch の後に投稿された
 # 回答が CSV に materialize されないまま --allow-kind-replace を実行すると、
 # 削除で questionId の対応付けが失われ、その回答の値が読めなくなる。
-
-def test_has_unfetched_responses_true_when_response_newer_than_csv():
-    csv_max = pd.Timestamp('2026-08-31 15:01:00')
-    responses = [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}]  # JST 15:05
-    assert emotion.has_unfetched_responses(responses, csv_max) is True
-
-
-def test_has_unfetched_responses_false_when_no_response_newer_than_csv():
-    csv_max = pd.Timestamp('2026-08-31 15:01:00')
-    responses = [{'lastSubmittedTime': '2026-08-31T05:00:00Z'}]  # JST 14:00
-    assert emotion.has_unfetched_responses(responses, csv_max) is False
-
-
-def test_has_unfetched_responses_false_when_no_responses_at_all():
-    assert emotion.has_unfetched_responses([], pd.Timestamp('2026-08-31 15:01:00')) is False
-
-
-def test_has_unfetched_responses_true_when_csv_missing_but_responses_exist():
-    """CSV がまだ無い（＝全件未取り込み）のに回答があるなら未取り込み扱い"""
-    responses = [{'lastSubmittedTime': '2026-08-31T06:05:00Z'}]
-    assert emotion.has_unfetched_responses(responses, None) is True
-
 
 def _setup_form_conf(tmp_path):
     return {**CONF, 'form_id': 'form1', 'grid_title': 'いまの状態'}

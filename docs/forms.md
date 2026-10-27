@@ -8,8 +8,9 @@
 以前はフォーム1つの廃止で6ファイルを直しており、直し漏れは例外を出さずに残った
 （入力をやめたフォームの「陽性感情なし」の継続日数が毎日伸び続けた）。
 
-- **追加**: まずレジストリの1エントリで始める（fetch・鮮度表・必要なら `review`）。固有の解釈は、
-  数週間入力が続き、読み手のレビューが決まってから足す。2週間で止まるフォームに解釈を書くと、消し忘れが残る
+- **追加**: 下の「新しいフォームの追加手順」。def yaml とレジストリの1エントリで始める（fetch・鮮度表・
+  必要なら `review`）。固有の解釈は、数週間入力が続き、読み手のレビューが決まってから足す。
+  2週間で止まるフォームに解釈を書くと、消し忘れが残る
 - **廃止**: `status: deprecated` の1行変更。fetch だけ続け（入力されたら CSV に入る）、
   鮮度表・最終記録・レビューからは消える。そのフォームを読む解釈のコードがあれば合わせて外す
 - **fetch も止める**: エントリごと消す（`retired` のような状態は作らない）
@@ -17,6 +18,31 @@
 - エントリの壊れ（必須項目の欠落・未知の `status` / `cadence`・CSV パスの重複）は読み込み時に例外になる。
   日次 fetch ではそれが「フォームのレジストリ」の失敗として1つ出る
 - `config/forms.yaml` は public。PHQ-9 の設問文は書かない
+
+### 新しいフォームの追加手順
+
+手入力ログは短命なので（気分記録・protein 記録・BATD-R の帳票）、フォームごとにスクリプト・store・render・
+テストを一式書かない。グリッド（1〜5）・数値・自由記述だけのフォームは、次の2つで fetch / show まで動く。
+
+1. `config/<key>_def.yaml` を書く。形は `config/daily_evening_def.yaml` と同じ
+   （`form_title` / `grid_title` か `grids` / `score` / `questions`）。スキーマの説明は
+   `src/lib/forms/schema.py` の冒頭。1日1行なら `unit: day`（既定。同じ日の回答は最後の1件）、
+   回答ごとに1行なら `unit: response`。日付の境界をずらすなら `day_start_hour`
+2. `config/forms.yaml` に1エントリ足す。**`fetch` / `show` は書かない**（省略すると汎用の
+   `forms.py fetch <key>` / `forms.py show <key>` になる。日次 fetch もこれを呼ぶ）
+3. `uv run scripts/forms.py setup-form <key>` でフォームを作る（作成後に Drive の `dailybuild`
+   フォルダへ移し、`form_id` と text/number 設問の `question_id` を yaml へ書き戻す）。
+   以後 yaml を直したら `setup-form <key> --update`
+
+回答は `csv`（レジストリ）へ、グリッド行構成の版は `data/<key>_grid_history.csv` へ入る。
+`form_id` が空のうちは fetch が「未作成のためスキップ」で正常終了する。
+
+選択式（ラジオ・チェックボックス）や採点・パースが要るフォームは汎用にしない。
+固有のスクリプトを書き、レジストリの `fetch` / `show` にその argv を書く（排便記録・PHQ-9・
+気分記録がこの形）。その場合も setup-form / fetch の手順・yaml の書き戻し・回答時刻の JST 化・
+語彙とグリッド行の版履歴は `src/lib/forms/`（`cli` / `defs` / `responses`）を使い、
+フォーム固有の解釈だけをスクリプトに書く。日次記録（朝・夜）は汎用の経路で動き、
+`daily.py` は朝の `migrate-manual` のために残している（既存のサブコマンドも同じ処理を呼ぶ）。
 
 ## 気分記録
 
@@ -144,7 +170,8 @@ Forms API にリンク設定が無く、そこだけ手作業として残るた�
 questionId 対応付けが失われ、値を読む手段が無くなる**（旧 questionId を
 控えていない限り）。そのため削除の前に必ず fetch を済ませ、フォーム側の
 最新回答をすべて CSV に materialize しておくこと（コードのガードは
-`scripts/emotion.py` の `has_unfetched_responses()`。CSV の最新 timestamp
+`src/lib/forms/responses.py` の `has_unfetched_responses()` で、
+`scripts/emotion.py` が削除の直前に呼ぶ。CSV の最新 timestamp
 より新しい回答があれば `setup-form --update --allow-kind-replace` は削除を
 実行せず中止する）。
 
@@ -290,8 +317,8 @@ Issue #157 で朝・夜の2フォームに分割し、旧スクリプト名（�
   （2026年の主睡眠266件中、05:00 より前の起床が22日/8.3%あり、境界を当てると
   そこがずれる）。夜は逆に 5:00 境界（00:00-04:59 の回答は前日）で、夜更かしの
   チェックアウトが翌日に付かないようにする。実装は
-  `src/lib/daily/store.py` の `response_date(ts, day_start_hour)`（朝は
-  `day_start_hour=0` で補正なし、夜は `5`）
+  `src/lib/forms/schema.py` の `response_date(ts, day_start_hour)`（朝は
+  `day_start_hour: 0` で補正なし、夜は `5`。値は def yaml にある）
 - **満足感・達成感（夜）を BATD-R の楽しさ／重要さと混ぜない。**
   前者は1日1点の粗い常時チャネル（Beck の Mastery/Pleasure）、後者は
   1時間枠ごとの手書きスパースな高解像度チャネルで母集団が違う。後者の
@@ -301,12 +328,10 @@ Issue #157 で朝・夜の2フォームに分割し、旧スクリプト名（�
   （2026-09-05、朝フォーム）。気分記録・PHQ-9 と同じ「同型が並ぶ item は
   出現順対応」の制約がグリッドにもそのまま効く。以後 `grid_rows` の並びは
   変えず、行を足すなら必ず**末尾に追加**する
-- **グリッド行構成（版）の記録位置が気分記録と違う。** 気分記録・PHQ-9 の
-  版記録は `setup-form` 側（`update_vocab_history` 呼び出し）にあるが、
-  日次記録は `cmd_fetch`（`scripts/daily.py`）の中で `_grid_row_titles(form)`
-  を取って記録している。フォーム定義を触るときはこの違いを踏まえて版履歴
-  （`data/daily_morning_grid_history.csv` / `data/daily_evening_grid_history.csv`）
-  の更新箇所を探すこと
+- **グリッド行構成（版）は fetch が記録する。** 気分記録も日次記録も、fetch の
+  中で `grid_row_titles(form)` を取り `record_history()`（`src/lib/forms/responses.py`）
+  で版履歴（`data/daily_morning_grid_history.csv` / `data/daily_evening_grid_history.csv`）
+  へ追記する。setup-form の直後に fetch するまで版は残らない
 - **訂正は同じ日に再送信する。** 同一 `date` の複数回答は `updated_at`
   （API の `lastSubmittedTime`）の大小で最後を採る。**API の返却順は
   時刻順とは限らない**（実測で逆順が返ったことがある）ため、
@@ -356,7 +381,7 @@ Issue #157 で朝・夜の2フォームに分割し、旧スクリプト名（�
   持てるようにし、`sync_questions()` はこれを最優先で突き合わせる
   ようにした（並び順・退役位置に依存しなくなる）
 - **`question_id` は手で書かない。** `setup-form --update` が既存フォームから
-  backfill して yaml へ書き戻す（`scripts/daily.py` の
+  backfill して yaml へ書き戻す（`src/lib/forms/defs.py` の
   `save_question_ids()`）。backfill 後はタイトル変更も並び替えも
   questionId に影響しない
 - **`question_id` が空の設問は従来どおり kind-FIFO。** 新しい設問を足す

@@ -9,7 +9,10 @@
 # cadence: daily / sparse（記録の無い日が常態。最終記録にも出す）/ weekly
 # stale_after_days: 鮮度表の許容遅れ日数。null なら鮮度表に出さない
 # review: show を読むレビュー（daily / weekly）。null ならどのレビューも読まない
-# fetch / show: scripts/ からの argv（python で実行する）。show の --days は forms.py が足す
+# fetch / show: scripts/ からの argv（python で実行する）。show の --days は forms.py が足す。
+#   省略すると汎用の forms.py fetch / show（config/<key>_def.yaml だけで動く。
+#   docs/forms.md の「新しいフォームの追加手順」）。固有処理があるフォームだけ書く。
+#   show: null は show を持たない
 #
 # public。PHQ-9 の設問文は書かない（config/phq9_def.yaml は gitignore）。
 forms:
@@ -22,8 +25,6 @@ forms:
     stale_after_days: 2
     note: ''
     review: daily
-    fetch: [scripts/daily.py, morning, fetch, --non-interactive]
-    show: [scripts/daily.py, morning, show]
 
   - key: daily_evening
     name: 日次記録（夜）
@@ -34,8 +35,6 @@ forms:
     stale_after_days: null
     note: ''
     review: null
-    fetch: [scripts/daily.py, evening, fetch, --non-interactive]
-    show: [scripts/daily.py, evening, show]
 
   - key: emotion
     name: 気分記録
