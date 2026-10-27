@@ -177,7 +177,9 @@ uv run scripts/toggl.py stop             # 計測中のエントリを停止
 uv run scripts/toggl.py current          # 計測中のエントリを表示
 uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
-uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得。deprecated: フォームと日次 fetch は残すが、STATE.md・daily-review は読まない
+uv run scripts/forms.py list         # フォームのレジストリ（config/forms.yaml）。追加・廃止は yaml の1エントリ（docs/forms.md）
+uv run scripts/forms.py show --review daily --days 7  # daily-review が読む active フォームの show を順に実行
+uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得。レジストリで deprecated（fetch だけ続く）
 uv run scripts/emotion.py show       # 気分記録のサマリ（既定は直近7日）
 uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
 uv run scripts/bowel.py fetch        # 排便記録（Bristol、Google Form回答）取得

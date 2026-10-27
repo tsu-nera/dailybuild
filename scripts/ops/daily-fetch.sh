@@ -76,11 +76,19 @@ step "Timeline names" uv run python scripts/timeline.py names
 step "日出・日入"     uv run python scripts/fetch_sun_times.py --days 14
 step "気象"          uv run python scripts/fetch_weather.py --days 14
 step "Home Assistant" uv run python scripts/fetch_homeassistant.py
-step "日次記録（朝）" uv run scripts/daily.py morning fetch --non-interactive
-step "日次記録（夜）" uv run scripts/daily.py evening fetch --non-interactive
-step "気分記録"       uv run python scripts/emotion.py fetch --non-interactive
-step "PHQ-9"         uv run python scripts/phq9.py fetch --non-interactive
-step "排便記録"       uv run python scripts/bowel.py fetch --non-interactive
+# Google Forms は config/forms.yaml（レジストリ）から列挙し、1フォーム1ステップで回す。
+# deprecated も fetch は続ける。レジストリが読めなければそれを1つの失敗として出して続行する
+if FORM_LIST=$(uv run python scripts/forms.py fetch-list); then
+  # here-string のまま回すと fetch が stdin を食うので、先に配列へ移す
+  mapfile -t FORM_LINES <<< "$FORM_LIST"
+  for line in "${FORM_LINES[@]}"; do
+    [ -n "$line" ] || continue
+    step "${line#*$'\t'}" uv run python scripts/forms.py fetch "${line%%$'\t'*}"
+  done
+else
+  echo "!!! フォームのレジストリ の読み込みに失敗（後続は続行する）"
+  FAILED+=("フォームのレジストリ")
+fi
 step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 step "Todoist"       uv run python scripts/todoist.py fetch --update
