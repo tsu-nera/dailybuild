@@ -1,0 +1,76 @@
+# Google Forms の手入力ログのレジストリ。1フォーム1エントリ。
+# 書くのは「どのフォームがあり、生きているか」（登録）だけ。フォーム固有の読み方
+# （STATE.md の継続日数・レポートへの組み込み）はコードに残す。手順は docs/forms.md。
+#
+# status:
+#   active     … fetch する・鮮度表に出す・review に従ってレビューが読む
+#   deprecated … fetch だけ続ける。鮮度表・最終記録・レビューには出さない
+#   fetch も止めるときはエントリごと消す（`retired` のような状態は作らない）
+# cadence: daily / sparse（記録の無い日が常態。最終記録にも出す）/ weekly
+# stale_after_days: 鮮度表の許容遅れ日数。null なら鮮度表に出さない
+# review: show を読むレビュー（daily / weekly）。null ならどのレビューも読まない
+# fetch / show: scripts/ からの argv（python で実行する）。show の --days は forms.py が足す
+#
+# public。PHQ-9 の設問文は書かない（config/phq9_def.yaml は gitignore）。
+forms:
+  - key: daily_morning
+    name: 日次記録（朝）
+    csv: data/daily_morning.csv
+    date_column: date
+    status: active
+    cadence: daily
+    stale_after_days: 2
+    note: ''
+    review: daily
+    fetch: [scripts/daily.py, morning, fetch, --non-interactive]
+    show: [scripts/daily.py, morning, show]
+
+  - key: daily_evening
+    name: 日次記録（夜）
+    csv: data/daily_evening.csv
+    date_column: date
+    status: active
+    cadence: daily
+    stale_after_days: null
+    note: ''
+    review: null
+    fetch: [scripts/daily.py, evening, fetch, --non-interactive]
+    show: [scripts/daily.py, evening, show]
+
+  - key: emotion
+    name: 気分記録
+    csv: data/emotion.csv
+    date_column: date
+    status: deprecated
+    cadence: daily
+    stale_after_days: null
+    note: ''
+    review: null
+    fetch: [scripts/emotion.py, fetch, --non-interactive]
+    show: [scripts/emotion.py, show]
+
+  - key: bowel
+    name: 排便記録
+    short_name: 排便
+    csv: data/bowel.csv
+    date_column: date
+    status: active
+    cadence: sparse
+    stale_after_days: 4
+    note: 出ない日がある
+    review: null
+    fetch: [scripts/bowel.py, fetch, --non-interactive]
+    show: [scripts/bowel.py, show]
+
+  - key: phq9
+    name: PHQ-9
+    csv: data/phq9.csv
+    date_column: date
+    status: active
+    cadence: weekly
+    stale_after_days: 8
+    note: 週次
+    # weekly-review は phq9.py url を直接使う
+    review: null
+    fetch: [scripts/phq9.py, fetch, --non-interactive]
+    show: null

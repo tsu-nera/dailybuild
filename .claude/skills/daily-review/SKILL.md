@@ -127,11 +127,11 @@ uv run python scripts/generate_mind_report_daily.py --days 14 --no-charts
 - `tmp/sleep_report/REPORT.md`（sleep または指定なし）
 - `tmp/mind_report/REPORT.md`（mind または指定なし）
 
-加えて、日次記録（気分・身体・頭・睡眠の主観スコアとコメント）の直近7日分を
-読み込む（`--no-fetch` の場合も含む）:
+加えて、daily-review が読むフォーム（`config/forms.yaml` の `review: daily`。現在は日次記録
+＝気分・身体・頭・睡眠の主観スコアとコメント）の直近7日分を読み込む（`--no-fetch` の場合も含む）:
 
 ```bash
-uv run scripts/daily.py morning show --days 7
+uv run scripts/forms.py show --review daily --days 7
 ```
 
 骨組みの「予定」欄を読み、予定のあった日の歩数・疲労は予定の負荷として読む

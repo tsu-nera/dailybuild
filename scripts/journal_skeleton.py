@@ -43,7 +43,7 @@ from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
 from lib.analytics.weight_daily import load_weight_daily  # noqa: E402
-from lib import gcalendar  # noqa: E402
+from lib import forms_registry, gcalendar  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
 
 BASE_DIR = project_root
@@ -63,6 +63,10 @@ END_MARKER = '<!-- skeleton:end -->'
 REVIEW_MARKER = '<!-- review:start -->'
 WEEKLY_MARKER = '<!-- weekly:start -->'
 
+# Google Forms のレジストリ。どのフォームが生きているか（登録）は yaml が持ち、
+# 主観スコア・排便の集計のようなフォーム固有の読み方（解釈）はここに残す
+FORMS = forms_registry.load_forms()
+
 # 毎日あるはずのソース。当日の行が無ければ欠測として出す。(ラベル, パス, 日付列)
 DAILY_SOURCES = [
     ('sleep', 'data/wearable/sleep.csv', 'dateOfSleep'),
@@ -78,14 +82,20 @@ DAILY_SOURCES = [
 # 出さない。毎日「欠測」と書くと故障と未記録が同じ見た目になり、しかも毎日出る
 # 警告は読み飛ばされる。代わりに最終記録からの経過日数を出し、判断は読み手に渡す。
 # (ラベル, パス, 日付列, 表示名)
-SPARSE_SOURCES = [
-    ('temperature_core', 'data/wearable/temperature_core.csv', 'date_time', '深部体温'),
-    ('body_composition', 'data/healthplanet_innerscan.csv', 'date', '体組成'),
-    # 排便は DAILY_SOURCES に入れない。記録の無い日が「未記録」なのか
-    # 「出なかった」なのか原理的に判別できないため、当日の不在を欠測として
-    # 毎日出すと故障と未記録が同じ見た目になる（SPARSE_SOURCES の趣旨）
-    ('bowel', 'data/bowel.csv', 'date', '排便'),
-]
+#
+# フォームの行は config/forms.yaml の cadence: sparse から足す（排便など）。
+# 排便は DAILY_SOURCES に入れない。記録の無い日が「未記録」なのか
+# 「出なかった」なのか原理的に判別できないため、当日の不在を欠測として
+# 毎日出すと故障と未記録が同じ見た目になる（SPARSE_SOURCES の趣旨）
+def sparse_sources(forms) -> list[tuple]:
+    return [
+        ('temperature_core', 'data/wearable/temperature_core.csv', 'date_time', '深部体温'),
+        ('body_composition', 'data/healthplanet_innerscan.csv', 'date', '体組成'),
+    ] + [(f.key, f.csv, f.date_column, f.short_name)
+         for f in forms_registry.sparse_forms(forms)]
+
+
+SPARSE_SOURCES = sparse_sources(FORMS)
 
 
 def _read(path, date_column):
@@ -634,20 +644,28 @@ STREAK_SPECS = [
 # 運用をやめたソースはここから**行ごと消す**（`retired` のような状態は作らない）。
 # 停止したものを毎日表に出しても、読み手にできることが何も無い。停止した事実と
 # 理由は memory と CLAUDE.md が持つ。
-PIPELINE_SOURCES = [
-    ('Fitbit sleep', 'data/wearable/sleep.csv', 'dateOfSleep', 1, 'active', ''),
-    ('Fitbit HRV', 'data/wearable/hrv.csv', 'date', 1, 'active', ''),
-    ('Fitbit activity', 'data/wearable/activity.csv', 'date', 1, 'active', ''),
-    ('日次記録（朝）', 'data/daily_morning.csv', 'date', 2, 'active', ''),
-    ('体組成', 'data/healthplanet_innerscan.csv', 'date', 3, 'active',
-     '測らない日があるのが常態'),
-    ('排便記録', 'data/bowel.csv', 'date', 4, 'active', '出ない日がある'),
-    ('PHQ-9', 'data/phq9.csv', 'date', 8, 'active', '週次'),
-    ('Toggl', 'data/toggl/time_entries.csv', 'start', 2, 'active', ''),
-    ('MoneyForward', 'data/mf/収入・支出詳細_{year}.csv', '日付', 4, 'degraded',
-     '連携が切れた口座の明細が入らない。**MF の集計は過少**。再認証しない方針'),
-    ('Habitica', 'data/habitica/cron_log.csv', 'date', 1, 'active', ''),
-]
+#
+# フォームの行は config/forms.yaml から作り、Fitbit の後に yaml の順で入れる。
+# フォームの停止は yaml の status: deprecated（fetch だけ続け、ここには出さない）。
+def pipeline_sources(forms) -> list[tuple]:
+    return [
+        ('Fitbit sleep', 'data/wearable/sleep.csv', 'dateOfSleep', 1, 'active', ''),
+        ('Fitbit HRV', 'data/wearable/hrv.csv', 'date', 1, 'active', ''),
+        ('Fitbit activity', 'data/wearable/activity.csv', 'date', 1, 'active', ''),
+    ] + [
+        (f.name, f.csv, f.date_column, f.stale_after_days, 'active', f.note)
+        for f in forms_registry.pipeline_forms(forms)
+    ] + [
+        ('体組成', 'data/healthplanet_innerscan.csv', 'date', 3, 'active',
+         '測らない日があるのが常態'),
+        ('Toggl', 'data/toggl/time_entries.csv', 'start', 2, 'active', ''),
+        ('MoneyForward', 'data/mf/収入・支出詳細_{year}.csv', '日付', 4, 'degraded',
+         '連携が切れた口座の明細が入らない。**MF の集計は過少**。再認証しない方針'),
+        ('Habitica', 'data/habitica/cron_log.csv', 'date', 1, 'active', ''),
+    ]
+
+
+PIPELINE_SOURCES = pipeline_sources(FORMS)
 
 # 毎日出る既知のログ警告。新規と同じ場所に並べると新規が埋もれるので分けて出す。
 # 消さないのは、件数や範囲が変わったときに文言も変わるため（9件→15件は見える）。
