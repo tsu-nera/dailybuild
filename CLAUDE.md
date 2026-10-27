@@ -138,10 +138,9 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days 2"'
 `data/wearable/body_weight.csv`（Fitbit）は Google Health に全日が含まれるので使わない。体脂肪率は機器ごとに
 推定式が違うので入れない。新しい体重計を足すときは `SOURCES` に1行足す。
 
-`positive`（陽性ラベル件数）と `sleep_debt` は**意図的に入れていない**。
-どちらも欠測日を 0 で埋めており（前者は「陽性がN日途切れている」を数えるため、
-後者は睡眠0hとして計上）、相関では実データとして扱われてしまう。0埋めは
-STATE.md のストリーク用途に閉じ込めてある。**「便利だから」と足さないこと。**
+`sleep_debt` は**意図的に入れていない**。欠測日を睡眠0hとして計上しており、
+相関では実データとして扱われてしまう。0埋めは STATE.md のストリーク用途に
+閉じ込めてある。**「便利だから」と足さないこと。**
 
 `metrics_daily.csv` の interval グレイン版が `reports/events.jsonl`（`scripts/events.py build`。
 日次の最後に毎日**全上書き**で生成）。「その日に何をしていたか」はこれ1本を読む。
@@ -178,7 +177,7 @@ uv run scripts/toggl.py stop             # 計測中のエントリを停止
 uv run scripts/toggl.py current          # 計測中のエントリを表示
 uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
 uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
-uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得
+uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得。deprecated: フォームと日次 fetch は残すが、STATE.md・daily-review は読まない
 uv run scripts/emotion.py show       # 気分記録のサマリ（既定は直近7日）
 uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
 uv run scripts/bowel.py fetch        # 排便記録（Bristol、Google Form回答）取得

@@ -88,7 +88,7 @@ def test_single_day_is_not_a_streak():
 
 
 def test_include_today_false_starts_from_yesterday():
-    """歩数・陽性感情は当日が未確定。当日を数えると毎朝1日伸びる"""
+    """当日の値が未確定な指標。当日を数えると毎朝1日伸びる"""
     s = series([(3, 1), (4, 1), (5, 9)])   # 当日は条件を満たさない
     hit = js._streak(s, low, TARGET, include_today=False)
     assert hit['days'] == 2

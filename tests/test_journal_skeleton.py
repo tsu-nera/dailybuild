@@ -447,12 +447,11 @@ def _seed_metrics_sources(root):
 
 
 def test_metrics_daily_csv_excludes_zero_filled_columns(metrics_root):
-    """positive / sleep_debt は 0 埋め列なので出さない"""
+    """sleep_debt は 0 埋め列なので出さない"""
     _seed_metrics_sources(metrics_root)
     js.write_metrics_csv()
 
     df = pd.read_csv(js.METRICS_FILE)
-    assert 'positive' not in df.columns
     assert 'sleep_debt' not in df.columns
 
 

@@ -35,7 +35,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import yaml
 
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
@@ -45,7 +44,6 @@ from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
 from lib.analytics.weight_daily import load_weight_daily  # noqa: E402
 from lib import gcalendar  # noqa: E402
-from lib.emotion import render as emotion_render  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
 
 BASE_DIR = project_root
@@ -55,7 +53,6 @@ STATE_FILE = JOURNAL_DIR / 'STATE.md'
 METRICS_FILE = BASE_DIR / 'reports' / 'metrics_daily.csv'
 WEIGHT_FILE = BASE_DIR / 'reports' / 'weight_daily.csv'
 ACTIONS_FILE = JOURNAL_DIR / 'ACTIONS.md'
-EMOTION_DEF = BASE_DIR / 'config' / 'emotion_def.yaml'
 
 WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
 
@@ -88,8 +85,6 @@ SPARSE_SOURCES = [
     # 「出なかった」なのか原理的に判別できないため、当日の不在を欠測として
     # 毎日出すと故障と未記録が同じ見た目になる（SPARSE_SOURCES の趣旨）
     ('bowel', 'data/bowel.csv', 'date', '排便'),
-    # 気分記録は断続で運用が成立しているので、遅れを要確認にしない
-    ('emotion', 'data/emotion.csv', 'date', '気分記録'),
 ]
 
 
@@ -288,13 +283,9 @@ def _metrics_frame(lo: pd.Timestamp, hi: pd.Timestamp) -> pd.DataFrame:
     reports/metrics_daily.csv の生成元。collect_metrics() が当日値・直近7日
     平均・前7日平均へ畳む直前の日次系列を、畳まずにそのまま返す。
 
-    以下の2列は意図的に含めない。0埋めが相関分析を静かに壊すため:
-    - positive（陽性ラベル件数）: _positive_series() が記録の無い日を0で
-      埋めている。「陽性がN日途切れている」を数えるための意図的な仕様だが、
-      相関では「陽性ゼロの日」として実データ扱いされてしまう
-    - sleep_debt: 欠測日を睡眠0hで計上して膨張する。累積量なので単日の
-      欠測補正もできない
-    どちらも _state_series() のストリーク用途に閉じ込めたままにする。
+    sleep_debt は意図的に含めない。欠測日を睡眠0hで計上して膨張し、相関では
+    実データとして扱われてしまう。累積量なので単日の欠測補正もできない。
+    _state_series() のストリーク用途に閉じ込めたままにする。
     欠測は欠測のまま（空セル）にする。fillna(0) はしない。
     """
     sources = _load_sources(lo, hi)
@@ -612,14 +603,13 @@ STREAK_MAX_GAP = 2
 #   主観スコア    config/daily_morning_def.yaml の score.low〜high "1-5"
 #                 （下限=1。床に張り付いている状態を出す。「2以下」のような
 #                 中間の線は引かない）
-#   陽性感情      daily-review スキルの観点「陽性がN日途切れているは書く価値がある」
 #
 # 新しい条件を出したくなったら、先に宣言元（targets.yaml / スキルの観点）へ
 # 書く。宣言は人が見る場所にあるので、方向の固定化が目に見える形でしか
 # 起きない。境界値を変えるときも宣言元を直し、ここを合わせる。
 #
-# 当日を数えないものは、当日の値がまだ確定しない指標。陽性感情は「まだ記録して
-# いないだけ」なので、当日を条件に入れると毎朝ストリークが1日伸びる。
+# 当日を数えないものは、当日の値がまだ確定しない指標。当日を条件に入れると
+# 毎朝ストリークが1日伸びる。
 STREAK_SPECS = [
     ('睡眠時間 < 7h', 'sleep_hours', lambda v: v < 7.0, True),
     ('睡眠効率 < 85%', 'sleep_efficiency', lambda v: v < 85, True),
@@ -628,7 +618,6 @@ STREAK_SPECS = [
     ('主観 body が下限(1)', 'body', lambda v: v <= 1, True),
     ('主観 head が下限(1)', 'head', lambda v: v <= 1, True),
     ('主観 sleep が下限(1)', 'sleep_score', lambda v: v <= 1, True),
-    ('陽性感情なし', 'positive', lambda v: v < 1, False),
 ]
 
 # 取得パイプラインの鮮度。(表示名, パス, 日付列, 許容遅れ日数, 状態, 備考)
@@ -673,42 +662,6 @@ KNOWN_LOG_WARNINGS = [
 ACTION_CLOSED = {'達成', '撤回', '不要'}
 
 
-def _valence_map() -> dict:
-    """気分記録の label -> valence。読めなければ空 dict"""
-    if not EMOTION_DEF.exists():
-        return {}
-    try:
-        with open(EMOTION_DEF, encoding='utf-8') as f:
-            conf = yaml.safe_load(f) or {}
-    except yaml.YAMLError:
-        return {}
-    return emotion_render.valence_map(conf)
-
-
-def _positive_series(lo, hi):
-    """日ごとの陽性ラベル件数。記録の無い日は 0 で埋める（欠測ではない）
-
-    「陽性が N 日途切れている」を数えるための系列なので、記録が無い日は
-    陽性が無かった日として数えるのが正しい。
-
-    emotion の show は streak を出さない方針（src/lib/emotion/render.py の
-    docstring）。あれは**人が読む**出力で、不調期に折れると自己批判の材料に
-    なるため。こちらは agent しか読まない状態ファイルで、daily-review が
-    「陽性が N 日途切れている」を明示的に求めている。
-    """
-    idx = pd.date_range(lo, hi, freq='D')
-    df = _read('data/emotion.csv', 'date')
-    if df.empty or 'emotions' not in df.columns:
-        return None
-    vmap = _valence_map()
-    if not vmap:
-        # 極性が引けない状態で 0 埋めすると「陽性ゼロが60日continuing」に化ける
-        return None
-    hits = df[df['emotions'].apply(lambda e: emotion_render.has_positive(e, vmap))]
-    counts = hits.groupby('_date').size() if not hits.empty else pd.Series(dtype=float)
-    return counts.reindex(idx, fill_value=0).astype(float)
-
-
 def _state_series(target: dt.date) -> dict:
     """ストリーク判定に使う日次系列を集める。値は日付 index の Series"""
     ts = pd.Timestamp(target)
@@ -737,10 +690,6 @@ def _state_series(target: dt.date) -> dict:
     add('sleep_score', man, 'sleep_score')
 
     add('sleep_debt', _sleep_debt_series(lo, ts), 'debt')
-
-    positive = _positive_series(lo, ts)
-    if positive is not None:
-        out['positive'] = positive
     return out
 
 
@@ -908,7 +857,7 @@ def render_state(target: dt.date) -> str:
     if streaks:
         lines += ['| 条件 | 継続 |', '|---|---|']
         lines += [f"| {r['label']} | {_fmt_streak(r)} |" for r in streaks]
-        lines += ['', '> 2日以上のものだけ。陽性感情は当日が未確定なので前日まで。',
+        lines += ['', '> 2日以上のものだけ。',
                   '> **日数はレビュー本文に書かない。**データの訂正で後から変わるので、不変の記録に残すと嘘になる。']
     else:
         lines.append('継続中のものは無い（2日以上）。')
