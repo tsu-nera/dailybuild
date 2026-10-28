@@ -90,6 +90,7 @@ else
   FAILED+=("フォームのレジストリ")
 fi
 step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
+step "Toggl 2.0"     uv run python scripts/toggl.py fetch-focus --days "$DAYS"
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 step "Todoist"       uv run python scripts/todoist.py fetch --update
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
