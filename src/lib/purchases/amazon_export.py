@@ -78,11 +78,3 @@ def normalize(raw: pd.DataFrame) -> pd.DataFrame:
     return (df.sort_values(['order_date', 'order_id', 'asin'])
               .reset_index(drop=True)[COLUMNS])
 
-
-def lost_orders(existing: pd.DataFrame, new: pd.DataFrame) -> set[str]:
-    """既存にあって新しい export に無い注文 ID
-
-    export は全期間を含むので、正常なら空集合。空でなければ export が欠けている
-    （別アカウント・壊れた zip など）とみなし、置き換えを止める判断に使う。
-    """
-    return set(existing['order_id']) - set(new['order_id'])

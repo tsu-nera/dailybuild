@@ -7,7 +7,8 @@ Gmail の注文確認メールから購入履歴の行を作る
 
 Amazon の過去分は開示データ（amazon_export、data/purchases/amazon.csv）が持つ。
 2024 年以前の Amazon の注文確認には品名が無いので、ここでは現行書式だけを読む。
-読む側は order_id が amazon.csv にある行を gmail.csv から落とせば重複しない。
+楽天市場の全期間は購入履歴ページ由来の rakuten.csv が持つ。
+読む側は order_id が amazon.csv / rakuten.csv にある行を gmail.csv から落とせば重複しない。
 
 メールの値と開示データの値はずれうる（開示データが正）:
 - Amazon は1通に複数の注文がまとまることがあり、表示される注文番号は1つだけ。

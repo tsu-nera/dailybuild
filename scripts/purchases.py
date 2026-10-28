@@ -12,8 +12,13 @@ import-amazon: Amazon の個人データ開示で届く `Your Orders.zip` を da
 申請は https://www.amazon.co.jp/hz/privacy-central/data-requests/preview.html
 （アカウントサービスのメニューからはたどれない）。
 
-export は全期間を含むので、取り込みは毎回の全置き換え。既存の注文 ID が新しい
-export に1件でも無ければ書き込まない（欠けた export で正本を潰さない）。
+import-rakuten: 楽天市場の購入履歴を data/purchases/rakuten.csv へ取り込む。CSV 出力が無いので、
+ログイン済みのブラウザで購入履歴一覧を開き src/lib/purchases/rakuten_dump.js を実行して
+JSON を取ってから渡す（手順と一覧の罠は lib.purchases.rakuten_history）。
+
+import-amazon / import-rakuten は全期間を含むので、取り込みは毎回の全置き換え。既存の
+注文 ID が新しい取り込み元に1件でも無ければ書き込まない（欠けた取り込み元で正本を潰さない）。
+gmail.csv の行は order_id が amazon.csv / rakuten.csv にあれば重複なので、読む側で落とす。
 
 Usage:
     python scripts/purchases.py fetch --login --since 2025-10-01  # 初回認可（ブラウザが開く）
@@ -21,6 +26,7 @@ Usage:
     python scripts/purchases.py fetch --days 30    # 直近30日を取り直す
     python scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"
     python scripts/purchases.py import-amazon <Order History.csv> --force
+    python scripts/purchases.py import-rakuten rakuten_dump.json
 """
 
 import sys
@@ -35,26 +41,39 @@ import logging
 import pandas as pd
 
 from lib.clients import gmail_client
-from lib.purchases import amazon_export, gmail
+from lib.purchases import amazon_export, gmail, rakuten_history
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 AMAZON_CSV = BASE_DIR / 'data' / 'purchases' / 'amazon.csv'
 GMAIL_CSV = BASE_DIR / 'data' / 'purchases' / 'gmail.csv'
+RAKUTEN_CSV = BASE_DIR / 'data' / 'purchases' / 'rakuten.csv'
 
 logger = logging.getLogger('purchases')
 
 
 def import_amazon(src: Path, dest: Path, force: bool = False) -> int:
     """export を正規化して dest を置き換える。書かなかったら 1"""
-    new = amazon_export.read_export(src)
+    return replace_all(amazon_export.read_export(src), dest, force)
 
+
+def import_rakuten(src: Path, dest: Path, force: bool = False) -> int:
+    """rakuten_dump.js の出力を正規化して dest を置き換える。書かなかったら 1"""
+    return replace_all(rakuten_history.read_dump(src), dest, force)
+
+
+def replace_all(new: pd.DataFrame, dest: Path, force: bool) -> int:
+    """全期間の取り込み結果で dest を置き換える。書かなかったら 1
+
+    取り込み元は全期間を含むので、既存の注文 ID が new に無いのは取り込み元が
+    欠けている（別アカウント・壊れた zip・途中で切れた取得など）とみなして止める。
+    """
     if dest.exists():
         existing = pd.read_csv(dest, dtype=str)
-        lost = amazon_export.lost_orders(existing, new)
+        lost = set(existing['order_id']) - set(new['order_id'])
         if lost and not force:
             logger.error(
-                '既存の注文 %d 件が新しい export に無いので書き込まない（例: %s）。'
+                '既存の注文 %d 件が新しい取り込み元に無いので書き込まない（例: %s）。'
                 '意図した置き換えなら --force を付ける',
                 len(lost), ', '.join(sorted(lost)[:3]))
             return 1
@@ -137,6 +156,11 @@ def main():
     p_amazon.add_argument('--force', action='store_true',
                           help='既存の注文が export に無くても置き換える')
 
+    p_rakuten = sub.add_parser('import-rakuten', help='楽天市場の購入履歴（rakuten_dump.js の出力）を取り込む')
+    p_rakuten.add_argument('path', type=Path, help='rakuten_dump.js の出力 JSON')
+    p_rakuten.add_argument('--force', action='store_true',
+                           help='既存の注文が取り込み元に無くても置き換える')
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -146,6 +170,8 @@ def main():
         return cmd_fetch(args)
     if args.command == 'import-amazon':
         return import_amazon(args.path, require_private_path(AMAZON_CSV), args.force)
+    if args.command == 'import-rakuten':
+        return import_rakuten(args.path, require_private_path(RAKUTEN_CSV), args.force)
     return 1
 
 
