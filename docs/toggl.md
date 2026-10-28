@@ -81,3 +81,30 @@ import して使う）。push とレポート（body / mind / circadian）が同
 として凍結し、レポート3経路（body / mind / circadian）は `exercise.csv` だけを
 読む。マージのキーは日付でなく `id`（19桁の整数なので読み戻しは `dtype=str`
 必須。int で読むと新旧のキーが一致せず二重に残る）。
+
+## Toggl 2.0（Focus API）の取得
+
+2026-10-27 から手動の時間記録は Toggl 2.0 に書いている。Track v9 の `/me/time_entries`
+には 2.0 に書いたエントリが返らないので、`toggl.py fetch-focus` が Focus API
+（`https://focus.toggl.com/api`、`Authorization: Bearer`）から別に取り、
+`data/toggl/focus_entries.csv` へ保存する（`lib.toggl.focus`）。push・start・stop の
+書き先は Track のまま。
+
+- **`include_taskless=true` を付けないと task 無しのエントリが返らない。** 手動エントリは
+  ほぼ task 無しなので、外すと黙って大半を取り逃す
+- **`stop` フィールドが無い。** `start + duration` で計算する。計測中の表現は未確認なので
+  `duration` が None / 負値のものを除外している
+- **id・project_id は Track と別の体系**（同名プロジェクトでも ID が違う）。だから
+  `time_entries.csv` には混ぜない（id の `keep='last'` マージで重複・取り違えが起きる）。
+  マージ・窓内置換のロジックは `store.save_merged(csv_path=...)` を共有する
+- **migrate は一回きりのコピーで同期ではない。** 2026-10-27 の migrate までの Track の
+  エントリ（auto タグの睡眠・サイクリング含む。例: 2026-10-05）は 2.0 にも別 ID で
+  存在するが、その後 Track へ push したもの（例: 2026-10-28 の睡眠）は 2.0 に無い。両ファイルを素で足すと移行済みの期間が二重になる。
+  `events.jsonl` がどちらを正本にするかは未決
+- `date_from` / `date_to` は必須。JST の暦日を UTC の RFC 3339 に変換して渡す。
+  ページ送りは `page`（1始まり）/ `per_page`（最大100）
+- organization を列挙する API は無い。`/users/me/settings` の
+  `tos_ack_decoupled_licenses` のキーが organization_id（`.env` の
+  `TOGGL_FOCUS_ORGANIZATION_ID`）。workspace_id は Track と同じ値
+- 2026-10-28 時点でクォータのヘッダは返っていない（Free プラン。docs 上 30 req/h、
+  超過は 402）。ヘッダが付けば残量をログへ出す

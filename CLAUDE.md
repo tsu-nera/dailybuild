@@ -168,6 +168,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
 uv run scripts/toggl.py fetch        # Toggl Trackタイムエントリ取得
 uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（差分取得）
+uv run scripts/toggl.py fetch-focus --days 2  # Toggl 2.0（Focus）の手動エントリを data/toggl/focus_entries.csv へ（daily-fetch.sh が日次で実行。オプションは fetch と同じ）
 uv run scripts/toggl.py push --days 2 --dry-run  # 睡眠・運動のToggl投入予定を確認（APIを叩かない）
 uv run scripts/toggl.py push --days 2   # 投入実行（daily-fetch.sh がfetch直後に実行）
 uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）

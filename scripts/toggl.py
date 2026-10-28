@@ -11,6 +11,7 @@ Usage:
     python scripts/toggl.py fetch --update      # CSV の続きから今日まで
     python scripts/toggl.py fetch --days 7
     python scripts/toggl.py fetch --start-date 2026-08-01 --end-date 2026-08-18
+    python scripts/toggl.py fetch-focus --days 2      # Toggl 2.0 → focus_entries.csv
 
     python scripts/toggl.py show --days 7             # 日次（直近7日）
     python scripts/toggl.py show --update             # 取得してから表示
@@ -48,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import pandas as pd
 
 from lib.toggl import client as toggl_client
+from lib.toggl import focus as toggl_focus
 from lib.toggl import push as toggl_push
 from lib.toggl import sources as toggl_sources
 from lib.toggl import store
@@ -72,8 +74,8 @@ def load_api_token(out: IO[str]) -> str:
         sys.exit(1)
 
 
-def resolve_period(args, out: IO[str]) -> tuple[dt.date, dt.date]:
-    """fetch の引数から取得期間を決定"""
+def resolve_period(args, out: IO[str], csv_path: Path | None = None) -> tuple[dt.date, dt.date]:
+    """fetch の引数から取得期間を決定（--update は csv_path、既定 time_entries.csv の続きから）"""
     end = dt.date.today()
 
     if args.start_date and args.end_date:
@@ -81,7 +83,7 @@ def resolve_period(args, out: IO[str]) -> tuple[dt.date, dt.date]:
                 dt.datetime.strptime(args.end_date, '%Y-%m-%d').date())
 
     if args.update:
-        last = store.last_recorded_date()
+        last = store.last_recorded_date(csv_path)
         if last is None:
             print(f"CSV に既存データが無いため直近 {args.days} 日を取得する", file=out)
         else:
@@ -138,6 +140,47 @@ def cmd_fetch(args) -> None:
     if args.update and (args.start_date or args.end_date):
         args.parser.error('--update と --start-date/--end-date は同時に指定できない')
     run_fetch(args, sys.stdout)
+
+
+def load_focus_env(out: IO[str]) -> tuple[str, str, str]:
+    hint = '.env.example の Toggl 2.0 の節を参照'
+    try:
+        return (require_env('TOGGL_FOCUS_API_TOKEN', hint=hint),
+                require_env('TOGGL_FOCUS_ORGANIZATION_ID', hint=hint),
+                require_env('TOGGL_FOCUS_WORKSPACE_ID', hint=hint))
+    except MissingEnvError as exc:
+        print(f"⚠️ {exc}", file=out)
+        sys.exit(1)
+
+
+def run_fetch_focus(args, out: IO[str]) -> None:
+    """fetch-focus の処理本体。push・fetch_state.json は Track 専用なので触れない"""
+    logging.basicConfig(level=logging.INFO, format='%(message)s', stream=out)
+
+    api_token, organization_id, workspace_id = load_focus_env(out)
+
+    start, end = resolve_period(args, out, csv_path=toggl_focus.CSV_FILE)
+    print(f"Toggl 2.0 タイムエントリ取得: {start} ～ {end}", file=out)
+
+    entries = toggl_focus.fetch_time_entries(api_token, organization_id, workspace_id, start, end)
+    df_new = toggl_focus.build_dataframe(entries, workspace_id=int(workspace_id))
+
+    if df_new.empty:
+        print(f"⚠️ 期間 {start}〜{end} の Toggl 2.0 タイムエントリが0件。"
+              "記録が無いか、取得が壊れている可能性がある", file=out)
+        return
+
+    df_merged = toggl_focus.save_merged(df_new, window=(start, end))
+
+    print(f"取得件数: {len(df_new)}件", file=out)
+    print(f"保存完了: {toggl_focus.CSV_FILE} (総行数 {len(df_merged)}行)", file=out)
+    print(f"CSVの期間: {df_merged['start'].min()} ～ {df_merged['start'].max()}", file=out)
+
+
+def cmd_fetch_focus(args) -> None:
+    if args.update and (args.start_date or args.end_date):
+        args.parser.error('--update と --start-date/--end-date は同時に指定できない')
+    run_fetch_focus(args, sys.stdout)
 
 
 def cmd_show(args) -> None:
@@ -466,6 +509,16 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_parser.add_argument('--start-date', type=str, help='開始日（YYYY-MM-DD）')
     fetch_parser.add_argument('--end-date', type=str, help='終了日（YYYY-MM-DD）')
     fetch_parser.set_defaults(func=cmd_fetch, parser=fetch_parser)
+
+    focus_parser = subparsers.add_parser(
+        'fetch-focus', help='Toggl 2.0（Focus）のタイムエントリを focus_entries.csv へ取得')
+    focus_parser.add_argument(
+        '--update', action='store_true',
+        help=f'CSV の最終エントリの{UPDATE_OVERLAP_DAYS}日前から今日まで取得（既存データが無ければ --days）')
+    focus_parser.add_argument('--days', type=int, default=7, help='取得日数（今日から遡る）')
+    focus_parser.add_argument('--start-date', type=str, help='開始日（YYYY-MM-DD）')
+    focus_parser.add_argument('--end-date', type=str, help='終了日（YYYY-MM-DD）')
+    focus_parser.set_defaults(func=cmd_fetch_focus, parser=focus_parser)
 
     show_parser = subparsers.add_parser('show', help='Toggl タイムエントリのサマリを表示')
     show_parser.add_argument('--unit', choices=['day', 'week'], default='day',

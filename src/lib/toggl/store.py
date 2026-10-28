@@ -2,7 +2,8 @@
 Toggl タイムエントリ CSV の読み書き
 
 data/toggl/time_entries.csv（dailybuild-private への symlink）を対象に、
-fetch 側のマージ保存と show 側の読み込みをまとめる。
+fetch 側のマージ保存と show 側の読み込みをまとめる。マージ・窓内置換は
+csv_path を渡せば Toggl 2.0 の focus_entries.csv（lib.toggl.focus）にも使う。
 """
 
 import datetime as dt
@@ -13,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from lib.utils import csv_utils
-from lib.utils.private_data import require_private_path
+from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
@@ -42,9 +43,9 @@ CSV_COLUMNS = [
 INT_COLUMNS = ['id', 'duration_sec', 'project_id', 'workspace_id']
 
 
-def cast_int_columns(df: pd.DataFrame) -> pd.DataFrame:
+def cast_int_columns(df: pd.DataFrame, columns: list[str] | None = None) -> pd.DataFrame:
     """整数列を nullable Int64 に揃える(CSV に .0 を残さない)"""
-    for col in INT_COLUMNS:
+    for col in INT_COLUMNS if columns is None else columns:
         df[col] = df[col].astype('Int64')
     return df
 
@@ -91,17 +92,19 @@ def build_dataframe(entries: list[dict], projects: dict[int, str]) -> pd.DataFra
     return pd.DataFrame(rows, columns=CSV_COLUMNS)
 
 
-def last_recorded_date() -> dt.date | None:
+def last_recorded_date(csv_path: Path | None = None) -> dt.date | None:
     """CSV に記録済みの最終エントリの開始日。CSV が無い・空なら None"""
-    if not CSV_FILE.exists():
+    csv_path = csv_path or CSV_FILE
+    if not csv_path.exists():
         return None
-    df = pd.read_csv(CSV_FILE, usecols=['start'], parse_dates=['start'])
+    df = pd.read_csv(csv_path, usecols=['start'], parse_dates=['start'])
     if df.empty:
         return None
     return df['start'].max().date()
 
 
-def drop_stale_rows_in_window(df_new: pd.DataFrame, window: tuple[dt.date, dt.date]) -> int:
+def drop_stale_rows_in_window(df_new: pd.DataFrame, window: tuple[dt.date, dt.date],
+                              csv_path: Path | None = None) -> int:
     """fetch窓の中で、API レスポンスに無くなった行を CSV から削除する
 
     fetch した窓については CSV を正本にする（Issue #130）。push --since の
@@ -120,12 +123,13 @@ def drop_stale_rows_in_window(df_new: pd.DataFrame, window: tuple[dt.date, dt.da
     int
         削除した行数
     """
+    csv_path = csv_path or CSV_FILE
     if df_new.empty:
         return 0
-    if not CSV_FILE.exists():
+    if not csv_path.exists():
         return 0
 
-    df_old = pd.read_csv(CSV_FILE)
+    df_old = pd.read_csv(csv_path)
     if df_old.empty:
         return 0
 
@@ -142,29 +146,33 @@ def drop_stale_rows_in_window(df_new: pd.DataFrame, window: tuple[dt.date, dt.da
     removed = int(stale.sum())
     if removed:
         df_old = df_old[~stale]
-        CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
-        df_old.to_csv(CSV_FILE, index=False)
+        ensure_dir(csv_path.parent)
+        df_old.to_csv(csv_path, index=False)
     return removed
 
 
-def save_merged(df_new: pd.DataFrame, window: tuple[dt.date, dt.date] | None = None) -> pd.DataFrame:
+def save_merged(df_new: pd.DataFrame, window: tuple[dt.date, dt.date] | None = None,
+                csv_path: Path | None = None,
+                int_columns: list[str] | None = None) -> pd.DataFrame:
     """新規データを既存 CSV にマージして保存し、マージ後の DataFrame を返す
 
     window を渡すと、その窓の中で df_new に無くなった既存行を先に削除してから
     マージする（drop_stale_rows_in_window 参照）。
+    int_columns は Int64 に揃える列（既定 INT_COLUMNS）。
     """
+    csv_path = csv_path or CSV_FILE
     if window is not None:
-        removed = drop_stale_rows_in_window(df_new, window)
+        removed = drop_stale_rows_in_window(df_new, window, csv_path=csv_path)
         if removed:
             print(f'Toggl 側で削除された {removed}件を CSV から除去', file=sys.stderr)
 
     df_merged = csv_utils.merge_csv_by_columns(
-        df_new, CSV_FILE, key_columns=['id'], sort_by=['start'],
+        df_new, csv_path, key_columns=['id'], sort_by=['start'],
     )
-    df_merged = cast_int_columns(df_merged)
+    df_merged = cast_int_columns(df_merged, int_columns)
 
-    CSV_FILE.parent.mkdir(parents=True, exist_ok=True)
-    df_merged.to_csv(CSV_FILE, index=False)
+    ensure_dir(csv_path.parent)
+    df_merged.to_csv(csv_path, index=False)
     return df_merged
 
 
