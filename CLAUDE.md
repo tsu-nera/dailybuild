@@ -104,9 +104,16 @@ commit・push し、終了コードは `daily-fetch.sh` のものを返す。reb
 ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days 2"'
 ```
 
-個別スクリプトは以下:
+個別スクリプトの使い方は、各スクリプトの module docstring（`Usage:`）を正本とする。
+ここにはコマンドを列挙しない（一覧を二重に持つと片方が古くなる）。スクリプトや
+サブコマンドを足したときは docstring に書く。日次に入っているかは `daily-fetch.sh` を見る。
 
-最後のステップだけは取得ではなく書き込みで、`journal_skeleton.py` がその日の
+新しい CLI は fetch / show のサブコマンド構成と、取得ログは stderr・markdown は stdout
+という分け方を `scripts/toggl.py` と `scripts/mf.py` に揃える。
+
+### 日次で生成する派生データ
+
+`daily-fetch.sh` の最後のステップだけは取得ではなく書き込みで、`journal_skeleton.py` がその日の
 数値・7日平均の変化・欠測を `reports/journal/YYYY-Wxx.md` へ追記する。
 `/journal` は対話の記録が主目的なので、レビューを回さないと1行も残らず、
 実際 2026-08-07 から3週間（うつエピソードで HRV が 25.9→44.7 まで動いた期間）が
@@ -163,122 +170,6 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 変わっていないのに表現だけが毎日漂流していた。恒久的に効く知見は
 ジャーナルではなく memory に置く（`~/.claude/projects/*/memory/`。リポジトリ外）。
 
-```bash
-# プロジェクトルートから実行（uv run なら .venv の有効化不要）
-uv run scripts/fetch_healthplanet.py # HealthPlanet体組成計データ取得
-uv run scripts/toggl.py fetch        # Toggl Trackタイムエントリ取得
-uv run scripts/toggl.py fetch --update  # CSVの最終日から今日まで（差分取得）
-uv run scripts/toggl.py fetch-focus --days 2  # Toggl 2.0（Focus）の手動エントリを data/toggl/focus_entries.csv へ（daily-fetch.sh が日次で実行。オプションは fetch と同じ）
-uv run scripts/toggl.py push --days 2 --dry-run  # 睡眠・運動のToggl投入予定を確認（APIを叩かない）
-uv run scripts/toggl.py push --days 2   # 投入実行（daily-fetch.sh がfetch直後に実行）
-uv run scripts/toggl.py push --since 2026-08-01  # 過去分の一括投入（上限に当たったら止まる）
-uv run scripts/toggl.py start 読書       # プロジェクトを指定して計測開始（部分一致可）
-uv run scripts/toggl.py start 読書 -d "SICP" -t deep
-uv run scripts/toggl.py stop             # 計測中のエントリを停止
-uv run scripts/toggl.py current          # 計測中のエントリを表示
-uv run scripts/toggl.py projects         # プロジェクト名一覧（既定はキャッシュのみ）
-uv run scripts/toggl.py open             # Toggl の Web 画面を開く（open projects 等）
-uv run scripts/forms.py list         # フォームのレジストリ（config/forms.yaml）。追加・廃止は yaml の1エントリ（docs/forms.md）
-uv run scripts/forms.py show --review daily --days 7  # daily-review が読む active フォームの show を順に実行
-uv run scripts/forms.py show daily_evening --days 7   # 1フォームの show。fetch / show を持たないフォームは def yaml だけで動く汎用版（docs/forms.md）
-uv run scripts/forms.py setup-form <key> --update     # 汎用フォームの生成・yaml への同期（新しいフォームは def yaml とレジストリ1行で足す）
-uv run scripts/emotion.py fetch      # 気分記録（Google Form回答）取得。レジストリで deprecated（fetch だけ続く）
-uv run scripts/emotion.py show       # 気分記録のサマリ（既定は直近7日）
-uv run scripts/emotion.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
-uv run scripts/bowel.py fetch        # 排便記録（Bristol、Google Form回答）取得
-uv run scripts/bowel.py show         # 排便記録のサマリ（既定は直近7日）
-uv run scripts/bowel.py setup-form --update  # 選択肢・質問文を yaml に合わせ直す
-uv run scripts/daily.py morning fetch  # 日次記録・朝（気分・身体・頭・睡眠・コメント、Google Form回答）取得
-uv run scripts/daily.py morning show   # 日次記録・朝のサマリ（既定は直近7日）
-uv run scripts/daily.py morning setup-form --update  # 質問文を yaml に合わせ直す
-uv run scripts/daily.py evening fetch  # 日次記録・夜（気分・身体・頭・満足感・達成感・コメント）取得
-uv run scripts/daily.py evening show   # 日次記録・夜のサマリ（既定は直近7日）
-uv run scripts/daily.py evening setup-form  # 夜フォーム初回作成（merge 後に対話で実行）
-uv run scripts/phq9.py fetch         # PHQ-9（週次、Google Form回答）取得
-uv run scripts/phq9.py url           # 回答用URLを表示（/weekly-review が使う）
-uv run scripts/phq9.py setup-form    # フォーム初回作成（config/phq9_def.yaml が必須）
-uv run scripts/habitica.py cron      # Habitica の日付処理を確定（daily-fetch.sh が実行）
-uv run scripts/habitica.py fetch     # Habit / Daily の history を CSV に落とす
-uv run scripts/habitica.py show --weeks 4  # 週ごとの回数・達成（/habits-review が使う）
-uv run scripts/habitica.py show --unit month --months 3  # 月ごと（長期の傾向を見るとき）
-uv run scripts/habitica.py status    # 現在の Dailies と HP を表示（変更しない）
-uv run scripts/events.py build       # 行動イベントを reports/events.jsonl へ全上書き（daily-fetch.sh が実行）
-uv run scripts/early_rising.py laps   # 夜（帰宅〜入眠）と朝（起床〜カフェ到着）の lap 表、直近7日（/early-rising が使う）
-uv run scripts/early_rising.py timeline --date 2026-10-10  # 1晩の時系列（HA の state 変化 + events.jsonl）
-uv run scripts/observation.py build  # 観察日記（reports/observation/YYYY-MM-DD.md）を昨日・一昨日ぶん全上書き（daily-fetch.sh は --days 3）
-uv run scripts/observation.py eval   # labels.csv（答え合わせ）と推定のズレ
-uv run scripts/food.py build-master  # 食品マスタ生成（成分表2,538件。初回と成分表更新時のみ）
-uv run scripts/food.py setup-sheet   # 食事記録の3タブを作る（冪等。既存タブには触れない）
-uv run scripts/food.py sync-sheet    # food_master に全件を流し込む（成分表＋手動登録＋レシピ＋seed）
-uv run scripts/food.py sync-sheet --candidates  # 候補を絞る（実績上位＋レシピ＋手動登録＋seed）
-uv run scripts/food.py fetch         # シートを読んで entries.csv / daily.csv を作る
-uv run scripts/hevy.py fetch         # Hevy の export を Drive から取得（daily-fetch.sh が日次で実行）
-uv run scripts/hevy.py fetch --force # 行数が減っていても上書きする
-uv run scripts/hevy.py show          # 部位別セット数・種目別e1RM・腹囲の週次推移（既定8週）
-uv run scripts/hevy.py show --weeks 12
-
-uv run scripts/timeline.py fetch     # Timeline の export を Drive から取り込み data/timeline/visits.csv へ（daily-fetch.sh が日次で実行。Drive 側が前回と同じなら何もしない）
-uv run scripts/timeline.py names --limit 100  # 訪問日数の多い未解決の place ID の名前を Places API で引き data/timeline/places.csv へ（daily-fetch.sh が日次で実行。GOOGLE_MAPS_API_KEY が無ければ warning で終了コード0）
-uv run scripts/timeline.py show --start 2026-10-01 --end 2026-10-07  # 期間の場所別 訪問日数・滞在時間と、前期間との入れ替わり
-
-uv run scripts/purchases.py fetch --login --since 2009-01-01  # Gmail 初回認可（gmail.readonly、ブラウザが開く）と全期間の取得
-uv run scripts/purchases.py fetch      # Gmail の注文確認（Amazon 現行書式・楽天市場）を前回の続き（gmail.csv の最終行の3日前）から data/purchases/gmail.csv へマージ。書式が合わないメールは行を作らず警告。メールは消えないので日次に入れず、使う前に実行する
-uv run scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"  # Amazon の開示データ（物の注文、全期間）を data/purchases/amazon.csv へ全置き換え。既存の注文が export に無ければ書かない（--force で上書き）
-
-uv run scripts/tepco.py fetch --login  # くらしTEPCO web 初回ログイン（ブラウザが開く）
-uv run scripts/tepco.py fetch        # 30分ごとの電力使用量（CSV の最終日から今日まで。現在は停止中）
-uv run scripts/tepco.py fetch --since 2026-05-01  # 過去分の一括取得
-
-uv run python scripts/fetch_homeassistant.py  # HA の室温・湿度・照度の5分値と state 履歴（daily-fetch.sh が日次で実行）
-uv run python scripts/fetch_homeassistant.py --since 2026-10-01  # 開始日を指定
-
-uv run scripts/gcalendar.py fetch --login   # Google Calendar 初回認可（ブラウザが開く）
-uv run scripts/gcalendar.py fetch           # 直近2日（--days N）の予定を data/calendar/events.csv へ
-uv run scripts/gcalendar.py fetch --since 2026-01-01  # 過去分の一括取得
-
-uv run scripts/mf.py fetch --login   # MoneyForward ME 初回ログイン（ブラウザが開く）
-uv run scripts/mf.py fetch           # 直近3ヶ月の収入・支出詳細
-uv run scripts/mf.py fetch --year 2025  # 指定年を丸ごと取り直す
-uv run scripts/mf.py fetch --refresh # 取得＋一括更新のキック（日次運用）
-uv run scripts/mf.py assets          # 資産残高の推移（直近12ヶ月・月末時点）
-uv run scripts/mf.py assets --unit year          # 年次（既定で全期間）
-uv run scripts/mf.py assets --unit day --days 30 # 日次（当月ぶんだけ日次で残る）
-uv run scripts/mf.py assets --all                # 全期間（月次・2015-04 から）
-uv run scripts/mf.py contracts                   # 定期契約の台帳: 月割り・更新予定・MF 明細との照合
-uv run scripts/mf.py contracts --within 90       # 更新が近い契約を90日以内で見る（既定45）
-
-# サマリ表示（既定では API を叩かず data/ の CSV だけを読む）
-uv run scripts/toggl.py show --days 7        # Toggl 日次サマリ
-uv run scripts/toggl.py show --unit week     # Toggl 週次サマリ
-uv run scripts/toggl.py show --list          # 時系列のエントリ一覧（既定は当日）
-uv run scripts/toggl.py show --update        # 取得してから表示
-
-uv run scripts/mf.py show                    # MF 月次サマリ（当月）
-uv run scripts/mf.py show --months 3         # 直近3ヶ月
-uv run scripts/mf.py show --month 1 --year 2026  # 指定月
-uv run scripts/mf.py show --year 2018            # 指定年を丸ごと
-uv run scripts/mf.py show --unit year            # 年次（既定で全期間）
-uv run scripts/mf.py show --unit day --days 14   # 日次
-uv run scripts/mf.py show --sections all    # 中項目別・店舗別・金融機関別も出す
-uv run scripts/mf.py show --sections +change    # 既定に前月比の増減を足す
-uv run scripts/mf.py show --sections +merchant  # 既定に店舗別だけ足す
-uv run scripts/mf.py show --list             # 明細一覧
-uv run scripts/mf.py show --update           # 取得してから表示
-```
-
-`mf.py fetch` は明細と一緒に資産推移（`data/mf/資産推移.csv`）も毎回取る。MF は
-**当月しか日次を返さない**ため、月をまたぐとその月の日次は永久に失われる。
-表示は `mf.py assets`。
-
-`gcalendar.py` の写し（`data/calendar/events.csv`）は**読み取り専用で primary のみ**。
-`description`（予約番号が入る）と attendees は保存しない。行を消すのは API が
-`status=cancelled` で返した予定だけで、窓内でも返らなかった既存行は残す。
-ファイル名を `calendar.py` にしないのは標準ライブラリ `calendar` を shadow するため。
-
-`scripts/toggl.py` と `scripts/mf.py` は time と money の対で、fetch/show の
-サブコマンド構成も markdown の形式も揃えてある（取得ログは stderr、markdown は
-stdout）。
-
 ### 採血値（手入力・取得スクリプト無し）
 
 | ファイル | 中身 |
@@ -332,21 +223,7 @@ stdout）。
 
 ## Report Generation
 
-レポート生成スクリプトはJinja2テンプレートエンジンを使用して、データ準備とプレゼンテーションを分離:
-
-```bash
-# 体組成レポート
-python scripts/generate_body_report_daily.py --days 7          # 日次（7日間）
-python scripts/generate_body_report_interval.py --weeks 8      # 週次隔（8週間）
-
-# メンタルコンディションレポート
-python scripts/generate_mind_report_daily.py --days 7          # 日次（7日間）
-
-# 睡眠分析レポート
-python scripts/generate_sleep_report_daily.py --days 7         # 日次（7日間）
-python scripts/generate_sleep_report_interval.py --weeks 8     # 週次隔（8週間）
-```
-
+`scripts/generate_{body,mind,sleep}_report_{daily,interval}.py` は Jinja2 テンプレートでデータ準備と表示を分けている。
 指標の定義・睡眠負債の計算条件・週次テーブルの母集団は [docs/reports.md](docs/reports.md)。
 
 ## Configuration
