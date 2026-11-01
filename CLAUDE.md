@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 取り込まない。参照が必要なときは絶対パスで読む。日次で自動生成される CSV の
 コミットが人の手による履歴を埋めないよう、データは `gtd` に置かない。
 
-わたし自身（気分・健康・お金・過去・目標）に関わる相談では、親の `~/repo/gtd/CLAUDE.md` の決まりに従い、`~/repo/gtd/summary/README.md`（地図）を先に読む。
+わたし自身（気分・健康・お金・過去・目標）に関わる相談と、このリポジトリの外（家の機器・方針・手続き）にまたがる作業では、親の `~/repo/gtd/CLAUDE.md` の決まりに従い、`~/repo/gtd/summary/README.md`（地図）を先に読む。作業先は地図の「作業から引く」で決める。上の表はコードとデータの分け方の説明で、生活のリポジトリ全体の分担は地図が正本。
 
 `keido`（`~/repo/keido`）も同じく取り込まない。週次日記が
 `~/repo/keido/notes/zk/YYYY-wNN.org` にあり（小文字 `w`、ISO week）、
