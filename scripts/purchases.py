@@ -8,6 +8,10 @@ fetch: Gmail の注文確認（Amazon・楽天市場）を data/purchases/gmail.
 同じ message_id の行は差し替え、取得窓に無い既存行は残す。書式が合わないメールは
 行を作らず警告だけ出す（終了コードは 0 のまま）。
 
+fetch-mercari: メルカリの取引通知（購入・販売・キャンセル）を data/purchases/mercari.csv へ書く。
+公開 API も CSV 出力も無いのでメールだけが経路。件数が少ないので毎回全期間を読み直して全置き換えする。
+既存の (direction, item_id) が取得結果に無ければ書き込まない（メールは消えないので取得の欠け）。
+
 import-amazon: Amazon の個人データ開示で届く `Your Orders.zip` を data/purchases/amazon.csv へ取り込む。
 申請は https://www.amazon.co.jp/hz/privacy-central/data-requests/preview.html
 （アカウントサービスのメニューからはたどれない）。
@@ -25,6 +29,7 @@ Usage:
     python scripts/purchases.py fetch              # 前回の続きから
     python scripts/purchases.py fetch --days 30    # 直近30日を取り直す
     python scripts/purchases.py fetch --since 2026-01-01  # 過去分の asin を埋めるには取り直す
+    python scripts/purchases.py fetch-mercari
     python scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"
     python scripts/purchases.py import-amazon <Order History.csv> --force
     python scripts/purchases.py import-rakuten rakuten_dump.json
@@ -42,12 +47,13 @@ import logging
 import pandas as pd
 
 from lib.clients import gmail_client
-from lib.purchases import amazon_export, gmail, rakuten_history
+from lib.purchases import amazon_export, gmail, mercari, rakuten_history
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 AMAZON_CSV = BASE_DIR / 'data' / 'purchases' / 'amazon.csv'
 GMAIL_CSV = BASE_DIR / 'data' / 'purchases' / 'gmail.csv'
+MERCARI_CSV = BASE_DIR / 'data' / 'purchases' / 'mercari.csv'
 RAKUTEN_CSV = BASE_DIR / 'data' / 'purchases' / 'rakuten.csv'
 
 logger = logging.getLogger('purchases')
@@ -121,6 +127,54 @@ def fetch_to_csv(service, csv_path: Path, since: dt.datetime) -> int:
     return 0
 
 
+def fetch_mercari_to_csv(service, csv_path: Path, force: bool = False) -> int:
+    """メルカリの取引通知を全期間読み直して csv_path を置き換える。書かなかったら 1"""
+    events, skipped = [], []
+    try:
+        for message_id in gmail_client.list_message_ids(service, mercari.SEARCH_QUERY):
+            message = gmail_client.get_message(service, message_id)
+            parts = gmail_client.body_parts(message['payload'])
+            event = mercari.to_event(message, parts.get('text/plain', ''),
+                                     parts.get('text/html', ''))
+            if event is None:
+                skipped.append(message_id)
+            elif event['kind']:
+                events.append(event)
+    except Exception as e:  # noqa: BLE001 - どんな失敗でも CSV を変えない
+        logger.error('Gmail の取得に失敗: %s', e)
+        return 1
+
+    if skipped:
+        logger.warning('件名は取引通知なのに本文が読めず行を作らなかったメール %d 通: %s',
+                       len(skipped), ', '.join(skipped[:10]))
+
+    df = mercari.build(events)
+    lost = mercari.lost_keys(csv_path, df)
+    if lost and not force:
+        logger.error('既存の %d 件が取得結果に無いので書き込まない（例: %s）。'
+                     '意図した置き換えなら --force を付ける',
+                     len(lost), ', '.join(f'{d}:{i}' for d, i in sorted(lost)[:3]))
+        return 1
+
+    ensure_dir(csv_path.parent)
+    tmp = csv_path.with_name(csv_path.name + '.tmp')
+    df.to_csv(tmp, index=False)
+    tmp.replace(csv_path)
+    counts = df.groupby(['direction', 'status']).size().to_dict()
+    logger.info('通知 %d 通 -> %d 行 %s -> %s', len(events), len(df), counts, csv_path)
+    return 0
+
+
+def cmd_fetch_mercari(args) -> int:
+    csv_path = require_private_path(MERCARI_CSV)
+    try:
+        service = gmail_client.create_service(interactive=args.login)
+    except Exception as e:  # noqa: BLE001
+        logger.error('認可に失敗: %s', e)
+        return 1
+    return fetch_mercari_to_csv(service, csv_path, args.force)
+
+
 def cmd_fetch(args) -> int:
     csv_path = require_private_path(GMAIL_CSV)
     if args.since:
@@ -152,6 +206,12 @@ def main():
     p_fetch.add_argument('--login', action='store_true',
                          help='初回認可（ブラウザが開く）。無ければ非対話で、トークンが無いと失敗する')
 
+    p_mercari = sub.add_parser('fetch-mercari',
+                               help='メルカリの取引通知を data/purchases/mercari.csv へ書く')
+    p_mercari.add_argument('--login', action='store_true', help='初回認可（ブラウザが開く）')
+    p_mercari.add_argument('--force', action='store_true',
+                           help='既存の行が取得結果に無くても置き換える')
+
     p_amazon = sub.add_parser('import-amazon', help='Amazon の開示データを取り込む')
     p_amazon.add_argument('path', type=Path, help='Your Orders.zip か Order History.csv')
     p_amazon.add_argument('--force', action='store_true',
@@ -169,6 +229,8 @@ def main():
 
     if args.command == 'fetch':
         return cmd_fetch(args)
+    if args.command == 'fetch-mercari':
+        return cmd_fetch_mercari(args)
     if args.command == 'import-amazon':
         return import_amazon(args.path, require_private_path(AMAZON_CSV), args.force)
     if args.command == 'import-rakuten':
