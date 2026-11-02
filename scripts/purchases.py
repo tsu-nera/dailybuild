@@ -24,6 +24,7 @@ Usage:
     python scripts/purchases.py fetch --login --since 2025-10-01  # 初回認可（ブラウザが開く）
     python scripts/purchases.py fetch              # 前回の続きから
     python scripts/purchases.py fetch --days 30    # 直近30日を取り直す
+    python scripts/purchases.py fetch --since 2026-01-01  # 過去分の asin を埋めるには取り直す
     python scripts/purchases.py import-amazon ~/Downloads/"Your Orders.zip"
     python scripts/purchases.py import-amazon <Order History.csv> --force
     python scripts/purchases.py import-rakuten rakuten_dump.json
@@ -96,8 +97,8 @@ def fetch_to_csv(service, csv_path: Path, since: dt.datetime) -> int:
     try:
         for message_id in gmail_client.list_message_ids(service, gmail.search_query(since)):
             message = gmail_client.get_message(service, message_id)
-            text = gmail_client.body_parts(message['payload']).get('text/plain', '')
-            parsed = gmail.to_rows(message, text)
+            parts = gmail_client.body_parts(message['payload'])
+            parsed = gmail.to_rows(message, parts.get('text/plain', ''), parts.get('text/html', ''))
             if parsed is None:
                 skipped.append(message_id)
             else:

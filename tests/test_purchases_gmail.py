@@ -3,7 +3,7 @@ Gmail の注文確認からの購入履歴（scripts/purchases.py fetch / lib.pu
 
 守るもの: 複数商品の注文を1商品1行にする・message_id で冪等・窓外の既存行を消さない・
 書式が合わないメールで行を捏造しない・API 失敗で CSV を変えない・
-private 未マウントで API を叩く前に落ちる。実 API は叩かない（フェイクの service を使う）。
+private 未マウントで API を叩く前に落ちる・asin は品名で1件に決まる時だけ入れる。実 API は叩かない（フェイクの service を使う）。
 """
 
 import argparse
@@ -80,16 +80,17 @@ RAKUTEN_BODY = """この度は楽天市場内のショップ「架空商店」�
 """
 
 
-def message(id_, sender, body, received='2026-10-05T09:09:26+00:00'):
+def message(id_, sender, body, received='2026-10-05T09:09:26+00:00', html=''):
     millis = int(dt.datetime.fromisoformat(received).timestamp() * 1000)
     data = base64.urlsafe_b64encode(body.encode()).decode()
+    html_data = base64.urlsafe_b64encode(html.encode()).decode()
     return {
         'id': id_, 'internalDate': str(millis),
         'payload': {
             'mimeType': 'multipart/alternative',
             'headers': [{'name': 'From', 'value': f'Shop <{sender}>'}],
             'parts': [{'mimeType': 'text/plain', 'body': {'data': data}},
-                      {'mimeType': 'text/html', 'body': {'data': ''}}],
+                      {'mimeType': 'text/html', 'body': {'data': html_data}}],
         },
     }
 
@@ -224,3 +225,91 @@ def test_first_fetch_without_since_fails_before_api(tmp_path, monkeypatch):
     monkeypatch.setattr(gmail_client, 'create_service', boom)
     args = argparse.Namespace(since=None, days=None, login=False)
     assert script.cmd_fetch(args) == 1
+
+
+def ordered_link(asin, kind, inner):
+    """注文確認の注文商品リンク（kind は画像 i / 文字 t）"""
+    ref = f'pe_00000000_000000000_{kind}_fed_asin_title'
+    target = f'https%3A%2F%2Fwww.amazon.co.jp%2Fdp%2F{asin}%3Fref_%3D{ref}'
+    return (f'<a href="https://www.amazon.co.jp/gp/r.html?C=X&amp;U={target}'
+            f'&amp;H=Y&amp;ref_={ref}">{inner}</a>')
+
+
+def recommended_link(asin):
+    ref = 'pe_00000000_000000000_AGH3Col_04_00_IMG_07_rp_2p_0_lm'
+    target = f'https%3A%2F%2Fwww.amazon.co.jp%2Fdp%2F{asin}%3Fref_%3D{ref}'
+    return f'<a href="https://www.amazon.co.jp/gp/r.html?U={target}&amp;ref_={ref}">LED電球 E26</a>'
+
+
+def item_links(asin, full_name, truncated):
+    return (ordered_link(asin, 'i', f'<img src="x.jpg" alt="{full_name}">')
+            + ordered_link(asin, 't', truncated))
+
+
+def asins(csv):
+    df = pd.read_csv(csv, dtype=str, keep_default_na=False)
+    return dict(zip(df['item'], df['asin']))
+
+
+def test_asin_comes_from_ordered_item_links_only(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    html = ('<html><body>'
+            + item_links('B000TEST01', 'LED電球 E26 (2個パック)', 'LED電球 E26 (2...')
+            + item_links('B000TEST02', 'ブレーキシュー', 'ブレーキシュー')
+            + recommended_link('B000RECO99')
+            + '</body></html>')
+    run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_BODY, html=html)]), csv)
+    assert asins(csv) == {'LED電球 E26 (2個パック)': 'B000TEST01', 'ブレーキシュー': 'B000TEST02'}
+    assert 'B000RECO99' not in csv.read_text()
+
+
+def test_truncated_link_text_matches_by_prefix(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    html = (ordered_link('B000TEST01', 't', 'LED電球 E26 (2...')
+            + ordered_link('B000TEST02', 't', 'ブレーキ…'))
+    run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_BODY, html=html)]), csv)
+    assert asins(csv) == {'LED電球 E26 (2個パック)': 'B000TEST01', 'ブレーキシュー': 'B000TEST02'}
+
+
+def test_raw_dp_path_in_href_is_accepted():
+    html = ('<a href="https://www.amazon.co.jp/dp/B000TEST01?ref_=x_i_fed_asin_title">'
+            '<img alt="ブレーキシュー"></a>')
+    assert gmail.match_asin('ブレーキシュー', gmail.ordered_item_candidates(html)) == 'B000TEST01'
+
+
+def test_unmatched_or_ambiguous_item_gets_empty_asin(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    # LED電球 はどのリンクとも合わない。ブレーキシュー は2つの候補の前方一致に合う
+    html = (item_links('B000TEST01', '別の商品', '別の商品')
+            + ordered_link('B000TEST02', 't', 'ブレーキ...')
+            + ordered_link('B000TEST03', 't', 'ブレー...'))
+    run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_BODY, html=html)]), csv)
+    assert asins(csv) == {'LED電球 E26 (2個パック)': '', 'ブレーキシュー': ''}
+
+
+def test_amazon_mail_without_html_gets_empty_asin(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_BODY)]), csv)
+    assert set(asins(csv).values()) == {''}
+
+
+def test_rakuten_rows_have_empty_asin(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    html = ordered_link('B000TEST01', 'i', '<img alt="ふりかけ">')
+    run(FakeService([message('m2', gmail.RAKUTEN_SENDER, RAKUTEN_BODY, html=html)]), csv)
+    assert set(asins(csv).values()) == {''}
+
+
+def test_merge_into_csv_without_asin_column(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    old_columns = [c for c in gmail.COLUMNS if c != 'asin']
+    pd.DataFrame([{'order_date': '2026-09-01T10:00:00+09:00', 'shop': 'Amazon.co.jp',
+                   'order_id': '250-0000000-0000002', 'item': '古い商品', 'quantity': '1',
+                   'price': '100', 'message_id': 'old'}], columns=old_columns).to_csv(csv, index=False)
+    html = item_links('B000TEST02', 'ブレーキシュー', 'ブレーキ...')
+    assert run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_BODY, html=html)]), csv) == 0
+    df = pd.read_csv(csv, dtype=str, keep_default_na=False)
+    assert list(df.columns) == gmail.COLUMNS
+    assert df['message_id'].tolist() == ['old', 'm1', 'm1']
+    assert df.loc[0, 'asin'] == '' and df.loc[0, 'item'] == '古い商品'
+    assert asins(csv)['ブレーキシュー'] == 'B000TEST02'
