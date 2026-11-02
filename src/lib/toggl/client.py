@@ -1,4 +1,7 @@
-"""Toggl Track API v9 クライアント
+"""Toggl Track API v9 クライアント（読み取り専用）
+
+Track は 2026-10-27 で凍結済み（書き込みは lib.toggl.focus）。ここはアーカイブ
+（time_entries.csv）を取り直すための取得だけを持つ。
 
 API token による Basic 認証。OAuth のトークンリフレッシュは不要。
 2025-09-05 導入のクォータにより、/me 系エンドポイントは全プラン共通で
@@ -25,22 +28,16 @@ QUOTA_EXCEEDED_STATUS = 402
 
 
 def _request(api_token: str, method: str, path: str,
-              params: dict | None = None, json_body: dict | None = None,
-              allow_404: bool = False) -> requests.Response | None:
+             params: dict | None = None) -> requests.Response:
     """API を叩き、クォータ残量をログへ出す
 
     クォータ超過は HTTP 402 で返る。Toggl の 402 は決済要求ではなくレート制限で、
     そのままだと「Premium が必要」と読める汎用エラーになるため専用の例外にする。
-    書き込み（POST）も同じ /me 系の枠を共有する前提で扱う。
-
-    allow_404=True のときは 404 を例外にせず None を返す（1件取得系で
-    「存在しない」を正常系として扱いたい呼び出し向け）。
     """
     response = requests.request(
         method,
         f'{API_BASE}{path}',
         params=params,
-        json=json_body,
         auth=HTTPBasicAuth(api_token, 'api_token'),
         timeout=REQUEST_TIMEOUT,
     )
@@ -55,9 +52,6 @@ def _request(api_token: str, method: str, path: str,
             f'Toggl API のクォータ超過（/me 系は 30リクエスト/時）。'
             f'{resets_in} 秒後に回復。Premium 制限ではない'
         )
-
-    if allow_404 and response.status_code == 404:
-        return None
 
     response.raise_for_status()
     return response
@@ -97,24 +91,6 @@ def fetch_time_entries(api_token: str, start: dt.date, end: dt.date, tz: dt.tzin
     }
     response = _get(api_token, '/me/time_entries', params)
     return response.json()
-
-
-def fetch_time_entry(api_token: str, entry_id: str) -> dict | None:
-    """GET /me/time_entries/{id} で1件取得する
-
-    存在しない（404）場合は None を返す。Toggl は削除済みエントリを 404 ではなく
-    server_deleted_at が立った 200 で返すことがあるため、その場合も None 扱いにする
-    （push.select_pending の再投入判定が「まだ Toggl に実体があるか」を確認するのに使う）。
-    """
-    response = _request(api_token, 'GET', f'/me/time_entries/{entry_id}', allow_404=True)
-    if response is None:
-        return None
-    data = response.json()
-    if data is None:
-        return None
-    if data.get('server_deleted_at'):
-        return None
-    return data
 
 
 def fetch_me(api_token: str) -> dict:
@@ -176,55 +152,3 @@ def fetch_projects(api_token: str, workspace_id: int | None = None,
             break
         page += 1
     return projects
-
-
-def create_time_entry(api_token: str, workspace_id: int, payload: dict) -> dict:
-    """POST /workspaces/{workspace_id}/time_entries でタイムエントリを作成
-
-    Parameters
-    ----------
-    api_token : str
-        Toggl Track の API token
-    workspace_id : int
-        投入先ワークスペースID
-    payload : dict
-        Toggl API の time entry 作成ペイロード（workspace_id を含む）
-
-    Returns
-    -------
-    dict
-        作成されたタイムエントリ
-    """
-    response = _request(
-        api_token, 'POST', f'/workspaces/{workspace_id}/time_entries', json_body=payload,
-    )
-    return response.json()
-
-
-def fetch_current_entry(api_token: str) -> dict | None:
-    """GET /me/time_entries/current で計測中のエントリを取得
-
-    計測中のものが無い場合、Toggl は 200 で JSON の null を返す（404 ではない）。
-    """
-    response = _get(api_token, '/me/time_entries/current', {})
-    return response.json() or None
-
-
-def start_time_entry(api_token: str, workspace_id: int, payload: dict) -> dict:
-    """計測中のタイムエントリを開始する
-
-    作成 API は stop 済みエントリと同じ POST だが、duration に負値を入れると
-    「計測中」になる（v9 は -1 を受け付ける）。stop は渡さない。
-
-    既に計測中のエントリがある状態で開始すると、Toggl 側が古い方を
-    自動で停止する（クライアント側で stop を呼ぶ必要はない）。
-    """
-    return create_time_entry(api_token, workspace_id, payload)
-
-
-def stop_time_entry(api_token: str, workspace_id: int, entry_id: int) -> dict:
-    """PATCH /workspaces/{workspace_id}/time_entries/{entry_id}/stop で計測を止める"""
-    response = _request(
-        api_token, 'PATCH', f'/workspaces/{workspace_id}/time_entries/{entry_id}/stop',
-    )
-    return response.json()

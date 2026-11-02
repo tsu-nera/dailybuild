@@ -2,7 +2,7 @@
 lib.events（reports/events.jsonl の生成）のテスト（Issue #166）
 
 テストするのは「欠測を捏造しない」「二重に入れない」だけ:
-naive 時刻の JST 解釈、点イベントの end=null、push 由来 Toggl の除外、
+naive 時刻の JST 解釈、点イベントの end=null、push 由来 Toggl の除外、Toggl の区切り日（Track/Focus）、
 platform 重複の解決、0件ソースでの失敗、data/ を書き換えないこと。
 """
 
@@ -14,6 +14,7 @@ import pytest
 from lib.events import build, sources
 
 TOGGL_HEADER = 'id,start,stop,duration_sec,description,project_name,tags\n'
+FOCUS_HEADER = TOGGL_HEADER
 PUSHED_HEADER = 'source,source_id,toggl_entry_id,start,pushed_at\n'
 EXERCISE_HEADER = (
     'id,start,end,duration_sec,exercise_type,display_name,platform,'
@@ -31,6 +32,8 @@ def paths(tmp_path):
     p = build.SourcePaths(
         toggl_entries=tmp_path / 'time_entries.csv',
         toggl_pushed=tmp_path / 'pushed.csv',
+        toggl_focus_entries=tmp_path / 'focus_entries.csv',
+        toggl_focus_pushed=tmp_path / 'focus_pushed.csv',
         exercise=tmp_path / 'exercise.csv',
         sleep=tmp_path / 'sleep.csv',
         habitica_history=tmp_path / 'history.csv',
@@ -46,6 +49,25 @@ def paths(tmp_path):
         PUSHED_HEADER
         + 'googlehealth_exercise,1697771750265919752,4578749526,'
           '2026-10-07T08:04:00+09:00,2026-10-07T08:56:48+09:00\n'
+    )
+    # 区切り日（2026-10-27）以降は Focus。10-27 の migrate 分は Track にも別 ID で居る
+    p.toggl_entries.write_text(
+        p.toggl_entries.read_text()
+        + '4600000001,2026-10-27 05:51:00,2026-10-27 06:10:00,1140,サイクリング,サイクリング,auto\n'
+        + '4600000002,2026-10-27 09:00:00,2026-10-27 10:00:00,3600,読書,読書,\n'
+    )
+    p.toggl_focus_entries.write_text(
+        FOCUS_HEADER
+        + 'f1,2026-10-27 05:51:00,2026-10-27 06:10:00,1140,サイクリング,サイクリング,auto\n'
+        + 'f2,2026-10-27 09:00:00,2026-10-27 10:00:00,3600,読書,読書,\n'
+        + 'f3,2026-10-29 07:00:00,2026-10-29 07:30:00,1800,筋トレ,筋トレ,auto\n'
+        + 'f4,2026-10-30 07:00:00,2026-10-30 08:00:00,3600,日記,日記,"deep,auto"\n'
+        + 'f5,2026-10-30 09:00:00,2026-10-30 09:30:00,1800,運動,運動,\n'
+        + 'f6,2026-10-31 09:00:00,2026-10-31 09:30:00,1800,運動,運動,\n'
+    )
+    p.toggl_focus_pushed.write_text(
+        PUSHED_HEADER
+        + 'googlehealth_exercise,9,f5,2026-10-30T09:00:00+09:00,2026-10-30T10:00:00+09:00\n'
     )
     p.exercise.write_text(
         EXERCISE_HEADER
@@ -86,7 +108,7 @@ def build_lines(paths, tmp_path):
 
 
 def test_toggl_naive_is_jst_not_utc(paths):
-    events = sources.toggl_events(paths.toggl_entries, paths.toggl_pushed)
+    events = toggl_events(paths)
     # UTC と解釈すると 17:05+09:00 になる
     assert events[0]['start'].isoformat() == '2026-08-07T08:05:00+09:00'
     assert events[0]['end'].isoformat() == '2026-08-07T08:20:47+09:00'
@@ -107,9 +129,32 @@ def test_point_events_have_null_end(paths, tmp_path):
     assert not any(line['start'] == line['end'] for line in lines)
 
 
+def toggl_events(paths):
+    return sources.toggl_events(paths.toggl_entries, paths.toggl_pushed,
+                                paths.toggl_focus_entries, paths.toggl_focus_pushed)
+
+
 def test_pushed_toggl_entry_is_dropped(paths):
-    events = sources.toggl_events(paths.toggl_entries, paths.toggl_pushed)
-    assert [e['attrs']['id'] for e in events] == ['4509467120']
+    ids = [e['attrs']['id'] for e in toggl_events(paths)]
+    assert '4578749526' not in ids
+    assert 'f5' not in ids  # Focus 台帳の ID
+
+
+def test_toggl_switches_source_at_cutover_without_duplicates(paths):
+    ids = [e['attrs']['id'] for e in toggl_events(paths)]
+    # 区切り前は Track、以降は Focus。10-27 の読書は両ファイルにあるが Focus 側の1本だけ
+    assert '4509467120' in ids
+    assert '4600000002' not in ids
+    assert ids.count('f2') == 1
+    assert 'f6' in ids
+    starts = [(e['start'], e['name']) for e in toggl_events(paths)]
+    assert len(starts) == len(set(starts))
+
+
+def test_auto_tagged_focus_rows_are_dropped(paths):
+    ids = [e['attrs']['id'] for e in toggl_events(paths)]
+    assert not {'f1', 'f3', 'f4'} & set(ids)
+    assert '4600000001' not in ids  # Track 側の区切り後の行も出さない
 
 
 def test_exercise_platform_duplicate_resolves_to_one(paths):
@@ -142,6 +187,8 @@ def test_output_sorted_by_start(paths, tmp_path):
 @pytest.mark.parametrize('field', ['toggl_entries', 'exercise', 'sleep', 'habitica_history'])
 def test_missing_source_is_reported(paths, field):
     getattr(paths, field).unlink()
+    if field == 'toggl_entries':
+        paths.toggl_focus_entries.unlink()
     empty = build.empty_sources(build.collect(paths))
     assert len(empty) == 1
 
@@ -169,7 +216,8 @@ def test_cli_fails_on_empty_source_and_keeps_output(paths, tmp_path, monkeypatch
 
 
 def test_build_does_not_modify_inputs(paths, tmp_path):
-    inputs = [paths.toggl_entries, paths.toggl_pushed, paths.exercise,
+    inputs = [paths.toggl_entries, paths.toggl_pushed, paths.toggl_focus_entries,
+              paths.toggl_focus_pushed, paths.exercise,
               paths.sleep, paths.habitica_history]
     before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     build_lines(paths, tmp_path)

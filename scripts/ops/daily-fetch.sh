@@ -89,7 +89,6 @@ else
   echo "!!! フォームのレジストリ の読み込みに失敗（後続は続行する）"
   FAILED+=("フォームのレジストリ")
 fi
-step "Toggl"         uv run python scripts/toggl.py fetch --days "$DAYS"
 step "Toggl 2.0"     uv run python scripts/toggl.py fetch-focus --days "$DAYS"
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 step "Todoist"       uv run python scripts/todoist.py fetch --update

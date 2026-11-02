@@ -32,7 +32,7 @@ PIPELINE_BEFORE = [
      '測らない日があるのが常態'),
     ('排便記録', 'data/bowel.csv', 'date', 4, 'active', '出ない日がある'),
     ('PHQ-9', 'data/phq9.csv', 'date', 8, 'active', '週次'),
-    ('Toggl', 'data/toggl/time_entries.csv', 'start', 2, 'active', ''),
+    ('Toggl', 'data/toggl/focus_entries.csv', 'start', 2, 'active', ''),
     ('MoneyForward', 'data/mf/収入・支出詳細_{year}.csv', '日付', 4, 'degraded',
      '連携が切れた口座の明細が入らない。**MF の集計は過少**。再認証しない方針'),
     ('Habitica', 'data/habitica/cron_log.csv', 'date', 1, 'active', ''),

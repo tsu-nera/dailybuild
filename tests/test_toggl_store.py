@@ -119,3 +119,33 @@ def test_save_merged_with_window_removes_and_merges(tmp_path, monkeypatch, capsy
     assert sorted(df_merged['id'].tolist()) == [1, 3]
     captured = capsys.readouterr()
     assert '1件' in captured.err
+
+
+def _csv(path, rows):
+    pd.DataFrame(rows, columns=store.CSV_COLUMNS).to_csv(path, index=False)
+
+
+def _row(entry_id, start, name):
+    return {'id': entry_id, 'start': start, 'stop': start, 'duration_sec': 60,
+            'description': '', 'project_id': None, 'project_name': name,
+            'workspace_id': 1, 'tags': ''}
+
+
+def test_load_entries_concatenates_at_cutover(tmp_path):
+    track = tmp_path / 'time_entries.csv'
+    focus = tmp_path / 'focus_entries.csv'
+    _csv(track, [_row(1, '2026-10-26 23:59:59', 'a'), _row(2, '2026-10-27 05:51:00', 'dup')])
+    _csv(focus, [_row('f1', '2026-10-26 12:00:00', 'dup'), _row('f2', '2026-10-27 00:00:00', 'b')])
+
+    df = store.load_entries(track, focus)
+
+    # 区切り日より前は Track、以降は Focus。移行済み期間の二重は出ない
+    assert df['id'].astype(str).tolist() == ['1', 'f2']
+    assert df['project_name'].tolist() == ['a', 'b']
+
+
+def test_load_entries_works_with_only_one_side(tmp_path):
+    focus = tmp_path / 'focus_entries.csv'
+    _csv(focus, [_row('f2', '2026-10-28 00:00:00', 'b')])
+    df = store.load_entries(tmp_path / 'missing.csv', focus)
+    assert df['id'].tolist() == ['f2']

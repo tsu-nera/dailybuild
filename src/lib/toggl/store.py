@@ -4,10 +4,12 @@ Toggl タイムエントリ CSV の読み書き
 data/toggl/time_entries.csv（dailybuild-private への symlink）を対象に、
 fetch 側のマージ保存と show 側の読み込みをまとめる。マージ・窓内置換は
 csv_path を渡せば Toggl 2.0 の focus_entries.csv（lib.toggl.focus）にも使う。
+
+Track は CUTOVER_DATE（2026-10-27）で凍結した。それより前は time_entries.csv、
+以降は focus_entries.csv を正本とし、読み手（show / events）は同じ区切りで連結する。
 """
 
 import datetime as dt
-import json
 import sys
 from pathlib import Path
 
@@ -20,10 +22,13 @@ BASE_DIR = Path(__file__).resolve().parents[3]
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
 CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'time_entries.csv')
 
-# 直近の fetch がどの期間を取りに行ったかの記録。CSV は過去分が積み上がるだけで
-# 「いつの期間を実際に取得したか」を持たないため、push の削除検出がこれを要る
-# （詳細は push.select_pending）
-FETCH_STATE_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'fetch_state.json')
+# Toggl 2.0（Focus）側の CSV。lib.toggl.focus が書く。循環 import を避けるためパスはここに置く
+FOCUS_CSV_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'focus_entries.csv')
+
+# 手動記録を 2.0 へ移した日（JST の暦日）。これより前は Track（time_entries.csv）、
+# 以降は Focus（focus_entries.csv）を正本とする。移行済み期間は両ファイルに別 ID で
+# 入っているので、この区切りで切らないと二重になる。push・show・events が共有する
+CUTOVER_DATE = dt.date(2026, 10, 27)
 
 # CSV は常に JST naive で持つ（表示・突合の都合）。取得窓の tz（push.load_timezone、
 # 既定 Asia/Tokyo）とは別に固定で定義してあり、personal.yaml で timezone を変えても
@@ -176,45 +181,31 @@ def save_merged(df_new: pd.DataFrame, window: tuple[dt.date, dt.date] | None = N
     return df_merged
 
 
-def save_fetch_window(start: dt.date, end: dt.date) -> None:
-    """直近 fetch の対象期間を記録する（両端を含む日付）"""
-    FETCH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    FETCH_STATE_FILE.write_text(json.dumps({
-        'start': start.isoformat(),
-        'end': end.isoformat(),
-        'fetched_at': dt.datetime.now(JST).isoformat(),
-    }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+def split_at_cutover(df: pd.DataFrame, side: str) -> pd.DataFrame:
+    """start（JST naive）が区切り日より前（side='before'）か以降（'after'）の行だけ返す"""
+    cutover = pd.Timestamp(CUTOVER_DATE)
+    start = pd.to_datetime(df['start'])
+    return df[start < cutover] if side == 'before' else df[start >= cutover]
 
 
-def load_fetch_window() -> tuple[dt.date, dt.date] | None:
-    """直近 fetch の対象期間。記録が無い/壊れていれば None"""
-    if not FETCH_STATE_FILE.exists():
-        return None
-    try:
-        state = json.loads(FETCH_STATE_FILE.read_text(encoding='utf-8'))
-        return dt.date.fromisoformat(state['start']), dt.date.fromisoformat(state['end'])
-    except (json.JSONDecodeError, KeyError, ValueError):
-        return None
+def load_entries(track_csv: Path | None = None, focus_csv: Path | None = None) -> pd.DataFrame:
+    """show 側の読み込み。区切り日より前は Track、以降は Focus を連結する
 
-
-def load_fetched_at() -> dt.datetime | None:
-    """直近 fetch を実行した時刻。記録が無い/壊れていれば None
-
-    push の削除検出で使う。この時刻より後に投入したエントリは、まだ一度も
-    fetch していないので CSV に居なくて当たり前（削除された訳ではない）。
+    共通列（CSV_COLUMNS）だけを持つ。project_name の欠損補完と日付列を付与する。
+    id は両体系で別物なので、連結後の id の一意性には頼らない。
     """
-    if not FETCH_STATE_FILE.exists():
-        return None
-    try:
-        state = json.loads(FETCH_STATE_FILE.read_text(encoding='utf-8'))
-        return dt.datetime.fromisoformat(state['fetched_at'])
-    except (json.JSONDecodeError, KeyError, ValueError):
-        return None
-
-
-def load_entries() -> pd.DataFrame:
-    """show 側の CSV 読み込み。project_name の欠損補完と日付列を付与する"""
-    df = pd.read_csv(CSV_FILE, parse_dates=['start', 'stop'])
+    track_csv = track_csv or CSV_FILE
+    focus_csv = focus_csv or FOCUS_CSV_FILE
+    parts = []
+    for path, side in ((track_csv, 'before'), (focus_csv, 'after')):
+        if path.exists():
+            df = pd.read_csv(path, usecols=CSV_COLUMNS)
+            parts.append(split_at_cutover(df, side))
+    if not parts:
+        return pd.DataFrame(columns=CSV_COLUMNS + ['date'])
+    df = pd.concat(parts, ignore_index=True)
+    df['start'] = pd.to_datetime(df['start'])
+    df['stop'] = pd.to_datetime(df['stop'])
     df['project_name'] = df['project_name'].fillna(NO_PROJECT)
     # 日跨ぎエントリは開始日に全量を計上する（分割はしない）
     df['date'] = df['start'].dt.normalize()

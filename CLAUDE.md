@@ -153,7 +153,7 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days 2"'
 日次の最後に毎日**全上書き**で生成）。「その日に何をしていたか」はこれ1本を読む。
 1行1イベントで `{start, end, source, kind, name, attrs}`、`start` 昇順。`start` / `end` は
 必ず tz-aware（`+09:00`。naive な入力は JST として解釈する）、点イベントの `end` は `null`。
-ソースは Toggl（`toggl push` 由来を除く）・exercise（platform 重複解決済み）・メイン睡眠・
+ソースは Toggl（2026-10-27 より前は Track、以降は Focus。`toggl push` 由来を除く）・exercise（platform 重複解決済み）・メイン睡眠・
 Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar（終日は日付の JST 00:00 〜 排他端）。どれかが0件なら更新せず非ゼロ終了する。
 日次に潰すと4分の筋トレと63分の通勤が区別できないので `metrics_daily.csv` には混ぜない。
 **`data/` には置かない**。

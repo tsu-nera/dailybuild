@@ -1,45 +1,53 @@
-"""Toggl の計測（start / stop / current）ロジック
+"""Toggl 2.0（Focus）の計測（start / stop / current）ロジック
 
 fetch/push が「過去の実績を CSV と突き合わせる」バッチなのに対し、こちらは
 その場で計測を開始・停止する対話的な操作。CSV も台帳も触らない
-（計測結果は次回の fetch で time_entries.csv に入る）。
+（計測結果は次回の fetch-focus で focus_entries.csv に入る）。
 
-プロジェクト名 → ID の解決はローカルキャッシュ（data/toggl/projects.json）で行う。
-Toggl の /me 系クォータは 30リクエスト/時で fetch・push と食い合うため、
-start のたびにプロジェクト一覧（/me + /workspaces/{id}/projects で2リクエスト）を
-取り直すと、1時間に十数回 start しただけで枠が尽きて fetch が落ちる。
-キャッシュに無い名前を引いたときだけ取り直す。
+プロジェクト名 → ID の解決はローカルキャッシュ（data/toggl/focus_projects.json）で行う。
+キャッシュに無い名前を引いたときだけ取り直す。タグ名 → ID は focus_tags.json
+（fetch-focus が貯める）を引く。Track の projects.json とは ID 体系が別なので混ぜない。
 """
 
 import datetime as dt
 import json
 from pathlib import Path
 
-from lib.utils.private_data import require_private_path
+from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
-PROJECTS_CACHE_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'projects.json')
+PROJECTS_CACHE_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'focus_projects.json')
 
-CREATED_WITH = 'dailybuild'
-
-# open サブコマンドで開く画面。API ではなく Web アプリ側の URL なので
-# クォータは消費しない
-WEB_URLS = {
-    'timer': 'https://track.toggl.com/timer',
-    'reports': 'https://track.toggl.com/reports',
-    'projects': 'https://track.toggl.com/projects',
-}
+# open サブコマンドで開く画面。API ではなく Web アプリ側の URL。2.0 の個別画面の
+# URL は未確認なのでトップだけ
+WEB_URL = 'https://focus.toggl.com/'
 
 
 class ProjectResolutionError(Exception):
     """プロジェクト名を一意に解決できなかった"""
 
 
+class TagResolutionError(Exception):
+    """タグ名を focus_tags.json から引けなかった"""
+
+
+def resolve_tags(names: tuple[str, ...], tag_map: dict[str, int]) -> list[int]:
+    """タグ名 → ID。引けない名前があれば、既知のタグ名を挙げて落とす
+
+    タグ無しで黙って進めると、auto タグ等で見分ける判定が壊れる。
+    """
+    unknown = [n for n in names if n not in tag_map]
+    if unknown:
+        known = ', '.join(sorted(tag_map)) or '(なし。fetch-focus でエントリを取ると貯まる)'
+        raise TagResolutionError(f"タグ {', '.join(unknown)} を引けない（既知: {known}）")
+    return [tag_map[n] for n in names]
+
+
 def save_project_cache(workspace_id: int, projects: dict[int, str]) -> None:
     """プロジェクト一覧をキャッシュへ書く（キーは JSON の都合で文字列になる）"""
-    PROJECTS_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(PROJECTS_CACHE_FILE.parent)
     PROJECTS_CACHE_FILE.write_text(json.dumps({
         'workspace_id': workspace_id,
         'fetched_at': dt.datetime.now().astimezone().isoformat(),
@@ -87,24 +95,17 @@ def resolve_project(query: str, projects: dict[int, str]) -> tuple[int, str]:
     raise ProjectResolutionError(f"プロジェクト '{query}' が一意に決まらない（候補: {names}）")
 
 
-def build_start_payload(workspace_id: int, project_id: int | None,
-                        description: str, tags: tuple[str, ...],
-                        start: dt.datetime) -> dict:
-    """計測開始用のペイロード
-
-    duration に負値を入れると計測中のエントリになる（stop は渡さない）。
-    """
+def build_start_payload(project_id: int | None, description: str,
+                        tag_ids: list[int]) -> dict:
+    """/tracking/start 用のペイロード。type: "activity" は必須、開始時刻はサーバが決める"""
     payload = {
-        'created_with': CREATED_WITH,
-        'workspace_id': workspace_id,
+        'type': 'activity',
         'description': description,
-        'start': start.isoformat(),
-        'duration': -1,
-        'tags': list(tags),
-        'billable': False,
     }
     if project_id is not None:
         payload['project_id'] = project_id
+    if tag_ids:
+        payload['tag_ids'] = tag_ids
     return payload
 
 
@@ -139,7 +140,7 @@ def describe_entry(entry: dict, projects: dict[int, str], now: dt.datetime) -> s
     """計測中エントリの1行表示"""
     project = describe_project(entry.get('project_id'), projects)
     description = entry.get('description') or '(no description)'
-    tags = entry.get('tags') or []
-    tag_str = f" [{','.join(tags)}]" if tags else ''
+    names = [t['name'] if isinstance(t, dict) else str(t) for t in entry.get('tags') or []]
+    tag_str = f" [{','.join(names)}]" if names else ''
     return (f'[{project}] {description}{tag_str} '
             f'({format_elapsed(elapsed_seconds(entry, now))} 経過)')

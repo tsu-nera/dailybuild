@@ -1,38 +1,33 @@
 """
-Google Health睡眠等をTogglタイムエントリとして書き込む push の共通ロジック
+Google Health睡眠等をToggl 2.0（Focus）のタイムエントリとして書き込む push の共通ロジック
 
 ソース側（sources.py）は Interval のリストを返すだけで、Toggl への書き込み・
 冪等性判定・レート制御はここに集約する（将来 googlehealth_activity 等を足しても
 この層は変えなくてよい）。
 
-冪等性は台帳（data/toggl/pushed.csv）を主に、直前 fetch の time_entries.csv を
-補助に使う二段構え:
-1. 台帳に (source, source_id) が無ければ投入対象
-2. 台帳にはあるが toggl_entry_id が time_entries.csv に見当たらない
-   （＝Toggl側で手動削除された）場合は再投入対象。ただし判定は
-   **直近 fetch が実際に取りに行った期間**（store.load_fetch_window）内に
-   start を持つ行に限る。期間外は「取得していないだけ」と区別できないため、
-   無限に再投入してしまう安全弁として対象外にする
-3. 台帳にあり CSV にも居れば skip
+冪等性は次の2つだけで取る:
+1. 台帳（data/toggl/focus_pushed.csv）に (source, source_id) があれば投入済み
+2. focus_entries.csv に、同じプロジェクト名で start の差が60秒以内のエントリがあれば投入済み
+   （2026-10-27 の migrate でコピーされた分や、手で入れた分を二重にしない）
 
-削除判定の窓に CSV の start の min/max を使ってはいけない。CSV は過去分が
-積み上がるだけなので min は何ヶ月も前になり、「一度も fetch していない日」まで
-カバー済みと誤認する。睡眠エントリの start は dateOfSleep の前日夜にあるため、
-fetch と push を同じ --days N で回すと投入したエントリが翌日以降どの fetch 窓にも
-入らず、毎回「削除された」と誤判定されて重複投入される。
+Track 時代にあった「台帳にあるが CSV に居ないものを手動削除とみなして再投入する」
+経路は持たない（二重投入の事故が2回あった経路で、Focus には fetch 窓の記録も無い）。
+push が作ったエントリはその場で focus_entries.csv にも書くので、次の fetch を待たずに
+2 が効く。CUTOVER_DATE より前の Interval は 2.0 へ migrate 済みなので投入しない。
 """
 
 import dataclasses
 import datetime as dt
 from pathlib import Path
-from typing import Callable, IO
+from typing import IO
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yaml
 
+from lib.toggl import focus
 from lib.toggl import store as toggl_store
-from lib.utils.private_data import require_private_path
+from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 
@@ -40,12 +35,15 @@ PUSH_CONFIG_FILE = BASE_DIR / 'config' / 'toggl_push.yaml'
 PERSONAL_CONFIG_FILE = BASE_DIR / 'config' / 'personal.yaml'
 
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
-LEDGER_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'pushed.csv')
+LEDGER_FILE = require_private_path(BASE_DIR / 'data' / 'toggl' / 'focus_pushed.csv')
 
 LEDGER_COLUMNS = ['source', 'source_id', 'toggl_entry_id', 'start', 'pushed_at']
 
 DEFAULT_TIMEZONE = 'Asia/Tokyo'
 DEFAULT_MAX_WRITES = 10
+
+# 照合で「同じエントリ」とみなす start の差（秒）
+MATCH_TOLERANCE_SEC = 60
 
 
 @dataclasses.dataclass(frozen=True)
@@ -94,259 +92,181 @@ def append_ledger(rows: list[dict]) -> None:
     df_merged = df_merged.drop_duplicates(subset=['source', 'source_id'], keep='last')
     df_merged = df_merged.sort_values('start')
 
-    LEDGER_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(LEDGER_FILE.parent)
     df_merged.to_csv(LEDGER_FILE, index=False)
 
 
-def fetch_window_bounds(fetch_window: tuple[dt.date, dt.date] | None) -> tuple[pd.Timestamp, pd.Timestamp] | None:
-    """fetch 期間（両端を含む日付）を start 比較用の tz-naive JST 区間に変換"""
-    if fetch_window is None:
+def load_focus_entries_for_match(csv_path=None) -> pd.DataFrame | None:
+    """照合用に focus_entries.csv の project_name / start を読む。無ければ None"""
+    csv_path = csv_path or focus.CSV_FILE
+    if not csv_path.exists():
         return None
-    start, end = fetch_window
-    return pd.Timestamp(start), pd.Timestamp(end) + pd.Timedelta(days=1)
+    return pd.read_csv(csv_path, usecols=['project_name', 'start'], parse_dates=['start'])
 
 
-def _pushed_before_fetch(pushed_at, fetched_at: dt.datetime | None) -> bool:
-    """その投入は直近 fetch より前か（＝CSV に居ないなら削除されたと言えるか）
+def drop_before_cutover(intervals: list[Interval]) -> tuple[list[Interval], int]:
+    """CUTOVER_DATE（JST の暦日）より前に start がある Interval を外す。(残り, 外した件数)"""
+    kept = [i for i in intervals
+            if i.start.astimezone(toggl_store.JST).date() >= toggl_store.CUTOVER_DATE]
+    return kept, len(intervals) - len(kept)
 
-    fetched_at が無い、または pushed_at が読めない場合は False を返す。
-    「削除されたか分からない」を「再投入する」に倒すと重複が増えるため、
-    判断できないときは再投入しない側へ寄せる。
-    """
-    if fetched_at is None:
-        return False
-    try:
-        pushed = pd.Timestamp(pushed_at)
-    except (ValueError, TypeError):
-        return False
-    if pushed is pd.NaT or pd.isna(pushed):
-        return False
-    if pushed.tzinfo is None:
-        pushed = pushed.tz_localize(fetched_at.tzinfo)
-    return pushed < pd.Timestamp(fetched_at)
+
+def _matches_existing(interval: Interval, starts_by_project: dict[str, list[pd.Timestamp]]) -> bool:
+    start = pd.Timestamp(interval.start.astimezone(toggl_store.JST).replace(tzinfo=None))
+    return any(abs((start - s).total_seconds()) <= MATCH_TOLERANCE_SEC
+               for s in starts_by_project.get(interval.project, ()))
 
 
 def select_pending(
     intervals: list[Interval],
     ledger_df: pd.DataFrame,
-    entries_df: pd.DataFrame | None,
-    check_deleted: bool = True,
-    fetch_window: tuple[dt.date, dt.date] | None = None,
-    fetched_at: dt.datetime | None = None,
-    confirm_deleted: Callable[[str], bool] | None = None,
+    focus_df: pd.DataFrame | None,
 ) -> tuple[list[Interval], int]:
     """投入対象の Interval と skip 件数を返す
 
-    Parameters
-    ----------
-    intervals : list[Interval]
-        投入候補
-    ledger_df : pd.DataFrame
-        台帳（load_ledger() の戻り値相当）
-    entries_df : pd.DataFrame | None
-        直前 fetch の time_entries.csv 相当（id, start 列を持つ）。
-        None は CSV が読めない/古いことを示し、削除検出を行わない
-    check_deleted : bool
-        False の場合、台帳にある interval は無条件で skip する
-        （time_entries.csv が古い/存在しないときに呼び出し側が指定する）
-    fetch_window : tuple[date, date] | None
-        直近 fetch が取りに行った期間（両端を含む）。None なら削除検出を行わない。
-        CSV の start の min/max で代用してはいけない（モジュール docstring 参照）
-    fetched_at : datetime | None
-        直近 fetch を実行した時刻。これより後に投入したエントリは削除判定から外す
-    confirm_deleted : Callable[[str], bool] | None
-        「CSV に居ない」の先に Toggl API へ直接聞き、削除済みかを確認する関数
-        （引数は toggl_entry_id、削除済みなら True）。取得窓のずれ（Issue #127）で
-        「取得していないだけ」を「削除された」と誤判定すると再投入で重複が増えるため、
-        最後の一段として実体確認を挟む多層防御。None（既定）なら確認せず、
-        これまで通り CSV に無ければ削除されたものとして扱う（純粋関数を保つため
-        select_pending 自身は API を呼ばない。呼び出し側が push_intervals で
-        api_token を閉じ込めた関数を組み立てて渡す）
-
-    Returns
-    -------
-    (pending, skipped_count)
+    台帳にある、または focus_entries.csv に同じプロジェクト・60秒以内の start が
+    あるものは skip。focus_df が None（CSV 無し）のときは台帳だけで判定する。
     """
     ledger_keys = set(zip(ledger_df['source'], ledger_df['source_id'].astype(str))) \
         if not ledger_df.empty else set()
 
-    csv_ids = set(entries_df['id'].astype(str)) if entries_df is not None and not entries_df.empty else set()
-    coverage = fetch_window_bounds(fetch_window) if check_deleted else None
-
-    ledger_by_key = {}
-    if not ledger_df.empty:
-        for _, row in ledger_df.iterrows():
-            ledger_by_key[(row['source'], str(row['source_id']))] = row
+    starts_by_project: dict[str, list[pd.Timestamp]] = {}
+    if focus_df is not None and not focus_df.empty:
+        for name, start in zip(focus_df['project_name'], focus_df['start']):
+            starts_by_project.setdefault(name, []).append(start)
 
     pending = []
     skipped = 0
     for interval in intervals:
-        key = (interval.source, interval.source_id)
-        if key not in ledger_keys:
+        if (interval.source, interval.source_id) in ledger_keys \
+                or _matches_existing(interval, starts_by_project):
+            skipped += 1
+        else:
             pending.append(interval)
-            continue
-
-        if not check_deleted or coverage is None:
-            skipped += 1
-            continue
-
-        row = ledger_by_key[key]
-        toggl_entry_id = str(row['toggl_entry_id'])
-        if toggl_entry_id in csv_ids:
-            skipped += 1
-            continue
-
-        # 直近 fetch より後に投入したものは、まだ一度も取りに行っていないので
-        # CSV に居なくて当たり前。ここを見ないと、fetch を挟まずに push を
-        # 2回叩いただけで「削除された」と誤読して重複投入する。
-        # pushed_at が読めないものも、疑わしきは再投入しない側に倒す
-        if not _pushed_before_fetch(row.get('pushed_at'), fetched_at):
-            skipped += 1
-            continue
-
-        # fetch 窓の外は「未取得」と「削除済み」が区別できないためskip。
-        # time_entries.csv の start は tz-naive JST なので、台帳側(tz-aware)も
-        # tzinfoを落として比較する（どちらも同じJSTの壁時計時刻）
-        row_start = pd.Timestamp(row['start'])
-        if row_start.tzinfo is not None:
-            row_start = row_start.tz_localize(None)
-        if not (coverage[0] <= row_start < coverage[1]):
-            skipped += 1
-            continue
-
-        # 最後の一段: CSV に居ない＝削除された、と決め打つ前に Toggl 本体へ確認する。
-        # 取得窓がずれていて実際には取得し損ねているだけなら、ここで実体が見つかり
-        # 再投入を回避できる（confirm_deleted は「削除済みなら True」を返す）
-        if confirm_deleted is not None and not confirm_deleted(toggl_entry_id):
-            skipped += 1
-            continue
-
-        pending.append(interval)
-
     return pending, skipped
 
 
-def is_entries_csv_stale(entries_df: pd.DataFrame | None, today: dt.date) -> bool:
-    """time_entries.csv が古い（前日より前で止まっている）か、存在しないか"""
-    if entries_df is None or entries_df.empty:
-        return True
-    latest = pd.to_datetime(entries_df['start']).max().date()
-    return latest < today - dt.timedelta(days=1)
+def build_payload(interval: Interval, project_map: dict[str, int],
+                  tag_map: dict[str, int]) -> dict:
+    """POST /time-entries のペイロードを組み立てる
 
-
-def resolve_project_id(project_name: str, project_map: dict[str, int]) -> int | None:
-    return project_map.get(project_name)
-
-
-def build_payload(interval: Interval, workspace_id: int, project_map: dict[str, int]) -> dict:
-    """Toggl API へのPOSTペイロードを組み立てる"""
-    # Toggl は秒未満を含む RFC3339 を 400 で弾く。Health Connect 由来の
-    # セッションはミリ秒付きで届くので、秒に丸めてから渡す
+    type: "activity" は必須（無いと 400）。タグは tag_ids でしか付かない。
+    start は UTC の RFC3339 で秒未満を落とす（Health Connect 由来はミリ秒付きで届く）。
+    """
     start = interval.start.replace(microsecond=0)
     stop = interval.stop.replace(microsecond=0)
     payload = {
-        'created_with': 'dailybuild',
-        'workspace_id': workspace_id,
+        'type': 'activity',
         'description': interval.description,
-        'start': start.isoformat(),
-        'stop': stop.isoformat(),
+        'start': focus.to_utc_str(start),
         'duration': int((stop - start).total_seconds()),
-        'tags': list(interval.tags),
-        'billable': False,
+        'project_id': project_map[interval.project],
     }
-    project_id = resolve_project_id(interval.project, project_map)
-    if project_id is not None:
-        payload['project_id'] = project_id
+    tag_ids = [tag_map[t] for t in interval.tags]
+    if tag_ids:
+        payload['tag_ids'] = tag_ids
     return payload
+
+
+def _unresolved(interval: Interval, project_map: dict[str, int] | None,
+                tag_map: dict[str, int]) -> list[str]:
+    """引けないプロジェクト・タグの説明。空なら投入できる"""
+    problems = []
+    if project_map is not None and interval.project not in project_map:
+        problems.append(f'プロジェクト {interval.project}')
+    problems.extend(f'タグ {t}' for t in interval.tags if t not in tag_map)
+    return problems
+
+
+def _created_for_csv(created: dict, payload: dict, interval: Interval,
+                     tag_map: dict[str, int]) -> dict:
+    """作成応答を focus.build_dataframe に通せる形にする
+
+    応答に project / tags / duration が含まれる保証が無いので、欠けていれば送った内容で補う。
+    """
+    entry = dict(created)
+    entry.setdefault('start', payload['start'])
+    if entry.get('duration') is None:
+        entry['duration'] = payload['duration']
+    entry.setdefault('description', payload['description'])
+    entry.setdefault('type', 'activity')
+    if not entry.get('project'):
+        entry['project'] = {'id': payload['project_id'], 'name': interval.project}
+    if not entry.get('tags'):
+        entry['tags'] = [{'id': tag_map[t], 'name': t} for t in interval.tags]
+    return entry
 
 
 def push_intervals(
     intervals: list[Interval],
     ledger_df: pd.DataFrame,
-    entries_df: pd.DataFrame | None,
+    focus_df: pd.DataFrame | None,
     max_writes: int,
     dry_run: bool,
-    api_token: str | None,
+    workspace: focus.Workspace | None,
     out: IO[str],
-    check_deleted: bool = True,
-    fetch_window: tuple[dt.date, dt.date] | None = None,
-    fetched_at: dt.datetime | None = None,
+    tag_map: dict[str, int] | None = None,
 ) -> dict:
     """投入対象を選び、上限内で書き込む
 
-    途中で例外が起きても、それまでに投入した分は台帳に必ず書く
-    （呼び出し側でtry/finally相当の保証をするため、ここでは1件ごとに
-    ledger_rowsへ積み、最後にappend_ledgerを呼ぶ形にしている。例外は
-    そのまま外へ投げるが、その前にappend_ledgerを実行する）。
+    途中で例外が起きても、それまでに投入した分は台帳と focus_entries.csv に必ず書く
+    （1件ごとに積み、finally で書く。例外はそのまま外へ投げる）。
+    プロジェクト・タグを引けない Interval は投入せず台帳にも入れない
+    （引けないまま「投入済み」にすると後から直せないため）。dry_run では API を叩かない
+    ので、プロジェクトの解決だけは行わない。
 
     Returns
     -------
     dict
-        {'pending': int, 'skipped': int, 'pushed': int, 'carried_over': int}
+        {'pending', 'skipped', 'pushed', 'carried_over', 'unresolved', 'before_cutover'}
     """
-    confirm_deleted = None
-    if not dry_run and api_token is not None:
-        # dry_run では API を叩かない。api_token が無い（テスト等）場合も同様
-        from lib.toggl import client as toggl_client
+    tag_map = focus.load_tags() if tag_map is None else tag_map
 
-        def confirm_deleted(toggl_entry_id: str) -> bool:
-            entry = toggl_client.fetch_time_entry(api_token, toggl_entry_id)
-            if entry is not None:
-                print(
-                    f'⚠️ 台帳のエントリ {toggl_entry_id} は CSV に無いが Toggl には存在する。'
-                    '再投入を見送る（取得窓のずれの可能性）',
-                    file=out,
-                )
-                return False
-            return True
+    intervals, before_cutover = drop_before_cutover(intervals)
+    if before_cutover:
+        print(f'⚠️ {toggl_store.CUTOVER_DATE} より前の {before_cutover} 件は 2.0 へ migrate 済みなので投入しない',
+              file=out)
 
-    pending, skipped = select_pending(intervals, ledger_df, entries_df,
-                                     check_deleted=check_deleted, fetch_window=fetch_window,
-                                     fetched_at=fetched_at, confirm_deleted=confirm_deleted)
-    pending = sorted(pending, key=lambda i: i.start)
+    pending, skipped = select_pending(intervals, ledger_df, focus_df)
 
+    project_map = None
+    if not dry_run and pending:
+        project_map = {name: pid for pid, name in focus.fetch_projects(workspace).items()}
+
+    # 引けないものは上限の枠を取らせない（先頭に居座って後ろを塞がないように）
+    unresolved = {}
+    resolvable = []
+    for interval in pending:
+        problems = _unresolved(interval, project_map, tag_map)
+        if problems:
+            unresolved[(interval.source, interval.source_id)] = problems
+        else:
+            resolvable.append(interval)
+    if unresolved:
+        names = sorted({p for problems in unresolved.values() for p in problems})
+        print(f"⚠️ 引けないため投入を見送る（{len(unresolved)}件）: {', '.join(names)}", file=out)
+
+    pending = sorted(resolvable, key=lambda i: i.start)
     to_push = pending[:max_writes]
     carried_over = pending[max_writes:]
-
-    if not to_push:
-        return {
-            'pending': pending, 'skipped': skipped, 'pushed': 0,
-            'carried_over': carried_over,
-        }
+    result = {'pending': pending, 'skipped': skipped, 'pushed': 0, 'carried_over': carried_over,
+              'unresolved': unresolved, 'before_cutover': before_cutover}
 
     if dry_run:
-        return {
-            'pending': pending, 'skipped': skipped, 'pushed': 0,
-            'carried_over': carried_over, 'to_push': to_push,
-        }
-
-    from lib.toggl import client as toggl_client
-
-    me = toggl_client.fetch_me(api_token)
-    workspace_id = me.get('default_workspace_id')
-    # me['projects'] は private プロジェクトを落とすので使わない（client.fetch_projects 参照）
-    project_map = {name: pid
-                   for pid, name in toggl_client.fetch_projects(api_token, workspace_id).items()}
-
-    # プロジェクトが Toggl 側に無いまま投入すると、project 無しのエントリが
-    # 台帳に「投入済み」として残り、後からプロジェクトを作っても直せない。
-    # 投入せず次回に回す（Toggl 側でプロジェクトを作れば自然に流れる）
-    missing = sorted({i.project for i in to_push if i.project not in project_map})
-    if missing:
-        print(f"⚠️ プロジェクトが Toggl 側に無いため投入を見送る: {', '.join(missing)}", file=out)
-        to_push = [i for i in to_push if i.project in project_map]
+        result['to_push'] = to_push
+        return result
+    if not to_push:
+        return result
 
     ledger_rows = []
     created_entries = []
-    pushed = 0
     now_str = dt.datetime.now(load_timezone()).isoformat()
 
     try:
         for interval in to_push:
-            payload = build_payload(interval, workspace_id, project_map)
-            created = toggl_client.create_time_entry(api_token, workspace_id, payload)
-            created_entries.append(created)
-
+            payload = build_payload(interval, project_map, tag_map)
+            created = focus.create_time_entry(workspace, payload)
+            created_entries.append(_created_for_csv(created, payload, interval, tag_map))
             ledger_rows.append({
                 'source': interval.source,
                 'source_id': interval.source_id,
@@ -354,21 +274,15 @@ def push_intervals(
                 'start': interval.start.isoformat(),
                 'pushed_at': now_str,
             })
-            pushed += 1
+            result['pushed'] += 1
     finally:
-        # push が作った分は time_entries.csv にも書く。ここを飛ばすと
-        # push.select_pending の削除検出が「fetch していないだけ」の行を
-        # 「Toggl 側で手動削除された」と誤読し、次回 push で再投入してしまう
-        # （Issue #130）。途中で例外が出ても、投入済みの分は台帳・CSV の
-        # 両方に必ず残す
+        # focus_entries.csv にも書く。ここを飛ばすと次の fetch-focus までの間、
+        # 照合が効かず再投入しうる
         append_ledger(ledger_rows)
-        if created_entries and not dry_run:
-            projects_by_id = {pid: name for name, pid in project_map.items()}
-            df_created = toggl_store.build_dataframe(created_entries, projects_by_id)
+        if created_entries:
+            df_created = focus.build_dataframe(created_entries,
+                                               workspace_id=int(workspace.workspace_id))
             if not df_created.empty:
-                toggl_store.save_merged(df_created)
+                focus.save_merged(df_created)
 
-    return {
-        'pending': pending, 'skipped': skipped, 'pushed': pushed,
-        'carried_over': carried_over,
-    }
+    return result
