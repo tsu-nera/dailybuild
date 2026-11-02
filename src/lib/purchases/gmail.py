@@ -14,17 +14,23 @@ Amazon の過去分は開示データ（amazon_export、data/purchases/amazon.cs
 - Amazon は1通に複数の注文がまとまることがあり、表示される注文番号は1つだけ。
   そのメールの全商品にその番号が付く（別の注文の商品が混ざる）
 - 金額は注文時点の税込み。開示データの price は確定後の値で送料も含む
+
+asin は Amazon の text/html 本文にある注文商品へのリンク（ref が `fed_asin_title`）から取り、
+品名（画像の alt か、切り詰められたリンク文字の前方一致）で行と照合する。
+1件に決まらない行・楽天の行は空（順番で対応付けない）。
 """
 
 import datetime as dt
+import html
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pandas as pd
 
 JST = dt.timezone(dt.timedelta(hours=9))
 
-COLUMNS = ['order_date', 'shop', 'order_id', 'item', 'quantity', 'price', 'message_id']
+COLUMNS = ['order_date', 'shop', 'order_id', 'asin', 'item', 'quantity', 'price', 'message_id']
 
 AMAZON_SENDER = 'auto-confirm@amazon.co.jp'
 RAKUTEN_SENDER = 'order@rakuten.co.jp'
@@ -83,6 +89,72 @@ def parse_rakuten(text: str) -> tuple[str, str, list[dict]] | None:
 
 PARSERS = {AMAZON_SENDER: parse_amazon, RAKUTEN_SENDER: parse_rakuten}
 
+# 注文商品のリンクだけが ref に fed_asin_title を持つ（おすすめ商品のリンクは持たない）。
+# 画像リンクは _i_、文字リンクは _t_。href の中の商品 URL は URL エンコードされている
+_ORDERED_ITEM_REF = 'fed_asin_title'
+_ASIN_IN_HREF = re.compile(r'dp(?:%2F|/)([A-Z0-9]{10})', re.I)
+_TRUNCATION = ('...', '…')
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r'\s+', '', html.unescape(text))
+
+
+class _OrderedItemLinks(HTMLParser):
+    """注文商品のリンクから (ASIN, 画像の alt, リンク文字) を集める"""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links: list[dict] = []
+        self._current: dict | None = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'a':
+            href = attrs.get('href') or ''
+            m = _ASIN_IN_HREF.search(href)
+            self._current = ({'asin': m[1].upper(), 'alt': '', 'text': ''}
+                             if m and _ORDERED_ITEM_REF in href else None)
+        elif tag == 'img' and self._current is not None and attrs.get('alt'):
+            self._current['alt'] = attrs['alt']
+
+    def handle_data(self, data):
+        if self._current is not None:
+            self._current['text'] += data
+
+    def handle_endtag(self, tag):
+        if tag == 'a' and self._current is not None:
+            self.links.append(self._current)
+            self._current = None
+
+
+def ordered_item_candidates(html_body: str) -> dict[str, dict[str, set[str]]]:
+    """ASIN ごとの照合用の品名。full は完全な品名（alt）、prefix は切り詰められたリンク文字"""
+    parser = _OrderedItemLinks()
+    parser.feed(html_body)
+    parser.close()
+    candidates: dict[str, dict[str, set[str]]] = {}
+    for link in parser.links:
+        entry = candidates.setdefault(link['asin'], {'full': set(), 'prefix': set()})
+        if link['alt'].strip():
+            entry['full'].add(_normalize(link['alt']))
+        text = link['text'].strip()
+        for mark in _TRUNCATION:
+            text = text.removesuffix(mark)
+        if _normalize(text):
+            entry['prefix'].add(_normalize(text))
+    return candidates
+
+
+def match_asin(item: str, candidates: dict[str, dict[str, set[str]]]) -> str:
+    """品名に対応する ASIN。完全一致を優先し、無ければ前方一致。1件に決まらなければ空"""
+    name = _normalize(item)
+    exact = [a for a, c in candidates.items() if name in c['full']]
+    if exact:
+        return exact[0] if len(exact) == 1 else ''
+    prefix = [a for a, c in candidates.items() if any(name.startswith(p) for p in c['prefix'])]
+    return prefix[0] if len(prefix) == 1 else ''
+
 
 def search_query(since: dt.datetime) -> str:
     """allowlist の送信元に絞った Gmail 検索式（after は epoch 秒で tz の曖昧さを避ける）"""
@@ -98,9 +170,13 @@ def sender_address(headers: list[dict]) -> str:
     return ''
 
 
-def to_rows(message: dict, text: str) -> list[dict] | None:
-    """1通を行に変換する。対象外の送信元・書式が合わないメールは None"""
-    parser = PARSERS.get(sender_address(message['payload'].get('headers', [])))
+def to_rows(message: dict, text: str, html_body: str = '') -> list[dict] | None:
+    """1通を行に変換する。対象外の送信元・書式が合わないメールは None
+
+    html_body は Amazon の asin を取るためだけに使う。無ければ asin は空。
+    """
+    sender = sender_address(message['payload'].get('headers', []))
+    parser = PARSERS.get(sender)
     if parser is None:
         return None
     parsed = parser(text)
@@ -109,7 +185,10 @@ def to_rows(message: dict, text: str) -> list[dict] | None:
     shop, order_id, items = parsed
     received = dt.datetime.fromtimestamp(int(message['internalDate']) / 1000, JST)
     order_date = received.isoformat(timespec='seconds')
+    candidates = (ordered_item_candidates(html_body)
+                  if sender == AMAZON_SENDER and html_body else {})
     return [{'order_date': order_date, 'shop': shop, 'order_id': order_id,
+             'asin': match_asin(item['item'], candidates) if candidates else '',
              **item, 'message_id': message['id']} for item in items]
 
 
@@ -129,7 +208,11 @@ def catchup_start(csv_path: Path) -> dt.date | None:
 def load(csv_path: Path) -> pd.DataFrame:
     if not csv_path.exists():
         return pd.DataFrame(columns=COLUMNS)
-    return pd.read_csv(csv_path, dtype=str)
+    df = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+    for column in COLUMNS:
+        if column not in df.columns:
+            df[column] = ''  # asin 列より前に書いた CSV
+    return df[COLUMNS]
 
 
 def merge(csv_path: Path, rows: list[dict]) -> pd.DataFrame:
