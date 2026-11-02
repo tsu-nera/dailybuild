@@ -20,6 +20,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 class SourcePaths:
     toggl_entries: Path
     toggl_pushed: Path
+    toggl_focus_entries: Path
+    toggl_focus_pushed: Path
     exercise: Path
     sleep: Path
     habitica_history: Path
@@ -31,6 +33,8 @@ class SourcePaths:
         return cls(
             toggl_entries=data / 'toggl' / 'time_entries.csv',
             toggl_pushed=data / 'toggl' / 'pushed.csv',
+            toggl_focus_entries=data / 'toggl' / 'focus_entries.csv',
+            toggl_focus_pushed=data / 'toggl' / 'focus_pushed.csv',
             exercise=data / 'googlehealth' / 'exercise.csv',
             sleep=data / 'wearable' / 'sleep.csv',
             habitica_history=data / 'habitica' / 'history.csv',
@@ -41,7 +45,9 @@ class SourcePaths:
 def collect(paths: SourcePaths) -> dict[str, list[dict]]:
     """期待するソース名 → イベントのリスト。キーの集合が「期待するソース」"""
     return {
-        'toggl': sources.toggl_events(paths.toggl_entries, paths.toggl_pushed),
+        'toggl': sources.toggl_events(
+            paths.toggl_entries, paths.toggl_pushed,
+            paths.toggl_focus_entries, paths.toggl_focus_pushed),
         'googlehealth_exercise': sources.exercise_events(paths.exercise),
         'wearable_sleep': sources.sleep_events(paths.sleep),
         'habitica': sources.habitica_events(paths.habitica_history),

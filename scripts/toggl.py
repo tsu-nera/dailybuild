@@ -1,39 +1,39 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Toggl Track CLI（fetch / show / push / start / stop）
+Toggl CLI（fetch-focus / show / push / start / stop / fetch）
 
-Toggl Track API v9 からタイムエントリを取得して CSV に蓄積する fetch と、
-data/toggl/time_entries.csv（dailybuild-private への symlink）を読んで
-markdown サマリを出す show をまとめたスクリプト。
+2026-10-27 で Track を凍結し、書き込み（push / start / stop）と日次の取得は
+Toggl 2.0（Focus）に移した。fetch は Track のアーカイブ（time_entries.csv）を
+取り直すための手段として残してあり、日次には入っていない。
+show は区切り日（lib.toggl.store.CUTOVER_DATE）の前を time_entries.csv、
+以降を focus_entries.csv から連結して表示する。
 
 Usage:
-    python scripts/toggl.py fetch --update      # CSV の続きから今日まで
-    python scripts/toggl.py fetch --days 7
-    python scripts/toggl.py fetch --start-date 2026-08-01 --end-date 2026-08-18
-    python scripts/toggl.py fetch-focus --days 2      # Toggl 2.0 → focus_entries.csv
+    python scripts/toggl.py fetch-focus --update      # Toggl 2.0 → focus_entries.csv（続きから今日まで）
+    python scripts/toggl.py fetch-focus --days 2
+    python scripts/toggl.py fetch --days 7            # Track アーカイブの取り直し（凍結済み）
 
     python scripts/toggl.py show --days 7             # 日次（直近7日）
-    python scripts/toggl.py show --update             # 取得してから表示
+    python scripts/toggl.py show --update             # fetch-focus してから表示
     python scripts/toggl.py show --list               # 時系列のエントリ一覧
     python scripts/toggl.py show --unit week --days 56  # 週次
     python scripts/toggl.py show --week current
     python scripts/toggl.py show --month 8
 
     python scripts/toggl.py push --days 2 --dry-run   # 投入予定を確認（APIを叩かない）
-    python scripts/toggl.py push --days 2             # Google Health睡眠をTogglへ投入
-    python scripts/toggl.py push --since 2026-08-01   # 過去分の一括投入
+    python scripts/toggl.py push --days 2             # Google Health睡眠・運動を 2.0 へ投入
+    python scripts/toggl.py push --since 2026-10-27   # 区切り日以降の一括投入
 
     python scripts/toggl.py start 読書                # プロジェクトを指定して計測開始
-    python scripts/toggl.py start 読書 -d "SICP" -t deep
+    python scripts/toggl.py start 読書 -d "SICP" -t deep   # タグは focus_tags.json から引く
     python scripts/toggl.py stop                      # 計測中のエントリを停止
     python scripts/toggl.py current                   # 計測中のエントリを表示
     python scripts/toggl.py projects                  # プロジェクト名の一覧（キャッシュ）
-    python scripts/toggl.py open                      # Toggl の Web 画面を開く
-    python scripts/toggl.py open projects             # プロジェクト管理画面
+    python scripts/toggl.py open                      # Toggl 2.0 の Web 画面を開く
 
-show は既定では API を一切叩かないので fetch のレートリミット枠
-（/me/* 共通 30 req/h）を消費しない。push の書き込みも同じ枠を消費する前提で扱う。
+show は既定では API を一切叩かない。push の書き込みも 2.0 のレート制限
+（30 req/h と仮定）を消費する。
 """
 
 import argparse
@@ -45,8 +45,6 @@ from pathlib import Path
 from typing import IO
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
-
-import pandas as pd
 
 from lib.toggl import client as toggl_client
 from lib.toggl import focus as toggl_focus
@@ -95,7 +93,7 @@ def resolve_period(args, out: IO[str], csv_path: Path | None = None) -> tuple[dt
 
 
 def run_fetch(args, out: IO[str]) -> None:
-    """fetch サブコマンドの処理本体。進捗はすべて out に出す"""
+    """fetch（Track アーカイブ）の処理本体。進捗はすべて out に出す"""
     # toggl_client がクォータ残量を logger.info で出す。設定しないと握り潰される
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=out)
 
@@ -107,10 +105,6 @@ def run_fetch(args, out: IO[str]) -> None:
     tz = toggl_push.load_timezone()
     entries = toggl_client.fetch_time_entries(api_token, start, end, tz)
     projects = toggl_client.fetch_projects(api_token)
-
-    # 取得できた時点で窓を記録する。0件でも「その期間は取りに行った」は事実で、
-    # push の削除検出はこの記録だけを根拠にする（CSV の min/max では代用不可）
-    store.save_fetch_window(start, end)
 
     df_new = store.build_dataframe(entries, projects)
 
@@ -129,7 +123,7 @@ def run_fetch(args, out: IO[str]) -> None:
 
 
 def fetch_args_for_update() -> argparse.Namespace:
-    """show --update から呼ぶ fetch --update 相当の引数
+    """show --update から呼ぶ fetch-focus --update 相当の引数
 
     days は CSV が空のときのフォールバックにしか使われない（fetch の既定値と揃える）
     """
@@ -153,8 +147,12 @@ def load_focus_env(out: IO[str]) -> tuple[str, str, str]:
         sys.exit(1)
 
 
+def load_workspace(out: IO[str]) -> toggl_focus.Workspace:
+    return toggl_focus.Workspace(*load_focus_env(out))
+
+
 def run_fetch_focus(args, out: IO[str]) -> None:
-    """fetch-focus の処理本体。push・fetch_state.json は Track 専用なので触れない"""
+    """fetch-focus の処理本体。取得したエントリのタグ（名前 → ID）も focus_tags.json に貯める"""
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=out)
 
     api_token, organization_id, workspace_id = load_focus_env(out)
@@ -163,6 +161,8 @@ def run_fetch_focus(args, out: IO[str]) -> None:
     print(f"Toggl 2.0 タイムエントリ取得: {start} ～ {end}", file=out)
 
     entries = toggl_focus.fetch_time_entries(api_token, organization_id, workspace_id, start, end)
+    # push・start がタグ名から ID を引くための対応。0件の窓でも既存の対応は縮めない
+    toggl_focus.save_tags(toggl_focus.collect_tags(entries))
     df_new = toggl_focus.build_dataframe(entries, workspace_id=int(workspace_id))
 
     if df_new.empty:
@@ -187,10 +187,10 @@ def cmd_show(args) -> None:
     if args.update:
         # show の parser は fetch のオプションを持たないため、fetch 相当の引数を組み立てる。
         # 取得ログは stderr に寄せて stdout を markdown 専用に保つ
-        run_fetch(fetch_args_for_update(), sys.stderr)
+        run_fetch_focus(fetch_args_for_update(), sys.stderr)
 
-    if not store.CSV_FILE.exists():
-        print(f"エラー: {store.CSV_FILE} が存在しません", file=sys.stderr)
+    if not store.CSV_FILE.exists() and not store.FOCUS_CSV_FILE.exists():
+        print(f"エラー: {store.CSV_FILE} も {store.FOCUS_CSV_FILE} も存在しません", file=sys.stderr)
         sys.exit(1)
 
     week, month, year = parse_period_args(args)
@@ -239,18 +239,6 @@ def cmd_show(args) -> None:
     print(render.render_project_totals(df))
 
 
-def load_entries_df_for_push() -> pd.DataFrame | None:
-    """push の冪等性判定・鮮度チェック用に time_entries.csv を読む
-
-    show 用の store.load_entries() と違い、CSV が無くても例外にせず None を返す
-    （push は fetch 失敗時でも台帳のみで判定を続ける必要があるため）。
-    id は精度保持のため str のまま読む。
-    """
-    if not store.CSV_FILE.exists():
-        return None
-    return pd.read_csv(store.CSV_FILE, usecols=['id', 'start'], dtype={'id': str}, parse_dates=['start'])
-
-
 PUSH_DEFAULT_DAYS = 2
 
 
@@ -274,7 +262,7 @@ def run_push(args, out: IO[str]) -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=out)
 
     since, until = resolve_push_period(args)
-    print(f"Toggl push 対象期間: {since} ～ {until}", file=out)
+    print(f"Toggl 2.0 push 対象期間: {since} ～ {until}", file=out)
 
     config = toggl_push.load_push_config()
     tz = toggl_push.load_timezone()
@@ -290,42 +278,31 @@ def run_push(args, out: IO[str]) -> None:
         print("⚠️ 投入対象のソースデータが0件。取得が壊れている可能性がある", file=out)
         return
 
-    entries_df = load_entries_df_for_push()
-    today = dt.date.today()
-    stale = toggl_push.is_entries_csv_stale(entries_df, today)
-    if stale:
-        print("⚠️ time_entries.csv が無いか古い（前日より前）。"
-              "台帳のみで判定し、Toggl側の手動削除は検出しない", file=out)
-
-    fetch_window = store.load_fetch_window()
-    fetched_at = store.load_fetched_at()
-    if not stale and fetch_window is None:
-        print("⚠️ 直近 fetch の期間記録が無い（fetch_state.json 未生成）。"
-              "Toggl側の手動削除は検出しない。fetch を一度回せば記録される", file=out)
-    elif not stale and fetch_window[0] > since - dt.timedelta(days=1):
-        # 睡眠エントリの start は対象日の前日夜に来る。fetch 窓がそこまで
-        # 遡っていないと「未取得」を「削除された」と誤読しうるので検出を諦める
-        print(f"⚠️ 直近 fetch の期間 {fetch_window[0]}〜{fetch_window[1]} が "
-              f"push 対象期間 {since}〜{until} の前日をカバーしていない。"
-              "その範囲の手動削除は検出しない", file=out)
+    focus_df = toggl_push.load_focus_entries_for_match()
+    if focus_df is None or focus_df.empty:
+        print("⚠️ focus_entries.csv が無いか空。台帳だけで判定するので、"
+              "migrate 済み・手入力のエントリと二重になりうる。fetch-focus を先に回す", file=out)
+    else:
+        earliest = focus_df['start'].min().date()
+        from_date = max(since, store.CUTOVER_DATE)
+        if earliest > from_date:
+            print(f"⚠️ focus_entries.csv が {earliest} から始まっていて、投入対象の開始 {from_date} を"
+                  "覆っていない。その範囲の照合ができないので fetch-focus --start-date で取り直す", file=out)
 
     ledger_df = toggl_push.load_ledger()
 
-    api_token = None
+    workspace = None
     if not args.dry_run:
-        api_token = load_api_token(out)
+        workspace = load_workspace(out)
 
     result = toggl_push.push_intervals(
         intervals=intervals,
         ledger_df=ledger_df,
-        entries_df=entries_df,
+        focus_df=focus_df,
         max_writes=args.max_writes,
         dry_run=args.dry_run,
-        api_token=api_token,
+        workspace=workspace,
         out=out,
-        check_deleted=not stale,
-        fetch_window=fetch_window,
-        fetched_at=fetched_at,
     )
 
     pending = result['pending']
@@ -356,26 +333,18 @@ def run_push(args, out: IO[str]) -> None:
         print(f"⚠️ 上限 {args.max_writes} 件に達した。残り {len(carried_over)} 件を次回に繰り越し", file=out)
 
 
-def load_projects_for_timer(api_token: str, out: IO[str],
-                            refresh: bool = False) -> tuple[int, dict[int, str], bool]:
-    """(workspace_id, {project_id: name}, キャッシュ由来か)
-
-    キャッシュがあればAPIを叩かない。取り直すと /me と /projects で2リクエスト
-    使い、fetch と同じ 30req/h の枠を削る。
-    """
+def load_projects_for_timer(workspace: toggl_focus.Workspace, out: IO[str],
+                            refresh: bool = False) -> tuple[dict[int, str], bool]:
+    """({project_id: name}, キャッシュ由来か)。キャッシュがあれば API を叩かない"""
     if not refresh:
         cached = toggl_timer.load_project_cache()
         if cached is not None:
-            return cached[0], cached[1], True
+            return cached[1], True
 
-    workspace_id = toggl_client.fetch_me(api_token).get('default_workspace_id')
-    # archive 済みには時間を記録できないので候補に出さない（部分一致のノイズになる）。
-    # 過去エントリの名前解決が要る fetch/push 側は全件のまま
-    projects = toggl_client.fetch_projects(api_token, workspace_id, active_only=True)
-    toggl_timer.save_project_cache(workspace_id, projects)
-    print(f"プロジェクト一覧を更新: {len(projects)}件（archive 済みを除く） "
-          f"({toggl_timer.PROJECTS_CACHE_FILE})", file=out)
-    return workspace_id, projects, False
+    projects = toggl_focus.fetch_projects(workspace)
+    toggl_timer.save_project_cache(int(workspace.workspace_id), projects)
+    print(f"プロジェクト一覧を更新: {len(projects)}件 ({toggl_timer.PROJECTS_CACHE_FILE})", file=out)
+    return projects, False
 
 
 def parse_tags(value: str | None) -> tuple[str, ...]:
@@ -388,10 +357,15 @@ def cmd_start(args) -> None:
     # 進捗・クォータ残量は stderr。stdout には結果の1行だけを出す
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
-    api_token = load_api_token(sys.stderr)
+    try:
+        tag_ids = toggl_timer.resolve_tags(parse_tags(args.tags), toggl_focus.load_tags())
+    except toggl_timer.TagResolutionError as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    workspace_id, projects, from_cache = load_projects_for_timer(
-        api_token, sys.stderr, refresh=args.refresh_projects)
+    workspace = load_workspace(sys.stderr)
+
+    projects, from_cache = load_projects_for_timer(workspace, sys.stderr, refresh=args.refresh_projects)
     try:
         project_id, project_name = toggl_timer.resolve_project(args.project, projects)
     except toggl_timer.ProjectResolutionError as e:
@@ -401,39 +375,36 @@ def cmd_start(args) -> None:
             print(f"エラー: {e}", file=sys.stderr)
             sys.exit(1)
         print(f"{e}。プロジェクト一覧を取り直す", file=sys.stderr)
-        workspace_id, projects, _ = load_projects_for_timer(api_token, sys.stderr, refresh=True)
+        projects, _ = load_projects_for_timer(workspace, sys.stderr, refresh=True)
         try:
             project_id, project_name = toggl_timer.resolve_project(args.project, projects)
         except toggl_timer.ProjectResolutionError as e2:
             print(f"エラー: {e2}", file=sys.stderr)
             sys.exit(1)
 
-    start = dt.datetime.now(store.JST)
     payload = toggl_timer.build_start_payload(
-        workspace_id=workspace_id,
         project_id=project_id,
         description=args.description or project_name,
-        tags=parse_tags(args.tags),
-        start=start,
+        tag_ids=tag_ids,
     )
+    now = dt.datetime.now(store.JST)
 
     if args.dry_run:
         print(f"[dry-run] 計測開始しない: [{project_name}] {payload['description']} "
-              f"tags={payload['tags']} at {start.strftime('%H:%M:%S')}")
+              f"tags={list(parse_tags(args.tags))} at {now.strftime('%H:%M:%S')}")
         return
 
-    # 既に計測中のエントリがあれば Toggl 側が自動で停止する（こちらでは叩かない）
-    created = toggl_client.start_time_entry(api_token, workspace_id, payload)
-    print(f"計測開始 {start.strftime('%H:%M:%S')}: [{project_name}] "
+    created = toggl_focus.start_tracking(workspace, payload)
+    print(f"計測開始 {now.strftime('%H:%M:%S')}: [{project_name}] "
           f"{payload['description']} (id={created.get('id')})")
 
 
 def cmd_stop(args) -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
-    api_token = load_api_token(sys.stderr)
+    workspace = load_workspace(sys.stderr)
 
-    entry = toggl_client.fetch_current_entry(api_token)
+    entry = toggl_focus.fetch_current(workspace)
     if entry is None:
         print('計測中のエントリは無い', file=sys.stderr)
         sys.exit(1)
@@ -446,7 +417,7 @@ def cmd_stop(args) -> None:
         print(f"[dry-run] 停止しない: {toggl_timer.describe_entry(entry, projects, now)}")
         return
 
-    stopped = toggl_client.stop_time_entry(api_token, entry['workspace_id'], entry['id'])
+    stopped = toggl_focus.stop_tracking(workspace, now)
     duration = stopped.get('duration') or toggl_timer.elapsed_seconds(entry, now)
     project = toggl_timer.describe_project(entry.get('project_id'), projects)
     print(f"計測停止 {dt.datetime.now(store.JST).strftime('%H:%M:%S')}: "
@@ -457,9 +428,7 @@ def cmd_stop(args) -> None:
 def cmd_current(args) -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
 
-    api_token = load_api_token(sys.stderr)
-
-    entry = toggl_client.fetch_current_entry(api_token)
+    entry = toggl_focus.fetch_current(load_workspace(sys.stderr))
     if entry is None:
         print('計測中のエントリは無い')
         return
@@ -475,8 +444,7 @@ def cmd_projects(args) -> None:
 
     cached = toggl_timer.load_project_cache()
     if args.refresh or cached is None:
-        api_token = load_api_token(sys.stderr)
-        _, projects, _ = load_projects_for_timer(api_token, sys.stderr, refresh=True)
+        projects, _ = load_projects_for_timer(load_workspace(sys.stderr), sys.stderr, refresh=True)
     else:
         projects = cached[1]
 
@@ -485,8 +453,8 @@ def cmd_projects(args) -> None:
 
 
 def cmd_open(args) -> None:
-    """Toggl の Web 画面を既定ブラウザで開く（API は叩かないのでクォータ消費なし）"""
-    url = toggl_timer.WEB_URLS[args.target]
+    """Toggl 2.0 の Web 画面を既定ブラウザで開く（API は叩かないのでクォータ消費なし）"""
+    url = toggl_timer.WEB_URL
     if args.print_url:
         print(url)
         return
@@ -498,10 +466,10 @@ def cmd_open(args) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='Toggl Track CLI（fetch / show / push / start / stop）')
+    parser = argparse.ArgumentParser(description='Toggl CLI（fetch-focus / show / push / start / stop）')
     subparsers = parser.add_subparsers(dest='command', required=True)
 
-    fetch_parser = subparsers.add_parser('fetch', help='Toggl Trackタイムエントリ取得')
+    fetch_parser = subparsers.add_parser('fetch', help='Toggl Track タイムエントリ取得（凍結済みアーカイブの取り直し）')
     fetch_parser.add_argument(
         '--update', action='store_true',
         help=f'CSV の最終エントリの{UPDATE_OVERLAP_DAYS}日前から今日まで取得（既存データが無ければ --days）')
@@ -534,10 +502,10 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument('--list', action='store_true',
                               help='集計せずエントリを時系列で一覧表示する')
     show_parser.add_argument('--update', action='store_true',
-                              help='表示前に fetch --update で最新データを取得する')
+                              help='表示前に fetch-focus --update で最新データを取得する')
     show_parser.set_defaults(func=cmd_show)
 
-    push_parser = subparsers.add_parser('push', help='Google Health睡眠等をTogglタイムエントリとして投入')
+    push_parser = subparsers.add_parser('push', help='Google Health睡眠等を Toggl 2.0 のタイムエントリとして投入')
     push_parser.add_argument('--days', type=int, default=None,
                               help=f'対象日数（今日から遡る。既定 {PUSH_DEFAULT_DAYS}）')
     push_parser.add_argument('--since', type=str, default=None,
@@ -570,13 +538,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     projects_parser = subparsers.add_parser('projects', help='プロジェクト名の一覧を表示')
     projects_parser.add_argument('--refresh', action='store_true',
-                                 help='APIから取り直す（クォータを2消費する）')
+                                 help='APIから取り直す')
     projects_parser.set_defaults(func=cmd_projects, parser=projects_parser)
 
-    open_parser = subparsers.add_parser('open', help='Toggl の Web 画面をブラウザで開く')
-    open_parser.add_argument('target', nargs='?', default='timer',
-                             choices=sorted(toggl_timer.WEB_URLS),
-                             help='開く画面（既定: timer）')
+    open_parser = subparsers.add_parser('open', help='Toggl 2.0 の Web 画面をブラウザで開く')
     open_parser.add_argument('--print', dest='print_url', action='store_true',
                              help='開かずに URL を出力する')
     open_parser.set_defaults(func=cmd_open, parser=open_parser)

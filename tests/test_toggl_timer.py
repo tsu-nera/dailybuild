@@ -34,21 +34,27 @@ def test_resolve_unknown_raises():
         timer.resolve_project('存在しない', PROJECTS)
 
 
-def test_build_start_payload_is_running_entry():
-    start = dt.datetime(2026, 8, 25, 10, 0, tzinfo=dt.timezone.utc)
-    payload = timer.build_start_payload(9, 1, '読書', ('deep',), start)
-    # duration が負値のときだけ計測中になる。stop を含めてはいけない
-    assert payload['duration'] == -1
-    assert 'stop' not in payload
-    assert payload['project_id'] == 1
-    assert payload['workspace_id'] == 9
-    assert payload['tags'] == ['deep']
+def test_build_start_payload_uses_type_and_tag_ids():
+    payload = timer.build_start_payload(1, '読書', [908186])
+    # type: "activity" が無いと 400。タグは tag_ids でしか付かない
+    assert payload == {'type': 'activity', 'description': '読書',
+                       'project_id': 1, 'tag_ids': [908186]}
+    assert 'tags' not in payload and 'start' not in payload
 
 
-def test_build_start_payload_without_project():
-    start = dt.datetime(2026, 8, 25, 10, 0, tzinfo=dt.timezone.utc)
-    payload = timer.build_start_payload(9, None, 'メモ', (), start)
-    assert 'project_id' not in payload
+def test_build_start_payload_without_project_or_tags():
+    payload = timer.build_start_payload(None, 'メモ', [])
+    assert 'project_id' not in payload and 'tag_ids' not in payload
+
+
+def test_resolve_tags_maps_names_to_ids():
+    assert timer.resolve_tags(('auto', 'deep'), {'auto': 1, 'deep': 2}) == [1, 2]
+
+
+def test_resolve_tags_unknown_lists_known_names():
+    with pytest.raises(timer.TagResolutionError) as e:
+        timer.resolve_tags(('nope',), {'auto': 1, 'deep': 2})
+    assert 'nope' in str(e.value) and 'auto' in str(e.value) and 'deep' in str(e.value)
 
 
 def test_project_cache_roundtrip(tmp_path, monkeypatch):
@@ -74,6 +80,13 @@ def test_elapsed_and_format():
 def test_elapsed_accepts_z_suffix():
     now = dt.datetime(2026, 8, 25, 10, 30, tzinfo=dt.timezone.utc)
     assert timer.elapsed_seconds({'start': '2026-08-25T10:00:00Z'}, now) == 1800
+
+
+def test_describe_entry_accepts_tag_objects():
+    now = dt.datetime(2026, 8, 25, 10, 30, tzinfo=dt.timezone.utc)
+    entry = {'start': '2026-08-25T10:00:00Z', 'project_id': 1, 'description': 'x',
+             'tags': [{'id': 1, 'name': 'deep'}]}
+    assert timer.describe_entry(entry, PROJECTS, now) == '[読書] x [deep] (0h30m00s 経過)'
 
 
 def test_describe_project_unknown_id_is_not_no_project():

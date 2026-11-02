@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from lib import exercise_source, gcalendar
+from lib.toggl import store as toggl_store
 
 JST = dt.timezone(dt.timedelta(hours=9))
 
@@ -63,20 +64,7 @@ def _event(start, end, source, kind, name, attrs) -> dict:
     }
 
 
-def toggl_events(entries_csv: Path, pushed_csv: Path) -> list[dict]:
-    """Toggl のタイムエントリ。toggl push で投入したもの（睡眠・運動）は落とす
-
-    push 由来のエントリは元ソース（exercise / sleep）側の行を採るので、
-    残すと同じ活動が2行になる。
-    """
-    if not entries_csv.exists():
-        return []
-    df = pd.read_csv(entries_csv, dtype={'id': str, 'project_id': str})
-    if pushed_csv.exists():
-        pushed = pd.read_csv(pushed_csv, dtype={'toggl_entry_id': str})
-        pushed_ids = set(pushed['toggl_entry_id'].dropna())
-        df = df[~df['id'].isin(pushed_ids)]
-
+def _toggl_rows(df: pd.DataFrame) -> list[dict]:
     return [
         _event(row['start'], row['stop'], 'toggl', 'time_entry', row['project_name'], {
             'id': row['id'],
@@ -86,6 +74,39 @@ def toggl_events(entries_csv: Path, pushed_csv: Path) -> list[dict]:
         })
         for row in df.to_dict('records')
     ]
+
+
+def _read_toggl(csv: Path, side: str, pushed_csv: Path) -> pd.DataFrame | None:
+    """区切り日の片側の行から、push 由来（台帳の ID）を落とす。CSV が無ければ None"""
+    if not csv.exists():
+        return None
+    df = toggl_store.split_at_cutover(
+        pd.read_csv(csv, dtype={'id': str, 'project_id': str}), side)
+    if pushed_csv.exists():
+        pushed = pd.read_csv(pushed_csv, dtype={'toggl_entry_id': str})
+        df = df[~df['id'].isin(set(pushed['toggl_entry_id'].dropna()))]
+    return df
+
+
+def toggl_events(entries_csv: Path, pushed_csv: Path,
+                 focus_csv: Path, focus_pushed_csv: Path) -> list[dict]:
+    """Toggl のタイムエントリ。区切り日（store.CUTOVER_DATE）の前は Track、以降は Focus
+
+    移行済み期間は両ファイルに別 ID で入っているので、区切りで切って二重を防ぐ。
+    toggl push で投入したもの（睡眠・運動）は落とす。元ソース（exercise / sleep）側の行を
+    採るので、残すと同じ活動が2行になる。Track は pushed.csv、Focus は focus_pushed.csv の
+    ID に加えて auto タグで落とす（migrate でコピーされた auto は台帳に居ない）。
+    """
+    events = []
+    track = _read_toggl(entries_csv, 'before', pushed_csv)
+    if track is not None:
+        events += _toggl_rows(track)
+    focus = _read_toggl(focus_csv, 'after', focus_pushed_csv)
+    if focus is not None:
+        tags = focus['tags'].fillna('').astype(str).str.split(',')
+        focus = focus[~tags.apply(lambda names: 'auto' in names)]
+        events += _toggl_rows(focus)
+    return events
 
 
 def exercise_events(exercise_csv: Path) -> list[dict]:

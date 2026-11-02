@@ -128,3 +128,101 @@ def test_save_merged_replaces_only_inside_window(tmp_path):
 
     assert sorted(df['id'].tolist()) == [1, 3]
     assert sorted(pd.read_csv(csv)['id'].tolist()) == [1, 3]
+
+
+# --- 書き込み系（実測した API の形。ネットワークは叩かない） ---
+
+WS = focus.Workspace('tok', 'org', '42')
+
+
+def test_fetch_projects_pages_until_short_page(monkeypatch):
+    calls = []
+    pages = [[{'id': i, 'name': f'p{i}'} for i in range(focus.PAGE_SIZE)],
+             [{'id': 1000, 'name': 'last'}]]
+
+    def fake_get(api_token, path, params):
+        calls.append((path, dict(params)))
+        return FakeResponse(pages[params['page'] - 1])
+
+    monkeypatch.setattr(focus, '_get', fake_get)
+
+    projects = focus.fetch_projects(WS)
+
+    assert len(projects) == focus.PAGE_SIZE + 1 and projects[1000] == 'last'
+    assert [c[0] for c in calls] == ['/organizations/org/workspaces/42/projects'] * 2
+    assert all(c[1]['per_page'] == 100 for c in calls)
+
+
+def test_create_start_stop_use_measured_endpoints(monkeypatch):
+    posted = []
+
+    def fake_post(api_token, path, body):
+        posted.append((path, body))
+        return FakeResponse({'id': 7})
+
+    monkeypatch.setattr(focus, '_post', fake_post)
+
+    focus.create_time_entry(WS, {'type': 'activity'})
+    focus.start_tracking(WS, {'type': 'activity'})
+    jst = dt.timezone(dt.timedelta(hours=9))
+    focus.stop_tracking(WS, dt.datetime(2026, 11, 2, 19, 0, 5, 999, tzinfo=jst))
+
+    base = '/organizations/org/workspaces/42'
+    assert [p for p, _ in posted] == [f'{base}/time-entries', f'{base}/tracking/start',
+                                       f'{base}/tracking/stop']
+    # 終了時刻は UTC の RFC3339、秒未満なし
+    assert posted[2][1] == {'end': '2026-11-02T10:00:05Z'}
+
+
+def test_fetch_current_returns_none_on_204(monkeypatch):
+    class NoContent:
+        status_code = 204
+
+        def json(self):
+            raise ValueError('no body')
+
+    monkeypatch.setattr(focus, '_get', lambda *a, **k: NoContent())
+    assert focus.fetch_current(WS) is None
+
+
+def test_fetch_current_returns_entry(monkeypatch):
+    class Ok:
+        status_code = 200
+
+        def json(self):
+            return {'id': 5}
+
+    monkeypatch.setattr(focus, '_get', lambda *a, **k: Ok())
+    assert focus.fetch_current(WS) == {'id': 5}
+
+
+def test_tags_are_collected_and_never_shrink(tmp_path, monkeypatch):
+    monkeypatch.setattr(focus, 'TAGS_FILE', tmp_path / 'focus_tags.json')
+    found = focus.collect_tags([_entry(1, '2026-10-28T00:00:00Z'),
+                                _entry(2, '2026-10-28T01:00:00Z', tags=[])])
+    assert found == {'deep': 1, 'book': 2}
+
+    focus.save_tags(found)
+    # 取得窓にタグが出なかった回でも既存の対応は失わない
+    focus.save_tags({})
+    focus.save_tags({'auto': 908186})
+
+    assert focus.load_tags() == {'deep': 1, 'book': 2, 'auto': 908186}
+
+
+def test_load_tags_broken_file_is_empty(tmp_path, monkeypatch):
+    path = tmp_path / 'focus_tags.json'
+    path.write_text('{ broken', encoding='utf-8')
+    monkeypatch.setattr(focus, 'TAGS_FILE', path)
+    assert focus.load_tags() == {}
+
+
+def test_save_merged_without_window_only_appends(tmp_path):
+    csv = tmp_path / 'focus_entries.csv'
+    focus.save_merged(focus.build_dataframe([_entry(1, '2026-10-28T00:00:00Z')], workspace_id=42),
+                      (dt.date(2026, 10, 28), dt.date(2026, 10, 28)), csv_path=csv)
+
+    focus.save_merged(focus.build_dataframe([_entry(2, '2026-10-28T01:00:00Z')], workspace_id=42),
+                      csv_path=csv)
+
+    assert sorted(pd.read_csv(csv)['id'].tolist()) == [1, 2]
