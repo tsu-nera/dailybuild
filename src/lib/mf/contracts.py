@@ -20,7 +20,6 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from lib.mf import render
 from lib.mf.store import COL_AMOUNT, COL_CATEGORY, COL_NAME, COL_SUBCATEGORY
 from lib.utils.private_data import require_private_path
 
@@ -67,9 +66,19 @@ class Contract:
     billing: str = 'fixed'
     currency: str = 'JPY'
     payment: str | None = None
-    mf_match: str | None = None
+    # 文字列か、文字列のタプル（MF の「内容」は同じ店でも年によって表記が揺れる）
+    mf_match: str | tuple[str, ...] | None = None
     cancel_url: str | None = None
     ended: dt.date | None = None
+
+    @property
+    def patterns(self) -> tuple[str, ...]:
+        """mf_match をタプルで。無ければ空"""
+        if not self.mf_match:
+            return ()
+        if isinstance(self.mf_match, str):
+            return (self.mf_match,)
+        return tuple(self.mf_match)
 
 
 # ---- 日付計算 ----
@@ -189,10 +198,20 @@ def _parse_contract(index: int, raw) -> Contract:
         raise ContractError(
             f"{label}: 従量の実績は MF の円建てなので currency は JPY: {currency!r}")
 
-    for key in ('payment', 'mf_match', 'cancel_url'):
+    for key in ('payment', 'cancel_url'):
         value = raw.get(key)
         if value is not None and (not isinstance(value, str) or not value):
             raise ContractError(f"{label}: {key} は空でない文字列: {value!r}")
+
+    mf_match = raw.get('mf_match')
+    if isinstance(mf_match, list):
+        if not mf_match or not all(isinstance(m, str) and m for m in mf_match):
+            raise ContractError(
+                f"{label}: mf_match のリストは空でない文字列の並び: {mf_match!r}")
+        mf_match = tuple(mf_match)
+    elif mf_match is not None and (not isinstance(mf_match, str) or not mf_match):
+        raise ContractError(
+            f"{label}: mf_match は空でない文字列か、そのリスト: {mf_match!r}")
 
     ended = raw.get('ended')
     return Contract(
@@ -204,7 +223,7 @@ def _parse_contract(index: int, raw) -> Contract:
         billing=billing,
         currency=currency,
         payment=raw.get('payment'),
-        mf_match=raw.get('mf_match'),
+        mf_match=mf_match,
         cancel_url=raw.get('cancel_url'),
         ended=None if ended is None else _to_date(ended, label, 'ended'),
     )
@@ -264,7 +283,7 @@ class MeteredActual:
 def metered_actual(c: Contract, entries: pd.DataFrame, today: dt.date,
                    months: int = METERED_MONTHS) -> MeteredActual | None:
     """従量の契約の直近 months ヶ月の実績。一致する明細が無ければ None"""
-    hits = _matching(_window(_expenses(entries), today, months), c.mf_match)
+    hits = _matching(_window(_expenses(entries), today, months), c.patterns)
     if hits.empty:
         return None
     amounts = hits[COL_AMOUNT].abs()
@@ -314,11 +333,18 @@ def _window(expenses: pd.DataFrame, today: dt.date, months: int) -> pd.DataFrame
                     & (expenses['date'] <= pd.Timestamp(today))]
 
 
-def _matching(expenses: pd.DataFrame, mf_match: str) -> pd.DataFrame:
+def _name_mask(names: pd.Series, patterns: tuple[str, ...]) -> pd.Series:
+    """patterns のどれかを部分一致で含む行"""
+    mask = pd.Series(False, index=names.index)
+    for p in patterns:
+        mask |= names.str.contains(p, regex=False)
+    return mask
+
+
+def _matching(expenses: pd.DataFrame, patterns: tuple[str, ...]) -> pd.DataFrame:
     if expenses.empty:
         return expenses
-    mask = expenses[COL_NAME].astype(str).str.contains(mf_match, regex=False)
-    return expenses[mask]
+    return expenses[_name_mask(expenses[COL_NAME].astype(str), patterns)]
 
 
 def find_missing_charges(contracts: list[Contract], entries: pd.DataFrame,
@@ -338,7 +364,7 @@ def find_missing_charges(contracts: list[Contract], entries: pd.DataFrame,
         expected = last_expected(c, today)
         if expected is None or (today - expected).days < tolerance_days:
             continue
-        hits = _matching(expenses, c.mf_match)
+        hits = _matching(expenses, c.patterns)
         if hits.empty:
             out.append((c, expected))
             continue
@@ -356,7 +382,7 @@ def find_charges_after_end(contracts: list[Contract], entries: pd.DataFrame
     for c in contracts:
         if c.ended is None or not c.mf_match:
             continue
-        hits = _matching(expenses, c.mf_match)
+        hits = _matching(expenses, c.patterns)
         hits = hits[hits['date'] >= pd.Timestamp(c.ended)]
         for _, row in hits.iterrows():
             out.append((c, row['date'].date(), abs(float(row[COL_AMOUNT]))))
@@ -365,8 +391,10 @@ def find_charges_after_end(contracts: list[Contract], entries: pd.DataFrame
 
 def find_unlisted_recurring(contracts: list[Contract], entries: pd.DataFrame,
                             today: dt.date, months: int = UNLISTED_MONTHS
-                            ) -> list[tuple[str, int, float]]:
-    """台帳に無い繰り返し支払いの候補: (内容, 出現月数, 直近の金額)。
+                            ) -> list[tuple[str, int, float, dt.date]]:
+    """台帳に無い繰り返し支払いの候補: (内容, 出現月数, 直近の金額, 最終請求日)。
+
+    最終請求日の新しい順（古いものは解約済みのことが多いので下に沈める）。
 
     固定か変動かは判定しない（出現率では判定できない）。候補を見て台帳に足す。
     分類は CANDIDATE_CATEGORIES / CANDIDATE_SUBCATEGORIES に絞る（普段の買い物を除く）。
@@ -377,7 +405,7 @@ def find_unlisted_recurring(contracts: list[Contract], entries: pd.DataFrame,
         return []
     window = window[window[COL_CATEGORY].isin(CANDIDATE_CATEGORIES)
                     | window[COL_SUBCATEGORY].isin(CANDIDATE_SUBCATEGORIES)]
-    matches = [c.mf_match for c in contracts if c.mf_match]
+    matches = [p for c in contracts for p in c.patterns]
 
     out = []
     for name, group in window.groupby(COL_NAME):
@@ -388,8 +416,9 @@ def find_unlisted_recurring(contracts: list[Contract], entries: pd.DataFrame,
         if n_months < 2:
             continue
         latest = group.sort_values('date').iloc[-1]
-        out.append((name, n_months, abs(float(latest[COL_AMOUNT]))))
-    return sorted(out, key=lambda x: (-x[1], x[0]))
+        out.append((name, n_months, abs(float(latest[COL_AMOUNT])),
+                    latest['date'].date()))
+    return sorted(out, key=lambda x: (-x[3].toordinal(), -x[1], x[0]))
 
 
 # ---- 生活費の固定・変動 ----
@@ -411,158 +440,6 @@ def classify_expenses(expenses: pd.DataFrame, contracts: list[Contract]) -> pd.S
         return labels
     names = expenses[COL_NAME].astype(str)
     for c in reversed([c for c in contracts if c.mf_match]):
-        hit = names.str.contains(c.mf_match, regex=False)
+        hit = _name_mask(names, c.patterns)
         labels[hit] = SPLIT_VARIABLE if is_metered(c) else SPLIT_FIXED
     return labels
-
-
-def render_split(expenses: pd.DataFrame, contracts: list[Contract],
-                 bucket_name: str) -> str:
-    """bucket ごとの生活費を 固定 / 変動 に割った表。
-
-    expenses は render.expenses() 済み（金額が正）で bucket 列を持つもの。
-    明細の「固定」は計上月がずれるので、増減は「変動」で見る。固定費の水準は台帳の月割り。
-    """
-    df = expenses.assign(split=classify_expenses(expenses, contracts))
-    table = (df.pivot_table(index='bucket', columns='split', values=COL_AMOUNT,
-                            aggfunc='sum', fill_value=0)
-             .reindex(columns=list(SPLIT_LABELS), fill_value=0)
-             .sort_index())
-    variable = table[SPLIT_VARIABLE]
-    prev = variable.shift(1)
-
-    out = pd.DataFrame({label: table[label].map(render.format_yen) for label in SPLIT_LABELS})
-    out['計'] = table.sum(axis=1).map(render.format_yen)
-    out[f'{SPLIT_VARIABLE}Δ'] = (variable - prev).map(render.format_delta)
-    out['Δ%'] = [render.format_delta_pct(c, p) for c, p in zip(variable, prev)]
-    if len(table) == 1:
-        out = out.drop(columns=[f'{SPLIT_VARIABLE}Δ', 'Δ%'])
-    out.index.name = bucket_name
-
-    fixed = monthly_totals(contracts).get(('JPY', 'living'), 0.0)
-    note = (f"台帳の固定費（生活・月割り）: {render.format_yen(fixed)}/月。"
-            "明細の固定は計上月がずれるので、増減は変動で見る。"
-            "従量（光熱・通話料）と台帳に無い過去の契約は変動に入る")
-    return f"{note}\n\n{out.to_markdown()}"
-
-
-# ---- 表示 ----
-
-def format_amount(amount: float, currency: str) -> str:
-    if currency == 'JPY':
-        return render.format_yen(amount)
-    return f"{amount:,.2f} {currency}"
-
-
-def format_cycle(months: int) -> str:
-    return f"{months}ヶ月"
-
-
-def _table(columns: list[str], rows: list[list]) -> str:
-    return pd.DataFrame(rows, columns=columns).to_markdown(index=False)
-
-
-def _amount_cells(c: Contract, entries: pd.DataFrame, today: dt.date) -> list[str]:
-    """一覧の「金額」「月割り」。従量は実績の中央値と月平均"""
-    if not is_metered(c):
-        return [format_amount(c.amount, c.currency),
-                format_amount(monthly_amount(c), c.currency)]
-    actual = metered_actual(c, entries, today)
-    if actual is None:
-        return ['従量 -', '-']
-    return [f"従量 {render.format_yen(actual.median)}",
-            render.format_yen(actual.monthly)]
-
-
-def _kind_breakdown(totals: dict[str, float], fmt) -> str:
-    return ' / '.join(f"{KIND_LABEL[k]} {fmt(totals[k])}" for k in KINDS if k in totals)
-
-
-def render_contracts(contracts: list[Contract], entries: pd.DataFrame,
-                     today: dt.date) -> str:
-    active = active_contracts(contracts)
-    if not active:
-        return '# 定期契約\n\nなし'
-
-    blocks = ['# 定期契約']
-    for kind in KINDS:
-        group = [c for c in active if c.kind == kind]
-        if not group:
-            continue
-        rows = [[render.truncate(c.name),
-                 *_amount_cells(c, entries, today),
-                 format_cycle(c.cycle_months),
-                 next_renewal(c, today).isoformat(),
-                 c.payment or '-']
-                for c in sorted(group, key=lambda c: c.name)]
-        blocks.append(f"## {KIND_LABEL[kind]}\n\n" + _table(
-            ['名前', '金額', '月割り', '周期', '次回更新', '支払い'], rows))
-
-    totals = monthly_totals(contracts)
-    lines = ['## 月割り合計', '']
-    for currency in sorted({cur for cur, _ in totals}):
-        by_kind = {k: v for (cur, k), v in totals.items() if cur == currency}
-        lines.append(
-            f"- 固定 {currency}: {format_amount(sum(by_kind.values()), currency)}"
-            f"（{_kind_breakdown(by_kind, lambda v: format_amount(v, currency))}）")
-    metered = metered_totals(contracts, entries, today)
-    if metered:
-        lines.append(
-            f"- 従量 JPY: {render.format_yen(sum(metered.values()))}"
-            f"（{_kind_breakdown(metered, render.format_yen)}）")
-        lines += ['', f"従量の金額は直近{METERED_MONTHS}ヶ月の請求1回の中央値、"
-                      "月割りは1回の平均 ÷ 周期。固定とは足さない"]
-    blocks.append('\n'.join(lines))
-    return '\n\n'.join(blocks)
-
-
-def render_upcoming(contracts: list[Contract], today: dt.date, within: int) -> str:
-    items = upcoming_renewals(contracts, today, within)
-    head = f"## 更新が近い契約（{within}日以内）"
-    if not items:
-        return f"{head}\n\nなし"
-    rows = [[render.truncate(c.name),
-             '従量' if is_metered(c) else format_amount(c.amount, c.currency),
-             nxt.isoformat(), f"{(nxt - today).days}日後", c.cancel_url or '-']
-            for c, nxt in items]
-    return f"{head}\n\n" + _table(
-        ['名前', '金額', '更新日', '残り', '解約・管理'], rows)
-
-
-def render_reconciliation(contracts: list[Contract], entries: pd.DataFrame,
-                          today: dt.date) -> str:
-    missing = find_missing_charges(contracts, entries, today)
-    after_end = find_charges_after_end(contracts, entries)
-
-    blocks = ['## 照合']
-    body = '### 請求が無い\n\n'
-    if missing:
-        body += _table(['名前', '期待日', '内容の一致文字列'],
-                       [[render.truncate(c.name), d.isoformat(), c.mf_match]
-                        for c, d in missing])
-    else:
-        body += 'なし'
-    blocks.append(body)
-
-    body = '### 解約後の請求\n\n'
-    if after_end:
-        body += _table(['名前', '解約日', '請求日', '金額'],
-                       [[render.truncate(c.name), c.ended.isoformat(),
-                         d.isoformat(), render.format_yen(amt)]
-                        for c, d, amt in after_end])
-    else:
-        body += 'なし'
-    blocks.append(body)
-    return '\n\n'.join(blocks)
-
-
-def render_unlisted(contracts: list[Contract], entries: pd.DataFrame,
-                    today: dt.date) -> str:
-    head = (f"## 台帳に無い繰り返し支払いの候補"
-            f"（直近{UNLISTED_MONTHS}ヶ月・契約が入り得る分類のみ）")
-    items = find_unlisted_recurring(contracts, entries, today)
-    if not items:
-        return f"{head}\n\nなし"
-    rows = [[render.truncate(name), n, render.format_yen(amount)]
-            for name, n, amount in items]
-    return f"{head}\n\n" + _table(['内容', '出現月数', '直近の金額'], rows)
