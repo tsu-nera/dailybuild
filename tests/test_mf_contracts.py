@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from lib.mf import contracts as ct
+from lib.mf import contracts_view as cv
 from lib.mf.store import COL_AMOUNT, COL_CATEGORY, COL_NAME, COL_SUBCATEGORY
 
 D = dt.date
@@ -140,11 +141,11 @@ def test_metered_totals_by_kind_and_missing_actual_is_zero():
 def test_render_contracts_separates_metered_from_fixed():
     cs = [_c('固定', 1000, 1), _c('電気', None, 1, billing='metered', mf_match='デンキ')]
     entries = _entries([('2026-09-10', 'デンキ', -1200)])
-    out = ct.render_contracts(cs, entries, TODAY)
+    out = cv.render_contracts(cs, entries, TODAY)
     assert '従量 ¥1,200' in out
     assert '- 固定 JPY: ¥1,000' in out
     assert '- 従量 JPY: ¥1,200' in out
-    assert '従量 -' in ct.render_contracts(cs, pd.DataFrame(), TODAY)
+    assert '従量 -' in cv.render_contracts(cs, pd.DataFrame(), TODAY)
 
 
 METERED = """
@@ -187,8 +188,8 @@ def test_fixed_still_requires_amount_and_billing_is_checked(tmp_path):
 
 
 def test_format_amount_does_not_use_yen_for_other_currency():
-    assert ct.format_amount(1234, 'JPY') == '¥1,234'
-    assert ct.format_amount(20, 'USD') == '20.00 USD'
+    assert cv.format_amount(1234, 'JPY') == '¥1,234'
+    assert cv.format_amount(20, 'USD') == '20.00 USD'
 
 
 # ---- 読み込み・検証 ----
@@ -372,7 +373,11 @@ def test_unlisted_recurring_candidates():
         # 収入は対象外
         ('2026-08-05', '給与', 300000),
         ('2026-09-05', '給与', 300000),
-        # 3ヶ月出る → 月数が多い方が先
+        # 最終請求の新しい方が先（月数が多くても止まったものは下に沈む）
+        ('2025-01-05', '止まった店', -700, '通信費', 'インターネット'),
+        ('2025-02-05', '止まった店', -700, '通信費', 'インターネット'),
+        ('2025-03-05', '止まった店', -700, '通信費', 'インターネット'),
+        ('2025-04-05', '止まった店', -700, '通信費', 'インターネット'),
         ('2026-07-07', '回線', -900),
         ('2026-08-07', '回線', -900),
         ('2026-09-07', '回線', -1000),
@@ -384,7 +389,29 @@ def test_unlisted_recurring_candidates():
         ('2026-08-20', '音楽B', -500, '趣味・娯楽', 'サブスクリプション'),
     ])
     got = ct.find_unlisted_recurring([listed, ended], entries, TODAY)
-    assert got == [('回線', 3, 1000), ('ジム', 2, 8800), ('音楽B', 2, 500)]
+    assert got == [('回線', 3, 1000, D(2026, 9, 7)), ('ジム', 2, 8800, D(2026, 9, 5)),
+                   ('音楽B', 2, 500, D(2026, 8, 20)), ('止まった店', 4, 700, D(2025, 4, 5))]
+
+
+def test_mf_match_list_matches_any_spelling(tmp_path):
+    """MF の内容は同じ店でも年で表記が揺れる（全角・カナ・空白）。どれかに一致すれば同じ契約"""
+    text = METERED.replace('  mf_match: デンキ\n', '  mf_match: [デンキ, ＤＥＮＫＩ]\n')
+    (c,) = ct.load_contracts(_write(tmp_path, text))
+    assert c.patterns == ('デンキ', 'ＤＥＮＫＩ')
+    entries = _entries([
+        ('2026-08-10', 'デンキ', -3000),
+        ('2026-09-10', 'ＤＥＮＫＩ', -5000),
+        ('2026-09-12', 'ガス', -4000),
+    ])
+    assert ct.metered_actual(c, entries, TODAY).charges == 2
+    assert ct.find_unlisted_recurring([c], entries, TODAY) == []
+
+
+@pytest.mark.parametrize('value', ['[]', '[デンキ, ""]', '[1]'])
+def test_mf_match_list_invalid(tmp_path, value):
+    text = METERED.replace('  mf_match: デンキ\n', f'  mf_match: {value}\n')
+    with pytest.raises(ct.ContractError, match='mf_match'):
+        ct.load_contracts(_write(tmp_path, text))
 
 
 def test_empty_entries_do_not_crash():
@@ -429,7 +456,7 @@ def test_render_split_rows_sum_and_delta_on_variable():
         ('2026-08-11', 'スーパー', -10000),
         ('2026-09-11', 'スーパー', -15000),   # 9月は家賃の計上が無い月
     ])
-    out = ct.render_split(exp, cs, '月')
+    out = cv.render_split(exp, cs, '月')
     assert '台帳の固定費（生活・月割り）: ¥50,000/月' in out
     rows = {cells[0]: cells[1:] for cells in
             ([c.strip() for c in line.strip('|').split('|')]

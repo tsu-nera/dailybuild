@@ -264,7 +264,7 @@ def cmd_fetch(args) -> None:
 
 def print_split(exp_focus: pd.DataFrame, focus_label: str, unit: str) -> None:
     """生活費を契約台帳で 固定 / 変動 に割る。台帳が無ければ節ごと省く"""
-    from lib.mf import contracts
+    from lib.mf import contracts, contracts_view
 
     try:
         ledger = contracts.load_contracts()
@@ -274,7 +274,7 @@ def print_split(exp_focus: pd.DataFrame, focus_label: str, unit: str) -> None:
         print(f"警告: 契約台帳を読めないので固定・変動の節を省いた: {e}", file=sys.stderr)
         return
     print(f"## {focus_label}の固定・変動\n")
-    print(contracts.render_split(exp_focus, ledger, render.bucket_label(unit)))
+    print(contracts_view.render_split(exp_focus, ledger, render.bucket_label(unit)))
     print()
 
 
@@ -416,7 +416,7 @@ def cmd_assets(args) -> None:
 
 
 def cmd_contracts(args) -> None:
-    from lib.mf import contracts
+    from lib.mf import contracts, contracts_view
 
     try:
         ledger = contracts.load_contracts()
@@ -426,18 +426,18 @@ def cmd_contracts(args) -> None:
 
     today = dt.date.today()
     entries = store.load_entries()
-    print(contracts.render_contracts(ledger, entries, today))
+    print(contracts_view.render_contracts(ledger, entries, today))
     print()
-    print(contracts.render_upcoming(ledger, today, args.within))
+    print(contracts_view.render_upcoming(ledger, today, args.within))
     print()
 
     if entries.empty:
         print("## 照合\n\nMF の明細がないため照合は省略した"
               "（uv run scripts/mf.py fetch で取得する）")
         return
-    print(contracts.render_reconciliation(ledger, entries, today))
+    print(contracts_view.render_reconciliation(ledger, entries, today))
     print()
-    print(contracts.render_unlisted(ledger, entries, today))
+    print(contracts_view.render_unlisted(ledger, entries, today))
 
 
 def build_parser() -> argparse.ArgumentParser:
