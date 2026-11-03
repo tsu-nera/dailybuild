@@ -34,3 +34,5 @@ logs/
 # .claude/skills/ は追跡対象（プロジェクトのスキルは共有する）
 .claude/settings.local.json
 .claude/worktrees/
+
+CLAUDE.local.md
