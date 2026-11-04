@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import journal_skeleton as js
+from lib.measurements_registry import Measurement
 
 
 @pytest.fixture
@@ -167,6 +168,12 @@ def _write(root, name, rows):
                                    encoding='utf-8')
 
 
+def _sparse(key='sparse', name=None, every=None, when=''):
+    return Measurement(key=key, name=name or ('疎な指標' if key == 'sparse' else key),
+                       csv=f'd/{key}.csv', date_column='date',
+                       expect_every_days=every, when=when)
+
+
 def test_sparse_source_absence_is_not_reported_as_missing(data_root, monkeypatch):
     """疎な指標は当日に記録が無くても欠測として出さない
 
@@ -177,8 +184,7 @@ def test_sparse_source_absence_is_not_reported_as_missing(data_root, monkeypatch
     _write(data_root, 'daily.csv', ['2026-08-29'])
     _write(data_root, 'sparse.csv', ['2026-08-23'])
     monkeypatch.setattr(js, 'DAILY_SOURCES', [('daily', 'd/daily.csv', 'date')])
-    monkeypatch.setattr(js, 'SPARSE_SOURCES',
-                        [('sparse', 'd/sparse.csv', 'date', '疎な指標')])
+    monkeypatch.setattr(js, 'SPARSE_SOURCES', [_sparse()])
 
     target = dt.date(2026, 8, 29)
     assert js.collect_missing(target) == []
@@ -198,10 +204,54 @@ def test_sparse_source_never_recorded(data_root, monkeypatch):
     """一度も記録が無い疎な指標は「記録なし」と出す（0日前と誤読させない）"""
     _write(data_root, 'sparse.csv', [])
     monkeypatch.setattr(js, 'DAILY_SOURCES', [])
-    monkeypatch.setattr(js, 'SPARSE_SOURCES',
-                        [('sparse', 'd/sparse.csv', 'date', '疎な指標')])
+    monkeypatch.setattr(js, 'SPARSE_SOURCES', [_sparse()])
 
     assert js.collect_last_seen(dt.date(2026, 8, 29)) == ['疎な指標 記録なし']
+
+
+# --- 疎な指標の期限切れ（config/measurements.yaml の expect_every_days） ---
+
+def test_sparse_overdue_only_when_elapsed_exceeds_interval(data_root, monkeypatch):
+    """経過日数が間隔を超えたものだけ期限切れ。ちょうど間隔の日と null には付けない"""
+    _write(data_root, 'over.csv', ['2026-08-21'])   # 8日前
+    _write(data_root, 'edge.csv', ['2026-08-22'])   # 7日前
+    _write(data_root, 'free.csv', ['2026-08-01'])   # 28日前・間隔なし
+    monkeypatch.setattr(js, 'SPARSE_SOURCES', [
+        _sparse('over', every=7), _sparse('edge', every=7), _sparse('free')])
+
+    rows = js.collect_sparse(dt.date(2026, 8, 29))
+    assert [r['overdue'] for r in rows] == [True, False, None]
+    assert js.collect_last_seen(dt.date(2026, 8, 29)) == [
+        'over 8日前（08-21）・期限切れ（7日ごと）',
+        'edge 7日前（08-22）',
+        'free 28日前（08-01）',
+    ]
+
+
+def test_sparse_never_recorded_is_overdue_only_with_interval(data_root, monkeypatch):
+    _write(data_root, 'a.csv', [])
+    _write(data_root, 'b.csv', [])
+    monkeypatch.setattr(js, 'SPARSE_SOURCES', [_sparse('a', every=7), _sparse('b')])
+
+    assert js.collect_last_seen(dt.date(2026, 8, 29)) == [
+        'a 記録なし・期限切れ（7日ごと）', 'b 記録なし']
+
+
+def test_state_shows_sparse_table(data_root, monkeypatch):
+    _write(data_root, 'bp.csv', ['2026-08-21'])
+    _write(data_root, 'bowel.csv', ['2026-08-29'])
+    monkeypatch.setattr(js, 'SPARSE_SOURCES', [
+        _sparse('bp', name='血圧', every=7, when='ふらつきの日'), _sparse('bowel', name='排便')])
+    for name in ('collect_metrics', 'collect_streaks', 'collect_open_actions',
+                 'collect_pipeline'):
+        monkeypatch.setattr(js, name, lambda *a: [])
+    monkeypatch.setattr(js, 'collect_last_run', lambda: None)
+    monkeypatch.setattr(js, 'warn_unwritten', lambda target: [])
+
+    out = js.render_state(dt.date(2026, 8, 29))
+    assert '| 指標 | 最終 | 経過 | 間隔 | 判定 | 測るとき |' in out
+    assert '| 血圧 | 08-21 | 8日前 | 7日ごと | 期限切れ | ふらつきの日 |' in out
+    assert '| 排便 | 08-29 | 当日 | - | - | - |' in out
 
 
 # --- 排便（Bristol） ---

@@ -1,0 +1,33 @@
+# 手入力で疎に測る指標のレジストリ（scripts/journal_skeleton.py が読む）
+#
+# 毎日は測らず、間隔ときっかけで測る指標を1指標1エントリで宣言する。
+# STATE.md の「最終記録（疎な指標）」に最終記録・経過日数・期限切れを出す。
+# 取得の故障を見るパイプライン表には入れない（測り忘れと故障を同じ見た目にしない）。
+#
+# key:               識別子
+# name:              表示名
+# csv:               リポジトリからの相対パス
+# date_column:       日付列
+# expect_every_days: 何日おきに測るか。経過日数がこれを超えたら期限切れ。null なら判定しない
+# when:              測るきっかけ（STATE.md に出すだけ。解釈はレビューする agent が行う）
+#
+# public リポジトリなので個人の値は書かない。間隔ときっかけだけ書く。
+measurements:
+  - key: temperature_core
+    name: 深部体温
+    csv: data/wearable/temperature_core.csv
+    date_column: date_time
+    expect_every_days: 7
+    when: 体調不良・熱っぽい日
+  - key: blood_pressure
+    name: 血圧
+    csv: data/healthplanet_bp.csv
+    date_column: date
+    expect_every_days: 7
+    when: ふらつき・立ちくらみの日
+  - key: body_composition
+    name: 体組成
+    csv: data/healthplanet_innerscan.csv
+    date_column: date
+    expect_every_days: null
+    when: ''
