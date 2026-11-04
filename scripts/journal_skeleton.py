@@ -44,6 +44,7 @@ from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
 from lib.analytics.weight_daily import load_weight_daily  # noqa: E402
 from lib import forms_registry, gcalendar  # noqa: E402
+from lib.measurements_registry import Measurement, load_measurements  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_write  # noqa: E402
 
 BASE_DIR = project_root
@@ -81,21 +82,22 @@ DAILY_SOURCES = [
 # 疎なソース。測る日と測らない日があるのが常態なので、当日の不在を欠測として
 # 出さない。毎日「欠測」と書くと故障と未記録が同じ見た目になり、しかも毎日出る
 # 警告は読み飛ばされる。代わりに最終記録からの経過日数を出し、判断は読み手に渡す。
-# (ラベル, パス, 日付列, 表示名)
+#
+# 手入力の指標は config/measurements.yaml が持つ（間隔 expect_every_days と
+# 測るきっかけ when つき）。経過日数が間隔を超えたものに期限切れの印を付ける。
 #
 # フォームの行は config/forms.yaml の cadence: sparse から足す（排便など）。
+# フォームは間隔を持たないので期限切れ判定をしない。
 # 排便は DAILY_SOURCES に入れない。記録の無い日が「未記録」なのか
 # 「出なかった」なのか原理的に判別できないため、当日の不在を欠測として
 # 毎日出すと故障と未記録が同じ見た目になる（SPARSE_SOURCES の趣旨）
-def sparse_sources(forms) -> list[tuple]:
-    return [
-        ('temperature_core', 'data/wearable/temperature_core.csv', 'date_time', '深部体温'),
-        ('body_composition', 'data/healthplanet_innerscan.csv', 'date', '体組成'),
-    ] + [(f.key, f.csv, f.date_column, f.short_name)
-         for f in forms_registry.sparse_forms(forms)]
+def sparse_sources(forms, measurements) -> list[Measurement]:
+    return list(measurements) + [
+        Measurement(key=f.key, name=f.short_name, csv=f.csv, date_column=f.date_column)
+        for f in forms_registry.sparse_forms(forms)]
 
 
-SPARSE_SOURCES = sparse_sources(FORMS)
+SPARSE_SOURCES = sparse_sources(FORMS, load_measurements())
 
 
 def _read(path, date_column):
@@ -323,20 +325,43 @@ def collect_missing(target: dt.date) -> list[str]:
     return missing
 
 
-def collect_last_seen(target: dt.date) -> list[str]:
-    """疎なソースの最終記録を「表示名 N日前（MM-DD）」で返す"""
+def collect_sparse(target: dt.date) -> list[dict]:
+    """疎なソースの最終記録・経過日数・期限切れ判定
+
+    期限切れは「経過日数 > expect_every_days」。一度も記録が無ければ、間隔を
+    持つものだけ期限切れにする。間隔を持たないもの（null・フォーム）は判定しない
+    （overdue=None）
+    """
     ts = pd.Timestamp(target)
-    out = []
-    for _label, path, col, name in SPARSE_SOURCES:
-        df = _read(path, col)
+    rows = []
+    for m in SPARSE_SOURCES:
+        df = _read(m.csv, m.date_column)
         past = df[df['_date'] <= ts] if not df.empty else df
-        if past.empty:
-            out.append(f'{name} 記録なし')
-            continue
-        last = past['_date'].max()
-        days = (ts - last).days
-        when = last.strftime('%m-%d')
-        out.append(f'{name} {"当日" if days == 0 else f"{days}日前"}（{when}）')
+        last = None if past.empty else past['_date'].max()
+        days = None if last is None else (ts - last).days
+        every = m.expect_every_days
+        overdue = None if every is None else (days is None or days > every)
+        rows.append({'name': m.name, 'last': last, 'days': days, 'every': every,
+                     'overdue': overdue, 'when': m.when})
+    return rows
+
+
+def _fmt_elapsed(row: dict) -> str:
+    if row['days'] is None:
+        return '記録なし'
+    return '当日' if row['days'] == 0 else f"{row['days']}日前"
+
+
+def collect_last_seen(target: dt.date) -> list[str]:
+    """疎なソースの最終記録を「表示名 N日前（MM-DD）」で返す。期限切れには印を足す"""
+    out = []
+    for row in collect_sparse(target):
+        text = f"{row['name']} {_fmt_elapsed(row)}"
+        if row['last'] is not None:
+            text += f"（{row['last'].strftime('%m-%d')}）"
+        if row['overdue']:
+            text += f"・期限切れ（{row['every']}日ごと）"
+        out.append(text)
     return out
 
 
@@ -881,7 +906,20 @@ def render_state(target: dt.date) -> str:
         lines.append('継続中のものは無い（2日以上）。')
 
     lines += ['', '## 最終記録（疎な指標）', '']
-    lines.append('、'.join(collect_last_seen(target)) or '-')
+    sparse = collect_sparse(target)
+    if sparse:
+        lines += ['| 指標 | 最終 | 経過 | 間隔 | 判定 | 測るとき |',
+                  '|---|---|---|---|---|---|']
+        for row in sparse:
+            last = '-' if row['last'] is None else row['last'].strftime('%m-%d')
+            every = '-' if row['every'] is None else f"{row['every']}日ごと"
+            verdict = '-' if row['overdue'] is None else ('期限切れ' if row['overdue'] else 'OK')
+            lines.append(f"| {row['name']} | {last} | {_fmt_elapsed(row)} | {every} "
+                         f"| {verdict} | {row['when'] or '-'} |")
+        lines += ['', '> 間隔ときっかけの定義は `config/measurements.yaml`。'
+                      '期限切れの指標と、`測るとき` に当たる日だけ触れる。']
+    else:
+        lines.append('-')
 
     lines += ['', '## 未解決のアクション', '']
     actions = collect_open_actions()

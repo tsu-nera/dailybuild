@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import journal_skeleton as js  # noqa: E402
 from lib import forms_registry  # noqa: E402
 from lib.forms_registry import RegistryError, load_forms  # noqa: E402
+from lib.measurements_registry import load_measurements  # noqa: E402
 
 DAILY_FETCH = ROOT / 'scripts' / 'ops' / 'daily-fetch.sh'
 
@@ -37,8 +38,9 @@ PIPELINE_BEFORE = [
      '連携が切れた口座の明細が入らない。**MF の集計は過少**。再認証しない方針'),
     ('Habitica', 'data/habitica/cron_log.csv', 'date', 1, 'active', ''),
 ]
-SPARSE_BEFORE = [
+SPARSE_AFTER = [
     ('temperature_core', 'data/wearable/temperature_core.csv', 'date_time', '深部体温'),
+    ('blood_pressure', 'data/healthplanet_bp.csv', 'date', '血圧'),
     ('body_composition', 'data/healthplanet_innerscan.csv', 'date', '体組成'),
     ('bowel', 'data/bowel.csv', 'date', '排便'),
 ]
@@ -67,8 +69,12 @@ def test_pipeline_rows_are_unchanged_by_registry():
         'PHQ-9', '体組成', 'Toggl', 'MoneyForward', 'Habitica']
 
 
-def test_sparse_rows_are_unchanged_by_registry():
-    assert js.sparse_sources(load_forms()) == SPARSE_BEFORE
+def test_sparse_rows_keep_forms_and_measurements():
+    # 手入力の指標は config/measurements.yaml へ移った（#246 で血圧を追加）。
+    # フォーム由来（排便）は今までどおり後ろに並び、間隔を持たない
+    rows = js.sparse_sources(load_forms(), load_measurements())
+    assert [(m.key, m.csv, m.date_column, m.name) for m in rows] == SPARSE_AFTER
+    assert rows[-1].expect_every_days is None
 
 
 # --- deprecated は fetch だけ続ける ---
@@ -83,7 +89,7 @@ def test_deprecated_form_is_fetched_but_not_shown(tmp_path):
     names = [r[0] for r in js.pipeline_sources(forms)]
     assert 'フォームX' in names
     assert '止めたフォーム' not in names
-    assert 'gone' not in [r[0] for r in js.sparse_sources(forms)]
+    assert 'gone' not in [m.key for m in js.sparse_sources(forms, [])]
     assert [f.key for f in forms_registry.review_forms(forms, 'daily')] == ['x']
     assert [f.key for f in forms_registry.fetch_forms(forms)] == ['x', 'gone']
 
