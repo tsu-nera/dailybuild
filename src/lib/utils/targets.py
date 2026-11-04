@@ -1,10 +1,8 @@
 """
 config/targets.yaml の読み出し
 
-目標値は yaml が単一の真実。以前は FFMI の目標が
-`generate_body_report_interval.py` の TARGET_FFMI（21.0）と yaml（19.0）と
-各スキルの本文（21.0）に散っており、yaml だけ更新されて他が古いまま残っていた。
-レビューは 21.0 を前提に進捗を評価していた。
+目標値は yaml が単一の真実。FFMI の目標は gtd（~/repo/gtd/goals/strength.md）に
+移したので、ここには無い。
 """
 
 from pathlib import Path

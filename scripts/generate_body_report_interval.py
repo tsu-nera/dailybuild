@@ -18,19 +18,15 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
 from lib.analytics import body
-from lib.utils import targets
 
 BASE_DIR = project_root
 DATA_CSV = BASE_DIR / 'data/healthplanet_innerscan.csv'
 
-# 目標設定（パラメータ）
-# 目標FFMI は config/targets.yaml が単一の真実。ここに書き写すと yaml だけ
-# 更新されて古い値が残る（実際 21.0 のまま yaml は 19.0 になっていた）
-TARGET_FFMI = targets.get_target('ffmi', 19.0)
-MONTHLY_WEIGHT_GAIN = 0.75  # 月間体重増加目標（kg）
-HEIGHT_CM = 170  # 身長（cm）
+# 目標と到達予測はレポートに出さない。体の目標・計画の正本は
+# ~/repo/gtd/goals/strength.md で、ここは実測の推移だけを出す
 
-def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_weight_gain):
+
+def prepare_interval_report_data(weekly):
     """
     週次隔レポート用のコンテキストデータを準備
 
@@ -38,12 +34,6 @@ def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_wei
     ----------
     weekly : DataFrame
         週次集計データ（index: (iso_year, iso_week)）
-    progress_info : dict
-        進捗情報（target_weight, months_to_target, weeks_to_target）
-    target_ffmi : float
-        目標FFMI
-    monthly_weight_gain : float
-        月間体重増加目標
 
     Returns
     -------
@@ -70,9 +60,7 @@ def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_wei
         weekly_data.append({
             'week_label': week_label,
             'weight': f"{row['weight']:.2f}",
-            # 増量目標（MONTHLY_WEIGHT_GAIN=+0.75kg/月、FFMI は targets.yaml）なので
-            # 体重の増加が良い変化。以前は positive_is_good=False で減少を
-            # 良い変化として太字にしており、同じレポートが掲げる目標と逆だった
+            # 増量期なので体重の増加を良い変化として扱う（方針の正本は gtd）
             'weight_diff': format_change(row['weight_diff'], ''),
             'muscle': f"{row['muscle_mass']:.2f}",
             'muscle_diff': format_change(row['muscle_diff'], ''),
@@ -86,16 +74,6 @@ def prepare_interval_report_data(weekly, progress_info, target_ffmi, monthly_wei
         'report_title': '💪 筋トレ週次レポート',
         'description': '7日間平均値の推移。前週比でトレンドを確認。',
         'progress': {
-            'target_ffmi': target_ffmi,
-            'target_weight': f"{progress_info['target_weight']:.1f}",
-            # 到達予測は「体脂肪率12.5%を保ったまま体重を増やす」前提で
-            # target_weight を逆算している。現在の体脂肪率がそれより高いと
-            # 目標体重を先に超え、ETA が負になって「約-0.6ヶ月後」と出る。
-            # 前提が外れている状態なので、数字ではなく理由を出す
-            'reachable': progress_info['months_to_target'] > 0,
-            'months_to_target': f"{progress_info['months_to_target']:.1f}",
-            'weeks_to_target': progress_info['weeks_to_target'],
-            'monthly_weight_gain': monthly_weight_gain,
             'progress_image': 'img/progress.png'
         },
         'weekly_data': weekly_data
@@ -156,21 +134,10 @@ def main():
     img_dir = args.output.parent / 'img'
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    progress_info = body.plot_progress_chart(
-        weekly,
-        save_path=img_dir / 'progress.png',
-        target_ffmi=TARGET_FFMI,
-        monthly_weight_gain=MONTHLY_WEIGHT_GAIN,
-        height_cm=HEIGHT_CM
-    )
+    body.plot_progress_chart(weekly, save_path=img_dir / 'progress.png')
 
     # コンテキストデータ準備
-    context = prepare_interval_report_data(
-        weekly=weekly,
-        progress_info=progress_info,
-        target_ffmi=TARGET_FFMI,
-        monthly_weight_gain=MONTHLY_WEIGHT_GAIN
-    )
+    context = prepare_interval_report_data(weekly=weekly)
 
     # テンプレートレンダリング
     from lib.templates.renderer import BodyReportRenderer

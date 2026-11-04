@@ -10,13 +10,6 @@
 #   review:    weekly / monthly / quarterly
 #   note:      補足
 targets:
-  - key: ffmi
-    target: 19.0
-    unit: ""
-    direction: up
-    review: monthly
-    note: "除脂肪体重指数。身長170cm前提（src/lib/analytics/body.py DEFAULT_HEIGHT_CM）。引っ越し後の持久シフトで筋トレ習慣が中断。現状維持+α目標。律速はタンパク質≒100-113g/日（体重×1.6-1.8g）の確保"
-
   - key: sleep_debt_h
     target: 0
     unit: h
