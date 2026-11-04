@@ -384,9 +384,13 @@ def format_body_composition_section(df):
     return section
 
 
-def plot_progress_chart(weekly_df, save_path, target_ffmi, monthly_weight_gain=0.75, current_weight=None, current_ffmi=None, height_cm=DEFAULT_HEIGHT_CM):
+def plot_progress_chart(weekly_df, save_path):
     """
-    FFMI目標達成までの進捗グラフを生成
+    体重と FFMI の週次推移グラフを生成する（実測のみ）
+
+    目標線・到達予測は描かない。体重の直線予測を物差しにした計画は、
+    体重だけが増えて除脂肪量が増えないまま気づかれなかった。
+    目標の正本は ~/repo/gtd/goals/strength.md
 
     Parameters
     ----------
@@ -394,87 +398,26 @@ def plot_progress_chart(weekly_df, save_path, target_ffmi, monthly_weight_gain=0
         週次集計データ（iso_year, iso_weekをインデックスに持つ）
     save_path : Path
         保存先パス
-    target_ffmi : float
-        目標FFMI
-    monthly_weight_gain : float
-        月間体重増加目標（kg）
-    current_weight : float, optional
-        現在の体重（Noneの場合は最新データから取得）
-    current_ffmi : float, optional
-        現在のFFMI（Noneの場合は最新データから取得）
-    height_cm : float
-        身長（cm）
     """
-    # 現在値の取得
-    if current_weight is None or current_ffmi is None:
-        latest = weekly_df.iloc[-1]
-        current_weight = latest['weight']
-        current_ffmi = latest['ffmi']
+    weeks = np.arange(len(weekly_df))
 
-    # 目標体重の計算（体脂肪率12.5%維持）
-    # target_ffmi = lbm / (height_m^2) + 6.1 * (1.8 - height_m)
-    # lbm = (target_ffmi - 6.1 * (1.8 - height_m)) * height_m^2
-    height_m = height_cm / 100
-    target_lbm = (target_ffmi - 6.1 * (1.8 - height_m)) * (height_m ** 2)
-    target_weight = target_lbm / 0.875  # 体脂肪率12.5%維持
-
-    # 到達期間の計算
-    weight_diff = target_weight - current_weight
-    months_to_target = weight_diff / monthly_weight_gain
-
-    # 予測線の生成（現在から目標まで）
-    weeks_to_target = int(months_to_target * 4.33)  # 月→週変換
-    projection_weeks = np.arange(0, weeks_to_target + 1)
-    projection_weight = current_weight + (projection_weeks / 4.33) * monthly_weight_gain
-
-    # 予測FFMIの計算（体脂肪率12.5%維持）
-    projection_lbm = projection_weight * 0.875
-    projection_ffmi = projection_lbm / (height_m ** 2) + 6.1 * (1.8 - height_m)
-
-    # 実績データの準備
-    actual_weeks = np.arange(len(weekly_df))
-    actual_weight = weekly_df['weight'].values
-    actual_ffmi = weekly_df['ffmi'].values
-
-    # グラフ描画
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=False)
 
-    # 体重グラフ
-    ax1.plot(actual_weeks, actual_weight, 'o-', color='#3498DB',
+    ax1.plot(weeks, weekly_df['weight'].values, 'o-', color='#3498DB',
              label='Actual', linewidth=2, markersize=6)
-    ax1.plot(actual_weeks[-1] + projection_weeks, projection_weight,
-             '--', color='#95A5A6', label=f'Projection (+{monthly_weight_gain}kg/month)', linewidth=2)
-    ax1.axhline(y=target_weight, color='#E74C3C', linestyle=':',
-                label=f'Target Weight {target_weight:.1f}kg', linewidth=2)
     ax1.set_ylabel('Weight (kg)', fontsize=11)
-    ax1.set_title('Weight Progress & Projection', fontsize=12, fontweight='bold')
+    ax1.set_title('Weight Progress', fontsize=12, fontweight='bold')
     ax1.legend(loc='upper left')
     ax1.grid(axis='y', alpha=0.3)
 
-    # FFMIグラフ
-    ax2.plot(actual_weeks, actual_ffmi, 'o-', color='#2ECC71',
+    ax2.plot(weeks, weekly_df['ffmi'].values, 'o-', color='#2ECC71',
              label='Actual', linewidth=2, markersize=6)
-    ax2.plot(actual_weeks[-1] + projection_weeks, projection_ffmi,
-             '--', color='#95A5A6', label='Projection', linewidth=2)
-    ax2.axhline(y=target_ffmi, color='#E74C3C', linestyle=':',
-                label=f'Target FFMI {target_ffmi}', linewidth=2)
     ax2.set_xlabel('Week', fontsize=11)
     ax2.set_ylabel('FFMI', fontsize=11)
-    ax2.set_title('FFMI Progress & Projection', fontsize=12, fontweight='bold')
+    ax2.set_title('FFMI Progress', fontsize=12, fontweight='bold')
     ax2.legend(loc='upper left')
     ax2.grid(axis='y', alpha=0.3)
-
-    # テキスト情報を追加
-    info_text = f'ETA: ~{months_to_target:.1f} months ({weeks_to_target} weeks)'
-    fig.text(0.99, 0.01, info_text, ha='right', fontsize=9, style='italic', color='#7F8C8D')
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
-
-    return {
-        'target_weight': target_weight,
-        'target_ffmi': target_ffmi,
-        'months_to_target': months_to_target,
-        'weeks_to_target': weeks_to_target,
-    }
