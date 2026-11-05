@@ -10,6 +10,10 @@ statistic_ids:
   - sensor.noise_leq
   # Claude サブスクの7日枠の使用率（%、saru9000 home/packages/claude_usage.yaml）。トークン数でなく上限に対する割合
   - sensor.claude_usage_7d
+  # CO2 モニター（LSENLTY PTH-9CW、Tuya）。Remo とは置き場所の温度差で湿度・温度がずれる（絶対湿度はほぼ一致）
+  - sensor.pth_9cw_qc_carbon_dioxide
+  - sensor.pth_9cw_qc_temperature
+  - sensor.pth_9cw_qc_humidity
 
 # state 履歴を取る entity（statistics を持たない on/off・文字列・位置など）
 # data/homeassistant/states/YYYY-MM.csv へ縦持ちで入る。ここも1行足すだけでよい。
@@ -33,3 +37,5 @@ entities:
   - light.indirect_light
   - media_player.main_speaker
   - sensor.xiaomi_battery_level
+  # エアコンの運転モード（赤外線で最後に送ったもので実機の状態ではない）。temperature は設定温度。湿度対策の効果を見る材料
+  - {entity_id: climate.aircon, attributes: [temperature]}
