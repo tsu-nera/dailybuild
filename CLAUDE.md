@@ -196,6 +196,21 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 にあるので写さない。物の表記サイズと合ったかは `data/inventory/items.csv` の `note` に書く。
 本人と agent が共に書く置き場は未設計で、具体例が集まったら決め直す（2026-10-18）。
 
+### 店頭で買った物の所持品登録（agent が書く・取得スクリプト無し）
+
+店頭購入は `data/inventory/items.csv` に `manual:N` キーで足し、`note` に店名・価格・JAN を書く。
+本人は JAN を Android の Binary Eye で読んで共有した文面で渡す（URL の `content=` が JAN）。
+
+ダイソーの商品は一般の Web 検索や在庫アプリの商品 DB では JAN から名前が引けない。
+ダイソーネットストアの検索ページで引く:
+
+```bash
+curl -sL -A 'Mozilla/5.0' "https://jp.daisonet.com/search?q=<JAN>" | grep -oE '"price":[0-9]+,"name":"[^"]*"'
+```
+
+- `price` は円×100（`22000` → 220円）
+- `/products/<JAN>` を直接叩くと 429 が返る。検索ページを使い、続けて引くときは数秒空ける
+
 ## データソース別の詳細
 
 以下は**そのデータソースを触るときだけ**読む。落とし穴（欠測の捏造・二重投入・
