@@ -158,6 +158,9 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 日次に潰すと4分の筋トレと63分の通勤が区別できないので `metrics_daily.csv` には混ぜない。
 **`data/` には置かない**。
 
+`scripts/dashboard.py build` は `reports/dashboard/*.csv`（Grafana が読む7本）を毎日**全上書き**で
+生成する（`daily-fetch.sh` の「ダッシュボード」ステップ）。**`data/` には置かない**。詳細は [docs/grafana.md](docs/grafana.md)。
+
 `scripts/habitica.py fetch` は `reports/habits_daily.csv` も毎日**全上書き**で
 生成する。列は `date, habit, task_type, is_due, completed` の縦持ちで、習慣の
 増減で列が動かないようにしてある。`history` に行が無い日の行は作らない（cron が
@@ -211,6 +214,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）・HA の state 履歴を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物。state 履歴の開始時点の行は時刻が丸められているので保存しない |
+| `scripts/dashboard.py` / `scripts/ops/grafana/` を変更するとき | [docs/grafana.md](docs/grafana.md) — 計算は dashboard.py に1本。Grafana 側で集計・判定しない。欠測は空セル |
 | `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
 | `scripts/timeline.py` / 場所ごとの訪問（Google マップ Timeline の export）を扱うとき | [docs/timeline.md](docs/timeline.md) — 同じ訪問が hierarchyLevel 違いで重複する。座標は度記号付きの文字列。取得は手動 export 頼み。名前は places.csv の辞書（Places API）|
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |

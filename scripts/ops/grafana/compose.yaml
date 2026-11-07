@@ -1,0 +1,27 @@
+# 週の目標ダッシュボード（docs/grafana.md）。起動は vaio で:
+#   cd ~/repo/dailybuild/scripts/ops/grafana && docker compose up -d
+services:
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_INSTALL_PLUGINS: yesoreyeram-infinity-datasource
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana-dashboards:ro
+    ports:
+      - "${GRAFANA_BIND:-127.0.0.1}:3000:3000"
+    restart: unless-stopped
+
+  # reports/dashboard/*.csv を compose 内部にだけ配る。ホストのポートは開けない
+  files:
+    image: nginx:1.27-alpine
+    volumes:
+      # reports の symlink を docker に解決させず、private 側の実体を直接指す
+      - ${DAILYBUILD_PRIVATE:-${HOME}/repo/dailybuild-private}/reports/dashboard:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
