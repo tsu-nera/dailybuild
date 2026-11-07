@@ -1,0 +1,11 @@
+apiVersion: 1
+datasources:
+  - name: dashboard-files
+    uid: dashboard-files
+    type: yesoreyeram-infinity-datasource
+    access: proxy
+    isDefault: true
+    jsonData:
+      # compose 内の nginx（files）だけ。外のホストは読ませない
+      allowedHosts:
+        - http://files

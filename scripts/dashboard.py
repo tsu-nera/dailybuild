@@ -7,11 +7,17 @@ Artifact へは agent が添付ファイルとして上げ直す（スクリプ�
 目標値は config/targets.yaml（睡眠）と config/exercise_muscles.yaml の weekly_sets（筋トレ）
 から読むので、目標を書き換えればダッシュボードも追随する。
 
+同じ数値を Grafana 用の CSV 7本（nights / weeks / sets / status / current / sets_now /
+freshness）としても reports/dashboard/ へ全上書きで書く（docs/grafana.md）。欠測は空セル。
+計算はここに1本で、Grafana 側では集計も判定もしない。
+
 Usage:
     uv run scripts/dashboard.py build [--weeks 8] [--out tmp/dashboard/goals.json]
+                                      [--csv-dir reports/dashboard]
 """
 
 import argparse
+import csv
 import datetime as dt
 import json
 import sys
@@ -26,15 +32,33 @@ from lib import hevy_csv  # noqa: E402
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.analytics import workout  # noqa: E402
 from lib.analytics.sleep.rise import load_steps, minutes_late, rise_time  # noqa: E402
-from lib.utils.private_data import require_private_path  # noqa: E402
+from lib.utils.private_data import ensure_dir, require_private_path, require_private_write  # noqa: E402
 from lib.utils.targets import get_target  # noqa: E402
+from journal_skeleton import collect_pipeline  # noqa: E402
 
 SLEEP_CSV = project_root / 'data/wearable/sleep.csv'
 STEPS_CSV = project_root / 'data/wearable/steps_intraday.csv'
 WORKOUTS_CSV = project_root / 'data/hevy/workouts.csv'
+CSV_DIR = project_root / 'reports/dashboard'
 
 # 週の睡眠時間の目安。bed_time の宣言（rise_time − 睡眠7時間 − 入眠15分）と同じ7時間
 SLEEP_PER_NIGHT_H = 7
+
+_WEEK_COLS = ['week', 'days', 'nights', 'total_h', 'goal_h', 'avg_h', 'bed_hit', 'bed_n',
+              'rise_hit', 'rise_n', 'debt_end_h']
+_SET_COLS = ['week', 'muscle', 'sets', 'target', 'remaining']
+# CSV の列順（Grafana 側は列名で選ぶ）
+COLUMNS = {
+    'status': ['generated_at', 'today', 'this_week', 'last_sleep_date', 'last_hevy_date',
+               'bed_target', 'rise_target', 'debt_target_h', 'sleep_per_night_h'],
+    'nights': ['date', 'week', 'weekday', 'sleep_h', 'bed', 'bed_late_min', 'rise',
+               'rise_late_min', 'debt_h'],
+    'weeks': _WEEK_COLS,
+    'sets': _SET_COLS,
+    'current': _WEEK_COLS + [f'prev_{c}' for c in _WEEK_COLS] + ['gap_h'],
+    'sets_now': _SET_COLS,
+    'freshness': ['name', 'last', 'behind', 'tolerance'],
+}
 
 
 def _week_label(d: dt.date) -> str:
@@ -46,18 +70,17 @@ def _hm(ts) -> str | None:
     return None if ts is None or pd.isna(ts) else pd.Timestamp(ts).strftime('%H:%M')
 
 
-def _main_sleep(lo: dt.date, hi: dt.date) -> pd.DataFrame:
-    df = pd.read_csv(require_private_path(SLEEP_CSV))
-    df = df[df['isMainSleep'].astype(str).str.lower().isin(['true', '1'])].copy()
+def _main_sleep(raw: pd.DataFrame, lo: dt.date, hi: dt.date) -> pd.DataFrame:
+    df = raw[raw['isMainSleep'].astype(str).str.lower().isin(['true', '1'])].copy()
     df['date'] = pd.to_datetime(df['dateOfSleep']).dt.date
     df = df[(df['date'] >= lo) & (df['date'] <= hi)]
     # 同じ日に主睡眠が2本ある日は長い方（重なりセッションは取得側で除外済み）
     return df.sort_values('minutesAsleep').drop_duplicates('date', keep='last').sort_values('date')
 
 
-def _debt_by_day(lo: dt.date, hi: dt.date) -> dict:
+def _debt_by_day(raw: pd.DataFrame, lo: dt.date, hi: dt.date) -> dict:
     """journal_skeleton と同じ build_debt_calculator。片方だけ条件を変えると負債が2つになる"""
-    calc = sleep_lib.build_debt_calculator(pd.read_csv(require_private_path(SLEEP_CSV)))
+    calc = sleep_lib.build_debt_calculator(raw)
     out = {}
     for day in pd.date_range(lo, hi, freq='D'):
         try:
@@ -68,10 +91,12 @@ def _debt_by_day(lo: dt.date, hi: dt.date) -> dict:
     return out
 
 
-def build_sleep(lo: dt.date, hi: dt.date, bed_target: str | None, rise_target: str | None):
-    df = _main_sleep(lo, hi)
-    steps = load_steps(STEPS_CSV) if STEPS_CSV.exists() else pd.Series(dtype=float)
-    debt = _debt_by_day(lo, hi)
+def build_sleep(lo: dt.date, hi: dt.date, bed_target: str | None, rise_target: str | None,
+                sleep_csv: Path = SLEEP_CSV, steps_csv: Path = STEPS_CSV):
+    raw = pd.read_csv(sleep_csv)
+    df = _main_sleep(raw, lo, hi)
+    steps = load_steps(steps_csv) if steps_csv.exists() else pd.Series(dtype=float, index=pd.DatetimeIndex([]))
+    debt = _debt_by_day(raw, lo, hi)
     by_date = {r['date']: r for _, r in df.iterrows()}
 
     nights = []
@@ -115,11 +140,11 @@ def build_sleep(lo: dt.date, hi: dt.date, bed_target: str | None, rise_target: s
     return nights, weeks
 
 
-def build_sets(week_labels: list[str]):
+def build_sets(week_labels: list[str], workouts_csv: Path = WORKOUTS_CSV):
     targets = workout.load_weekly_set_targets()
-    if not WORKOUTS_CSV.exists() or not targets:
+    if not workouts_csv.exists() or not targets:
         return [], None
-    df = hevy_csv.parse_hevy_csv(WORKOUTS_CSV)
+    df = hevy_csv.parse_hevy_csv(workouts_csv)
     table, _ = workout.weekly_muscle_sets(df, workout.load_muscle_mapping(), week_labels)
     rows = []
     for wk in week_labels:
@@ -130,22 +155,35 @@ def build_sets(week_labels: list[str]):
     return rows, (None if pd.isna(last) else last.date().isoformat())
 
 
-def cmd_build(args) -> int:
-    today = dt.date.today()
+def build_tables(today: dt.date, weeks: int, *, sleep_csv: Path = SLEEP_CSV,
+                 steps_csv: Path = STEPS_CSV, workouts_csv: Path = WORKOUTS_CSV) -> dict[str, list[dict]]:
+    """表の名前 → 行のリスト。読み込み先を引数で受けるので、ガードは呼び出し側（CLI）に置く"""
     monday = today - dt.timedelta(days=today.weekday())
-    lo = monday - dt.timedelta(weeks=args.weeks - 1)
+    lo = monday - dt.timedelta(weeks=weeks - 1)
     bed_target, rise_target = get_target('bed_time'), get_target('rise_time')
 
-    nights, weeks = build_sleep(lo, today, bed_target, rise_target)
-    week_labels = [w['week'] for w in weeks]
-    sets, last_hevy = build_sets(week_labels)
+    nights, week_rows = build_sleep(lo, today, bed_target, rise_target, sleep_csv, steps_csv)
+    week_labels = [w['week'] for w in week_rows]
+    sets, last_hevy = build_sets(week_labels, workouts_csv)
     last_sleep = max((n['date'] for n in nights if n['sleep_h'] is not None), default=None)
+    this_week = _week_label(today)
 
-    out = {
+    # 今週の行を Grafana の filter 式で選ばせない（判定がダッシュボード側に入るため）
+    cur = next((w for w in week_rows if w['week'] == this_week), None)
+    prev = week_rows[week_rows.index(cur) - 1] if cur and week_rows.index(cur) > 0 else None
+    current = []
+    if cur:
+        row = dict(cur)
+        for k, v in (prev or {k: None for k in cur}).items():
+            row[f'prev_{k}'] = v
+        row['gap_h'] = round(cur['total_h'] - cur['goal_h'], 1)
+        current.append(row)
+
+    return {
         'status': [{
             'generated_at': dt.datetime.now().astimezone().isoformat(timespec='minutes'),
             'today': today.isoformat(),
-            'this_week': _week_label(today),
+            'this_week': this_week,
             'last_sleep_date': last_sleep,
             'last_hevy_date': last_hevy,
             'bed_target': bed_target,
@@ -154,22 +192,57 @@ def cmd_build(args) -> int:
             'sleep_per_night_h': SLEEP_PER_NIGHT_H,
         }],
         'nights': nights,
-        'weeks': weeks,
+        'weeks': week_rows,
         'sets': sets,
+        'current': current,
+        'sets_now': [r for r in sets if r['week'] == this_week],
+        'freshness': [
+            {'name': r['name'], 'last': None if r['last'] is None else r['last'].date().isoformat(),
+             'behind': r['behind'], 'tolerance': r['tolerance']}
+            for r in collect_pipeline(today)
+        ],
     }
+
+
+def write_csvs(tables: dict[str, list[dict]], csv_dir: Path) -> list[Path]:
+    """表ごとに全上書き。欠測（None）は空セルのまま書く（0にしない）"""
+    ensure_dir(csv_dir)
+    paths = []
+    for name, rows in tables.items():
+        path = require_private_write(csv_dir / f'{name}.csv')
+        with path.open('w', newline='', encoding='utf-8') as f:
+            # 行が0件でも見出しは残す。DictWriter は None を空セルで書く
+            w = csv.DictWriter(f, fieldnames=COLUMNS[name])
+            w.writeheader()
+            w.writerows(rows)
+        paths.append(path)
+    return paths
+
+
+def cmd_build(args) -> int:
+    # 読み込み元の symlink 未マウントは「データなし」で正常終了して欠測を捏造するので、ここで落とす
+    require_private_path(SLEEP_CSV)
+    tables = build_tables(dt.date.today(), args.weeks)
+    nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
+
+    out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
     path = Path(args.out)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, ensure_ascii=False, indent=1))
+    written = write_csvs(tables, Path(args.csv_dir))
     print(f'{path}  nights={len(nights)} weeks={len(weeks)} sets={len(sets)}', file=sys.stderr)
+    for p in written:
+        print(f'  {p}', file=sys.stderr)
     return 0
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest='cmd', required=True)
-    b = sub.add_parser('build', help='ダッシュボード用の JSON を書き出す')
+    b = sub.add_parser('build', help='ダッシュボード用の JSON と Grafana 用の CSV を書き出す')
     b.add_argument('--weeks', type=int, default=8)
     b.add_argument('--out', default=str(project_root / 'tmp/dashboard/goals.json'))
+    b.add_argument('--csv-dir', default=str(CSV_DIR))
     b.set_defaults(func=cmd_build)
     args = p.parse_args(argv)
     return args.func(args)

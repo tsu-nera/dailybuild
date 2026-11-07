@@ -796,12 +796,12 @@ def collect_pipeline(target: dt.date) -> list[dict]:
         df = _read(path.format(year=target.year), column)
         past = df[df['_date'] <= ts] if not df.empty else df
         if past.empty:
-            rows.append({'name': name, 'last': None, 'behind': None,
+            rows.append({'name': name, 'last': None, 'behind': None, 'tolerance': tolerance,
                          'ok': False, 'status': status, 'note': note})
             continue
         last = past['_date'].max()
         behind = (ts - last).days
-        rows.append({'name': name, 'last': last, 'behind': behind,
+        rows.append({'name': name, 'last': last, 'behind': behind, 'tolerance': tolerance,
                      'ok': behind <= tolerance, 'status': status, 'note': note})
     return rows
 
