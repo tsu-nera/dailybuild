@@ -99,6 +99,8 @@ step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
 step "Habitica"     uv run python scripts/habitica.py cron
 # Google Calendar（primary）の読み取り専用の写し。骨組みと events.jsonl が予定を読むので、それらより前
 step "Google Calendar" uv run python scripts/gcalendar.py fetch --days "$DAYS"
+# Last.fm の scrobble（スマホの Pano Scrobbler が YouTube の再生を送る）。遅れて届く分のため CSV の最新から14日遡って取り直す
+step "Last.fm"       uv run python scripts/lastfm.py fetch
 
 # 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
 # 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、
