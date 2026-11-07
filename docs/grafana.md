@@ -56,3 +56,8 @@ curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/u
 2. Grafana では Infinity の query で列を選ぶだけにする。集計・今週の選択・達成判定を Grafana に書かない
 3. Infinity の query は `type: csv` / `source: url` / `parser: backend` / `format: table` /
    `url: http://files/<name>.csv`、列は `selector` / `text` / `type` を明示する
+4. query には `url_options: {method: GET}` を必ず入れる。無いと画面側の Infinity が
+   `Cannot read properties of undefined (reading 'method')` で落ち、全パネルが空になる。
+   `/api/ds/query` に直接投げると通るので API だけの確認では見つからない（2026-11-07）。
+   確認は画面で開くか、ブラウザのコンソールを見る
+5. `filterExpression` は `selector` ではなく列の `text` 名で評価する。絞る列も `columns` に入れる

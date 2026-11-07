@@ -53,7 +53,10 @@
               "text": "差 h",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -117,7 +120,10 @@
               "text": "先週",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -180,7 +186,10 @@
               "text": "先週末",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -253,7 +262,10 @@
               "text": "先週 対象",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -326,7 +338,10 @@
               "text": "先週 対象",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -409,7 +424,10 @@
               "text": "更新",
               "type": "string"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -473,7 +491,10 @@
               "text": "睡眠 h",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -596,7 +617,10 @@
               "text": "睡眠 h",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -662,7 +686,10 @@
               "text": "平均 h",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -726,7 +753,10 @@
               "text": "負債 h",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -800,7 +830,10 @@
               "text": "残り",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -857,7 +890,10 @@
               "type": "number"
             }
           ],
-          "filterExpression": "muscle == \"${muscle}\""
+          "filterExpression": "muscle == \"${muscle}\"",
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
@@ -985,7 +1021,10 @@
               "text": "許容（日）",
               "type": "number"
             }
-          ]
+          ],
+          "url_options": {
+            "method": "GET"
+          }
         }
       ],
       "fieldConfig": {
