@@ -46,7 +46,8 @@ SLEEP_PER_NIGHT_H = 7
 
 _WEEK_COLS = ['week', 'days', 'nights', 'total_h', 'goal_h', 'avg_h', 'bed_hit', 'bed_n',
               'rise_hit', 'rise_n', 'debt_end_h']
-_SET_COLS = ['week', 'muscle', 'sets', 'target', 'remaining']
+# axis_max は Grafana の縦軸の上限。目標の点線が実績より上にあっても軸の外に出ないようにする
+_SET_COLS = ['week', 'muscle', 'sets', 'target', 'remaining', 'axis_max']
 # CSV の列順（Grafana 側は列名で選ぶ）
 COLUMNS = {
     'status': ['generated_at', 'today', 'this_week', 'last_sleep_date', 'last_hevy_date',
@@ -151,6 +152,8 @@ def build_sets(week_labels: list[str], workouts_csv: Path = WORKOUTS_CSV):
         for p in workout.weekly_set_progress(table, wk, targets):
             rows.append({'week': wk, 'muscle': p['label'], 'sets': p['actual'],
                          'target': p['target'], 'remaining': p['remaining']})
+    for r in rows:
+        r['axis_max'] = max([r['target']] + [x['sets'] for x in rows if x['muscle'] == r['muscle']])
     last = pd.to_datetime(df['start_dt']).max()
     return rows, (None if pd.isna(last) else last.date().isoformat())
 

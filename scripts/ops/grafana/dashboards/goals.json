@@ -445,12 +445,16 @@
           "calcs": [
             "lastNotNull"
           ],
-          "fields": "",
+          "fields": "/.*/",
           "values": false
         },
         "colorMode": "none",
         "graphMode": "none",
-        "textMode": "value_and_name"
+        "textMode": "value_and_name",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 16
+        }
       },
       "description": "config/targets.yaml の値と、データの更新時刻（status.csv）"
     },
@@ -624,7 +628,11 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          }
+        },
         "overrides": []
       },
       "options": {},
@@ -644,6 +652,17 @@
           "id": "limit",
           "options": {
             "limitField": 7
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "日付": 0,
+              "入床": 1,
+              "離床": 2,
+              "睡眠 h": 3
+            }
           }
         }
       ],
@@ -794,8 +813,8 @@
       "gridPos": {
         "x": 0,
         "y": 19,
-        "w": 8,
-        "h": 8
+        "w": 24,
+        "h": 6
       },
       "targets": [
         {
@@ -837,10 +856,27 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          }
+        },
         "overrides": []
       },
-      "options": {}
+      "options": {},
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "部位": 0,
+              "実施": 1,
+              "目標": 2,
+              "残り": 3
+            }
+          }
+        }
+      ]
     },
     {
       "id": 12,
@@ -887,6 +923,11 @@
             {
               "selector": "target",
               "text": "目標",
+              "type": "number"
+            },
+            {
+              "selector": "axis_max",
+              "text": "軸",
               "type": "number"
             }
           ],
@@ -955,6 +996,11 @@
               {
                 "fieldName": "セット",
                 "handlerKey": "__ignore"
+              },
+              {
+                "fieldName": "軸",
+                "handlerKey": "max",
+                "reducerId": "lastNotNull"
               }
             ]
           }
@@ -964,7 +1010,8 @@
           "options": {
             "excludeByName": {
               "目標": true,
-              "muscle": true
+              "muscle": true,
+              "軸": true
             }
           }
         }
@@ -986,7 +1033,7 @@
         "x": 0,
         "y": 27,
         "w": 24,
-        "h": 8
+        "h": 12
       },
       "targets": [
         {
@@ -1028,7 +1075,11 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          }
+        },
         "overrides": []
       },
       "options": {},
