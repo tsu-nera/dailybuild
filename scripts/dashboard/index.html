@@ -1,0 +1,435 @@
+<meta name="dash-one-writer">
+<style>
+  .g { display: grid; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); font-variant-numeric: tabular-nums; }
+  .g-head { display: grid; gap: var(--cds-gap-xs); }
+  .g-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; }
+  .g-lede { margin: 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-body); }
+  .g-lede b, .g-tile b, .g-note b { font-weight: 600; color: var(--color-fg); }
+  .g-fresh { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .g-stale { color: var(--color-warn); }
+  .g-section { display: grid; gap: var(--cds-gap-md); }
+  .g-h2 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .g-tiles { display: grid; gap: var(--cds-gap-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); }
+  .g-tile, .g-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
+  .g-tile { display: grid; gap: var(--cds-gap-xs); align-content: start; }
+  .g-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 0; }
+  .g-big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); line-height: 1.1; margin: 0; }
+  .g-big small { font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-body); color: var(--color-fg-muted); }
+  .g-sub { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .g-ok { color: var(--color-ok); }
+  .g-bad { color: var(--color-bad); }
+  .g-grid { display: grid; gap: var(--cds-gap-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); }
+  .g-card { display: grid; gap: var(--cds-gap-sm); align-content: start; }
+  .g-card h3 { margin: 0; font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); }
+  .g-note { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .g-chart { position: relative; min-height: 200px; }
+  .g-chart.g-short { min-height: 150px; }
+  .g-chart svg { display: block; overflow: visible; }
+  .g-chart text { fill: var(--color-fg-muted); font-size: var(--cds-font-size-caption); font-family: var(--font-anthropic-sans); }
+  .g-chart .g-strong { fill: var(--color-fg); }
+  .g-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); white-space: nowrap; z-index: 2; }
+  .g-tip .g-tip-d { color: var(--cds-text-secondary); }
+  .g-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); }
+  .g-table th { text-align: left; font-weight: var(--cds-font-weight-medium); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm) var(--cds-pad-xs) 0; border-bottom: 1px solid var(--color-border-line); }
+  .g-table td { padding: var(--cds-pad-sm) var(--cds-pad-sm) var(--cds-pad-sm) 0; border-bottom: 1px solid var(--color-border-line); }
+  .g-table .g-num { text-align: right; }
+  .g-bar { display: block; height: 6px; margin-top: 4px; border-radius: 3px; background: var(--cds-chart-grid); overflow: hidden; }
+  .g-bar i { display: block; height: 100%; border-radius: 3px; }
+  .g-warn { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-warn); }
+  [data-dash-source-state=empty] { color: transparent; }
+  [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+  .g-fail { display: flex; align-items: center; justify-content: center; gap: var(--cds-gap-xs); min-height: inherit; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+  .g-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+  .g-details summary { cursor: pointer; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .g-details dl { display: grid; grid-template-columns: max-content 1fr; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); margin: var(--cds-gap-sm) 0 0; }
+  .g-details dt { font-weight: var(--cds-font-weight-medium); }
+  .g-details dd { margin: 0; color: var(--color-fg-muted); }
+</style>
+
+<div class="g">
+  <header class="g-head" id="top">
+    <h1 class="g-title">週の目標</h1>
+    <p class="g-lede">今週（<span data-draw="week" data-source="status" data-field="this_week" data-row="0">—</span>）は睡眠 <b data-draw="wk-total" data-source="this_week" data-field="total_h" data-row="0">—</b>h（目安 <b data-draw="wk-goal" data-source="this_week" data-field="goal_h" data-row="0">—</b>h）、筋トレは残り <b data-draw="sets-left" data-source="sets_left" data-field="remaining" data-row="0">—</b> セット。</p>
+    <p class="g-fresh"><span data-draw="fresh-flag" data-source="status"></span>更新 <span data-draw="generated" data-source="status" data-field="generated_at" data-row="0">—</span> ・ 睡眠の最終 <span data-draw="last-sleep" data-source="status" data-field="last_sleep_date" data-row="0">—</span> ・ Hevy の最終取り込み <span data-draw="last-hevy" data-source="status" data-field="last_hevy_date" data-row="0">—</span></p>
+  </header>
+
+  <section class="g-section" id="sleep">
+    <h2 class="g-h2">睡眠</h2>
+    <div class="g-tiles">
+      <div class="g-tile">
+        <p class="g-label">今週の合計</p>
+        <p class="g-big"><span data-draw="wk-total2" data-source="this_week" data-field="total_h" data-row="0">—</span><small> h</small></p>
+        <p class="g-sub">目安 <b data-draw="wk-goal2" data-source="this_week" data-field="goal_h" data-row="0">—</b>h（記録 <span data-draw="wk-nights" data-source="this_week" data-field="nights" data-row="0">—</span> 晩 × <span data-draw="per-night" data-source="status" data-field="sleep_per_night_h" data-row="0">—</span>h）・差 <b data-draw="wk-gap" data-source="this_week" data-field="gap_h" data-row="0">—</b>h</p>
+      </div>
+      <div class="g-tile">
+        <p class="g-label">1晩の平均</p>
+        <p class="g-big"><span data-draw="wk-avg" data-source="this_week" data-field="avg_h" data-row="0">—</span><small> h</small></p>
+        <p class="g-sub">先週 <span data-draw="prev-avg" data-source="prev_week" data-field="avg_h" data-row="0">—</span>h</p>
+      </div>
+      <div class="g-tile">
+        <p class="g-label">睡眠負債（目標 <span data-draw="debt-target" data-source="status" data-field="debt_target_h" data-row="0">—</span>h）</p>
+        <p class="g-big"><span data-draw="wk-debt" data-source="this_week" data-field="debt_end_h" data-row="0">—</span><small> h</small></p>
+        <p class="g-sub">先週末 <span data-draw="prev-debt" data-source="prev_week" data-field="debt_end_h" data-row="0">—</span>h</p>
+      </div>
+      <div class="g-tile">
+        <p class="g-label">平日の入床 <span data-draw="bed-target" data-source="status" data-field="bed_target" data-row="0">—</span> まで</p>
+        <p class="g-big"><span data-draw="bed-hit" data-source="this_week" data-field="bed_hit" data-row="0">—</span><small> / <span data-draw="bed-n" data-source="this_week" data-field="bed_n" data-row="0">—</span> 日</small></p>
+        <p class="g-sub">先週 <span data-draw="prev-bed-hit" data-source="prev_week" data-field="bed_hit" data-row="0">—</span> / <span data-draw="prev-bed-n" data-source="prev_week" data-field="bed_n" data-row="0">—</span> 日</p>
+      </div>
+      <div class="g-tile">
+        <p class="g-label">平日の離床 <span data-draw="rise-target" data-source="status" data-field="rise_target" data-row="0">—</span> まで</p>
+        <p class="g-big"><span data-draw="rise-hit" data-source="this_week" data-field="rise_hit" data-row="0">—</span><small> / <span data-draw="rise-n" data-source="this_week" data-field="rise_n" data-row="0">—</span> 日</small></p>
+        <p class="g-sub">先週 <span data-draw="prev-rise-hit" data-source="prev_week" data-field="rise_hit" data-row="0">—</span> / <span data-draw="prev-rise-n" data-source="prev_week" data-field="rise_n" data-row="0">—</span> 日</p>
+      </div>
+    </div>
+
+    <div class="g-grid">
+      <div class="g-card" id="nights-chart">
+        <h3>夜ごとの寝床（直近4週）</h3>
+        <p class="g-note">棒が入床から離床まで。点線が目標の時刻。日付は起きた日</p>
+        <div class="g-chart" data-draw="window" data-source="nights status"></div>
+      </div>
+      <div class="g-card" id="week-sleep-chart">
+        <h3>週ごとの1晩平均（8週）</h3>
+        <p class="g-note">点線が1晩7時間。記録の無い夜は平均に入れない</p>
+        <div class="g-chart" data-draw="weekly" data-source="weeks status"></div>
+      </div>
+      <div class="g-card" id="debt-chart">
+        <h3>睡眠負債（週末の値、8週）</h3>
+        <p class="g-note">直近14日を新しいほど重く数えた不足分。欠測の夜は0時間として入る</p>
+        <div class="g-chart g-short" data-draw="debt" data-source="weeks"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="g-section" id="strength">
+    <h2 class="g-h2">筋トレ（部位別セット数）</h2>
+    <p class="g-warn g-hevy-stale" hidden>Hevy の取り込みが2日以上前です。それ以降の筋トレはまだ数えられていません。</p>
+    <div class="g-grid">
+      <div class="g-card" id="sets-now">
+        <h3>今週</h3>
+        <p class="g-note">目標は exercise_muscles.yaml の週あたりセット数</p>
+        <table class="g-table" data-source="sets_now" data-row-key="muscle">
+          <thead><tr><th data-field="muscle">部位</th><th data-field="sets" class="g-num">実施</th><th data-field="target" class="g-num">目標</th><th data-field="remaining" class="g-num">残り</th></tr></thead>
+          <tbody data-draw="sets-rows"></tbody>
+        </table>
+      </div>
+      <div class="g-card" id="sets-weeks">
+        <h3>週ごとのセット数（8週）</h3>
+        <p class="g-note">点線が目標。目標に届いた週を濃く塗る</p>
+        <div class="g-chart" data-draw="sets-hist" data-source="sets"></div>
+      </div>
+    </div>
+  </section>
+
+  <details class="g-details">
+    <summary>数え方</summary>
+    <dl>
+      <dt>週</dt><dd>月曜から日曜（ISO週）。睡眠は起きた日の週に入る</dd>
+      <dt>入床</dt><dd>Fitbit の睡眠記録の開始時刻</dd>
+      <dt>離床</dt><dd>起きた後に10分で40歩を歩き出した最初の分。歩数が無い朝は判定しない</dd>
+      <dt>平日</dt><dd>起きた日が月〜金の夜。入床・離床の達成は平日だけで数える</dd>
+      <dt>目安</dt><dd>記録のある夜の数 × 7時間。記録の無い夜は0時間として足さない</dd>
+      <dt>セット数</dt><dd>Hevy の export を取り込んだ分。種目の主な部位1つに数える</dd>
+    </dl>
+  </details>
+</div>
+
+<script>
+  // goals.json 1本に4つの表が入っている。それぞれの表を取り出すだけ
+  ['status', 'nights', 'weeks', 'sets'].forEach((key) => dash.loader(key, {
+    description: `goals.json の ${key} の行`,
+    fn: ({ answer }) => answer[key],
+  }));
+</script>
+
+<script>
+  window.G = (() => {
+    const f1 = d3.format('.1f');
+    const ok = (id) => dash.data(id).status === 'ok';
+    const rows = (id) => (ok(id) ? dash.data(id).data : []);
+    const fail = (el, id) => {
+      const s = dash.data(id).status;
+      if (s === 'error' || s === 'connect') {
+        el.replaceChildren();
+        const p = document.createElement('div');
+        p.className = 'g-fail';
+        p.textContent = 'Failed to load';
+        el.append(p);
+        return true;
+      }
+      return false;
+    };
+    const field = (el, fmt) => {
+      const id = el.dataset.source;
+      const r = rows(id)[Number(el.dataset.row || 0)];
+      const v = r ? r[el.dataset.field] : undefined;
+      el.textContent = v === undefined || v === null ? '—' : (fmt ? fmt(v) : String(v));
+    };
+    // 時刻（HH:MM）を夜の軸の分に。正午より前は翌日側
+    const nightMin = (hm) => {
+      if (!hm) return null;
+      const [h, m] = hm.split(':').map(Number);
+      return (h < 12 ? h + 24 : h) * 60 + m;
+    };
+    const clock = (min) => {
+      const h = Math.floor(min / 60) % 24;
+      return `${h}:${String(min % 60).padStart(2, '0')}`;
+    };
+    const tip = (box) => {
+      let t = box.querySelector('.g-tip');
+      if (!t) { t = document.createElement('div'); t.className = 'g-tip'; t.hidden = true; box.append(t); }
+      return {
+        show(ev, head, lines) {
+          t.replaceChildren();
+          const d = document.createElement('div'); d.className = 'g-tip-d'; d.textContent = head; t.append(d);
+          lines.forEach((l) => { const e = document.createElement('div'); e.textContent = l; t.append(e); });
+          t.hidden = false;
+          const [x, y] = d3.pointer(ev, box);
+          const w = t.offsetWidth;
+          t.style.left = `${Math.max(0, Math.min(box.clientWidth - w, x - w / 2))}px`;
+          t.style.top = `${Math.max(0, y - t.offsetHeight - 10)}px`;
+        },
+        hide() { t.hidden = true; },
+      };
+    };
+    const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || null;
+    return { f1, ok, rows, fail, field, nightMin, clock, tip, css };
+  })();
+</script>
+
+<script>
+  dash.calc('this_week', {
+    title: '今週の睡眠',
+    description: '週ごとの行から今週の1行を取り、目安との差を足す。',
+    inputs: ['status', 'weeks'],
+    fn: (status, weeks) => weeks
+      .filter((w) => w.week === status[0].this_week)
+      .map((w) => ({ ...w, gap_h: Math.round((w.total_h - w.goal_h) * 10) / 10 })),
+  });
+  dash.calc('prev_week', {
+    title: '先週の睡眠',
+    description: '週ごとの行のうち今週の1つ前。',
+    inputs: ['status', 'weeks'],
+    fn: (status, weeks) => {
+      const i = weeks.findIndex((w) => w.week === status[0].this_week);
+      return i > 0 ? [weeks[i - 1]] : [];
+    },
+  });
+  dash.calc('sets_now', {
+    title: '今週のセット数',
+    description: '部位別セット数のうち今週の行。',
+    inputs: ['status', 'sets'],
+    fn: (status, sets) => sets.filter((s) => s.week === status[0].this_week)
+      .map((s) => ({ muscle: s.muscle, sets: s.sets, target: s.target, remaining: s.remaining })),
+  });
+  dash.calc('sets_left', {
+    title: '今週の残りセット数',
+    description: '今週の部位別の残りを合計する。',
+    inputs: ['status', 'sets'],
+    fn: (status, sets) => [{
+      remaining: sets.filter((s) => s.week === status[0].this_week).reduce((a, s) => a + s.remaining, 0),
+    }],
+  });
+</script>
+
+<script>
+  const one = (name, fmt) => dash.draw(name, (el) => G.field(el, fmt));
+  ['week', 'wk-goal', 'wk-goal2', 'wk-nights', 'per-night', 'sets-left', 'last-sleep', 'last-hevy',
+    'bed-target', 'rise-target', 'debt-target', 'bed-hit', 'bed-n', 'rise-hit', 'rise-n',
+    'prev-bed-hit', 'prev-bed-n', 'prev-rise-hit', 'prev-rise-n'].forEach((n) => one(n));
+  ['wk-total', 'wk-total2', 'wk-avg', 'prev-avg', 'wk-debt', 'prev-debt'].forEach((n) => one(n, G.f1));
+  one('generated', (v) => v.slice(5, 16).replace('T', ' ').replace('-', '/'));
+
+  // 目標に届いた・届かないを色でも出す
+  dash.draw('wk-gap', (el) => {
+    G.field(el, (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + G.f1(Math.abs(v)));
+    const r = G.rows('this_week')[0];
+    el.classList.toggle('g-bad', !!r && r.gap_h < 0);
+    el.classList.toggle('g-ok', !!r && r.gap_h >= 0);
+  });
+
+  const daysSince = (iso) => (iso ? Math.floor((Date.now() - new Date(iso + 'T00:00:00+09:00')) / 864e5) : null);
+  dash.draw('fresh-flag', (el) => {
+    const s = G.rows('status')[0];
+    const old = s ? daysSince(s.generated_at.slice(0, 10)) : null;
+    el.textContent = old !== null && old >= 2 ? `${old}日前のデータ ・ ` : '';
+    el.className = old !== null && old >= 2 ? 'g-stale' : '';
+  });
+  dash.onData(() => {
+    const s = G.ok('status') ? dash.data('status').data[0] : null;
+    const d = s ? daysSince(s.last_hevy_date) : null;
+    document.querySelectorAll('.g-hevy-stale').forEach((el) => { el.hidden = !(d !== null && d >= 2); });
+  });
+</script>
+
+<script>
+  // 夜ごとの寝床: 入床→離床の縦棒
+  dash.draw('window', (el) => {
+    el.replaceChildren();
+    if (G.fail(el, 'nights')) return;
+    const st = G.rows('status')[0];
+    const nights = G.rows('nights').slice(-28);
+    if (!st || !nights.length) return;
+    const W = el.clientWidth, H = 200, m = { t: 8, r: 8, b: 22, l: 40 };
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const pts = nights.flatMap((n) => [G.nightMin(n.bed), G.nightMin(n.rise)]).filter((v) => v !== null);
+    const bedT = G.nightMin(st.bed_target), riseT = G.nightMin(st.rise_target);
+    const lo = Math.floor((Math.min(...pts, bedT) - 30) / 60) * 60;
+    const hi = Math.ceil((Math.max(...pts, riseT) + 30) / 60) * 60;
+    const x = d3.scaleBand(nights.map((n) => n.date), [m.l, W - m.r]).padding(0.3);
+    const y = d3.scaleLinear([lo, hi], [m.t, H - m.b]);
+    const ticks = d3.range(lo, hi + 1, 120);
+    svg.append('g').selectAll('line').data(ticks).join('line')
+      .attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y)
+      .attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(ticks).join('text')
+      .attr('x', m.l - 6).attr('y', y).attr('dy', '0.32em').attr('text-anchor', 'end').text(G.clock);
+    [bedT, riseT].forEach((t) => svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(t)).attr('y2', y(t))
+      .attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 3'));
+    const good = (n) => n.weekday && n.bed_late_min !== null && n.bed_late_min <= 0;
+    const t = G.tip(el);
+    svg.append('g').selectAll('rect').data(nights.filter((n) => n.bed)).join('rect')
+      .attr('x', (n) => x(n.date)).attr('width', x.bandwidth())
+      .attr('y', (n) => y(G.nightMin(n.bed)))
+      .attr('height', (n) => Math.max(2, y(G.nightMin(n.rise) ?? G.nightMin(n.bed) + 360) - y(G.nightMin(n.bed))))
+      .attr('rx', 2)
+      .attr('fill', (n) => (n.week === st.this_week ? dash.colors[0] : 'var(--cds-chart-muted)'))
+      .attr('opacity', (n) => (n.rise ? 1 : 0.4))
+      .on('pointermove', (ev, n) => t.show(ev, `${n.date.slice(5).replace('-', '/')}${n.weekday ? '' : '（休日）'}`,
+        [`入床 ${n.bed}${n.bed_late_min > 0 ? `（+${n.bed_late_min}分）` : ''}`,
+          `離床 ${n.rise ?? '判定なし'}${n.rise_late_min > 0 ? `（+${n.rise_late_min}分）` : ''}`,
+          `睡眠 ${G.f1(n.sleep_h)}h`]))
+      .on('pointerleave', () => t.hide());
+    const labelEvery = Math.ceil(nights.length / Math.max(1, Math.floor((W - m.l) / 44)));
+    svg.append('g').selectAll('text').data(nights.filter((_, i) => (nights.length - 1 - i) % labelEvery === 0)).join('text')
+      .attr('x', (n) => x(n.date) + x.bandwidth() / 2).attr('y', H - 6).attr('text-anchor', 'middle')
+      .text((n) => `${+n.date.slice(5, 7)}/${+n.date.slice(8)}`);
+  });
+
+  // 週ごとの1晩平均
+  dash.draw('weekly', (el) => {
+    el.replaceChildren();
+    if (G.fail(el, 'weeks')) return;
+    const st = G.rows('status')[0];
+    const weeks = G.rows('weeks').filter((w) => w.avg_h !== null);
+    if (!st || !weeks.length) return;
+    const W = el.clientWidth, H = 200, m = { t: 18, r: 8, b: 22, l: 28 };
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const x = d3.scaleBand(weeks.map((w) => w.week), [m.l, W - m.r]).padding(0.3);
+    const y = d3.scaleLinear([0, Math.max(8, d3.max(weeks, (w) => w.avg_h))], [H - m.b, m.t]);
+    const ticks = y.ticks(4);
+    svg.append('g').selectAll('line').data(ticks).join('line')
+      .attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(ticks).join('text')
+      .attr('x', m.l - 6).attr('y', y).attr('dy', '0.32em').attr('text-anchor', 'end').text((v) => `${v}h`);
+    const t = G.tip(el);
+    svg.append('g').selectAll('rect').data(weeks).join('rect')
+      .attr('x', (w) => x(w.week)).attr('width', Math.min(32, x.bandwidth()))
+      .attr('y', (w) => y(w.avg_h)).attr('height', (w) => y(0) - y(w.avg_h)).attr('rx', 3)
+      .attr('fill', (w) => (w.week === st.this_week ? dash.colors[0] : 'var(--cds-chart-muted)'))
+      .on('pointermove', (ev, w) => t.show(ev, w.week, [`平均 ${G.f1(w.avg_h)}h`, `合計 ${G.f1(w.total_h)}h / 目安 ${w.goal_h}h`, `記録 ${w.nights} 晩`]))
+      .on('pointerleave', () => t.hide());
+    svg.append('line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', y(st.sleep_per_night_h)).attr('y2', y(st.sleep_per_night_h))
+      .attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 3');
+    svg.append('g').selectAll('text').data(weeks).join('text')
+      .attr('x', (w) => x(w.week) + Math.min(32, x.bandwidth()) / 2).attr('y', (w) => y(w.avg_h) - 4)
+      .attr('text-anchor', 'middle').attr('class', (w) => (w.week === st.this_week ? 'g-strong' : null))
+      .text((w) => G.f1(w.avg_h));
+    svg.append('g').selectAll('text').data(weeks).join('text')
+      .attr('x', (w) => x(w.week) + Math.min(32, x.bandwidth()) / 2).attr('y', H - 6).attr('text-anchor', 'middle')
+      .text((w) => w.week.slice(5));
+  });
+
+  // 睡眠負債
+  dash.draw('debt', (el) => {
+    el.replaceChildren();
+    if (G.fail(el, 'weeks')) return;
+    const weeks = G.rows('weeks').filter((w) => w.debt_end_h !== null);
+    if (!weeks.length) return;
+    const W = el.clientWidth, H = 150, m = { t: 18, r: 16, b: 22, l: 28 };
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const x = d3.scalePoint(weeks.map((w) => w.week), [m.l + 8, W - m.r]);
+    const y = d3.scaleLinear([0, d3.max(weeks, (w) => w.debt_end_h) * 1.1], [H - m.b, m.t]).nice();
+    const ticks = y.ticks(3);
+    svg.append('g').selectAll('line').data(ticks).join('line')
+      .attr('x1', m.l).attr('x2', W - m.r).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(ticks).join('text')
+      .attr('x', m.l - 6).attr('y', y).attr('dy', '0.32em').attr('text-anchor', 'end').text((v) => `${v}h`);
+    svg.append('path').datum(weeks)
+      .attr('d', d3.line((w) => x(w.week), (w) => y(w.debt_end_h)))
+      .attr('fill', 'none').attr('stroke', dash.colors[1]).attr('stroke-width', 2)
+      .attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round');
+    const t = G.tip(el);
+    svg.append('g').selectAll('circle').data(weeks).join('circle')
+      .attr('cx', (w) => x(w.week)).attr('cy', (w) => y(w.debt_end_h)).attr('r', (w, i) => (i === weeks.length - 1 ? 4 : 2.5))
+      .attr('fill', dash.colors[1])
+      .on('pointermove', (ev, w) => t.show(ev, w.week, [`負債 ${G.f1(w.debt_end_h)}h`]))
+      .on('pointerleave', () => t.hide());
+    const last = weeks[weeks.length - 1];
+    svg.append('text').attr('x', x(last.week)).attr('y', y(last.debt_end_h) - 8).attr('text-anchor', 'end')
+      .attr('class', 'g-strong').text(`${G.f1(last.debt_end_h)}h`);
+    svg.append('g').selectAll('text.wk').data(weeks).join('text')
+      .attr('x', (w) => x(w.week)).attr('y', H - 6).attr('text-anchor', 'middle').text((w) => w.week.slice(5));
+  });
+</script>
+
+<script>
+  dash.draw('sets-rows', (tb) => {
+    tb.replaceChildren();
+    G.rows('sets_now').forEach((s, i) => {
+      const tr = document.createElement('tr');
+      const td = (text, cls) => { const c = document.createElement('td'); c.textContent = text; if (cls) c.className = cls; tr.append(c); return c; };
+      const name = td(s.muscle);
+      const bar = document.createElement('span'); bar.className = 'g-bar';
+      const fill = document.createElement('i');
+      fill.style.width = `${Math.min(100, (s.sets / s.target) * 100)}%`;
+      fill.style.background = s.remaining === 0 ? 'var(--color-ok)' : dash.colors[i % dash.colors.length];
+      bar.append(fill); name.append(bar);
+      td(String(s.sets), 'g-num');
+      td(String(s.target), 'g-num');
+      const left = td(String(s.remaining), 'g-num');
+      if (s.remaining === 0) left.classList.add('g-ok');
+      tb.append(tr);
+    });
+  });
+
+  // 部位ごとの小さな棒グラフを横に並べる（同じ縦軸）
+  dash.draw('sets-hist', (el) => {
+    el.replaceChildren();
+    if (G.fail(el, 'sets')) return;
+    const sets = G.rows('sets');
+    if (!sets.length) return;
+    const muscles = [...new Set(sets.map((s) => s.muscle))];
+    const weeks = [...new Set(sets.map((s) => s.week))];
+    const W = el.clientWidth, H = 200, m = { t: 18, r: 4, b: 22, l: 24 }, gap = 12;
+    const svg = d3.select(el).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const pw = (W - m.l - m.r - gap * (muscles.length - 1)) / muscles.length;
+    const y = d3.scaleLinear([0, Math.max(d3.max(sets, (s) => Math.max(s.sets, s.target)), 1)], [H - m.b, m.t]).nice();
+    const ticks = y.ticks(4).filter(Number.isInteger);
+    svg.append('g').selectAll('text').data(ticks).join('text')
+      .attr('x', m.l - 6).attr('y', y).attr('dy', '0.32em').attr('text-anchor', 'end').text((v) => v);
+    const t = G.tip(el);
+    muscles.forEach((mu, k) => {
+      const x0 = m.l + k * (pw + gap);
+      const rows = sets.filter((s) => s.muscle === mu);
+      const x = d3.scaleBand(weeks, [x0, x0 + pw]).padding(0.25);
+      const g = svg.append('g');
+      g.selectAll('line').data(ticks).join('line')
+        .attr('x1', x0).attr('x2', x0 + pw).attr('y1', y).attr('y2', y).attr('stroke', 'var(--cds-chart-grid)');
+      g.selectAll('rect').data(rows).join('rect')
+        .attr('x', (s) => x(s.week)).attr('width', x.bandwidth())
+        .attr('y', (s) => y(s.sets)).attr('height', (s) => y(0) - y(s.sets)).attr('rx', 2)
+        .attr('fill', dash.colors[k % dash.colors.length])
+        .attr('opacity', (s) => (s.sets >= s.target ? 1 : 0.45))
+        .on('pointermove', (ev, s) => t.show(ev, `${mu} ${s.week}`, [`${s.sets} / ${s.target} セット`]))
+        .on('pointerleave', () => t.hide());
+      const tgt = rows[rows.length - 1].target;
+      g.append('line').attr('x1', x0).attr('x2', x0 + pw).attr('y1', y(tgt)).attr('y2', y(tgt))
+        .attr('stroke', 'var(--cds-chart-reference)').attr('stroke-dasharray', '4 3');
+      g.append('text').attr('x', x0).attr('y', m.t - 6).attr('class', 'g-strong').text(mu);
+      g.append('text').attr('x', x0).attr('y', H - 6).text(weeks[0].slice(5));
+      g.append('text').attr('x', x0 + pw).attr('y', H - 6).attr('text-anchor', 'end').text(weeks[weeks.length - 1].slice(5));
+    });
+  });
+</script>
