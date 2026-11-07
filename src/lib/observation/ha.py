@@ -18,7 +18,9 @@ def fetch_history(start: dt.datetime, end: dt.datetime, entity_ids) -> dict[str,
         for i, r in enumerate(rows):
             ts = r.get('lc', r['lu'])
             t = dt.datetime.fromtimestamp(ts, JST)
-            series.append((t, r['s'], i == 0 and t <= start))
+            # HA は state が null の行を返すことがある（2026-11-07 light.indirect_light）
+            state = r['s'] if r['s'] is not None else 'unknown'
+            series.append((t, state, i == 0 and t <= start))
         out[eid] = series
     return out
 
