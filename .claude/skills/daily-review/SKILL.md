@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, Glob
 # 日次レビュースキル
 
 データ取得と AI レビューを実行する。読む入力は STATE.md・日次記録・週次目標で、
-レポート（`generate_*_report_daily.py`）は生成しない（人が見る画面は Grafana。docs/grafana.md）。
+日次レポートは生成・参照しない（人が見る画面は Grafana。docs/grafana.md）。
 レビュー後のディスカッションを経て、記録は `/journal` スキルで保存する。
 
 ## オプション
