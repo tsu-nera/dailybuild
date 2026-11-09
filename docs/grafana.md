@@ -7,10 +7,21 @@ vaio で動く Grafana。週の目標（睡眠・部位別セット数）とデ�
 ## データの流れ
 
 ```
-daily-fetch.sh ─ dashboard.py build ─▶ reports/dashboard/*.csv ─▶ nginx(files) ─▶ Infinity ─▶ Grafana
+daily-fetch.sh ─┬ dashboard.py build ─────▶ reports/dashboard/*.csv ─┬▶ nginx(files) ─▶ Infinity ─▶ Grafana
+                └ journal_skeleton.py ───▶ reports/metrics_daily.csv ─┘
 ```
 
-- 計算は **`scripts/dashboard.py` に1本**。Grafana では集計も判定もしない（クエリは列の選択と並べ替えだけ）。
+nginx が配るのは次の8本（`http://files/<name>.csv`）。設定は `scripts/ops/grafana/nginx/default.conf`。
+
+| CSV | 作り手 | 用途 |
+|---|---|---|
+| `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` | `dashboard.py` | 週の目標画面 |
+| `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
+
+`reports/` の他のファイル（journal の md など）は mount はされるが配らない（nginx の `alias` で1本だけ出す）。
+`events.jsonl` は配らない。Infinity は JSON Lines を読む parser を持たず、確かめられていない（2026-11-10）。
+
+- 計算は **`scripts/dashboard.py` に1本**（`metrics_daily.csv` は `journal_skeleton.py`）。Grafana では集計も判定もしない（クエリは列の選択と並べ替えだけ）。
   claude.ai 版（同じスクリプトの JSON）と同じ数字になる
 - CSV は7本（`nights` `weeks` `sets` `status` `current` `sets_now` `freshness`）。毎日**全上書き**で、
   `data/` には置かない。欠測は0でなく空セル
@@ -30,7 +41,7 @@ docker compose pull && docker compose up -d   # イメージ更新
 ```
 
 - アクセスは tailnet の `http://<vaio の tailnet IP>:3000`。匿名閲覧は無効。nginx（`files`）はホストのポートを開けない
-- bind mount は `DAILYBUILD_PRIVATE`（既定 `~/repo/dailybuild-private`）の `reports/dashboard` を直接指す
+- bind mount は `DAILYBUILD_PRIVATE`（既定 `~/repo/dailybuild-private`）の `reports/dashboard` と `reports` を直接指す
   （`reports` の symlink を docker に解決させない）
 - 取得系の merge 後は vaio のコードが自動更新されないので ssh で pull する
 
@@ -43,6 +54,15 @@ HTTP API で取り出して `dashboards/goals.json` に書き戻して commit �
 curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/uid/goals \
   | jq '.dashboard | del(.id, .version)' > scripts/ops/grafana/dashboards/goals.json
 ```
+
+## 対話で足すパネル（scratch）
+
+「この期間だけこれを見たい」は、正本の `goals` に足さず `scratch` ダッシュボード（uid `scratch`）に置く。
+
+- agent が HTTP API（`POST /api/dashboards/db`）で直接書く。**commit しない**（`dashboards/` に置かない）
+- 材料は主に `metrics_daily.csv` の列。Grafana では列を選ぶだけで、集計・判定は書かない（下の「パネル・指標を足す」と同じ規約）
+- 期間は Grafana の時間範囲（URL の `from` / `to`）で指定し、パネルに日付を直書きしない
+- 要らなくなったら `DELETE /api/dashboards/uid/scratch` で消す。残したいパネルは正本のダッシュボードへ移し、上の手順で JSON を取り出して commit する
 
 ## 表示規約
 

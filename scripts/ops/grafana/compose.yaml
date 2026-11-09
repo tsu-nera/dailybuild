@@ -15,12 +15,16 @@ services:
       - "${GRAFANA_BIND:-127.0.0.1}:3000:3000"
     restart: unless-stopped
 
-  # reports/dashboard/*.csv を compose 内部にだけ配る。ホストのポートは開けない
+  # reports/dashboard/*.csv と reports/metrics_daily.csv を compose 内部にだけ配る。ホストのポートは開けない
   files:
     image: nginx:1.27-alpine
     volumes:
       # reports の symlink を docker に解決させず、private 側の実体を直接指す
       - ${DAILYBUILD_PRIVATE:-${HOME}/repo/dailybuild-private}/reports/dashboard:/usr/share/nginx/html:ro
+      # metrics_daily.csv はディレクトリごと mount して nginx の alias で1本だけ配る
+      # （ファイル単体の bind mount は置き換えで inode が変わると古い中身を返し続ける）
+      - ${DAILYBUILD_PRIVATE:-${HOME}/repo/dailybuild-private}/reports:/srv/reports:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
 
 volumes:
