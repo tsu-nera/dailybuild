@@ -1,5 +1,16 @@
 # レポートの指標定義と読み方
 
+## 読み手
+
+| レビュー | 読むもの |
+|---|---|
+| `/daily-review` | `reports/journal/STATE.md`（エージェント）、Grafana の Body / Sleep / Mind / 今週の目標 画面（人） |
+| `/weekly-review` | `generate_{body,sleep,mind}_report_daily.py --week current` の期間レポート |
+| `/monthly-review` | 同 `--month current` の期間レポート ＋ `generate_*_report_interval.py --weeks 8` |
+
+`*_daily.py` は名前に反して日次では使わない（`/daily-review` は 2026-11 に STATE.md へ移った）。
+下の指標定義はレポート・STATE.md・Grafana（`reports/dashboard/daily.csv`）に共通で、計算は `src/lib/analytics/` に1本。
+
 ## mind レポートの指標
 
 レポート本文には出所や指標の定義を刷らない。読み手（人・agent とも）が
@@ -25,7 +36,7 @@
 - **血圧・脈拍**: HealthPlanet 血圧計
 
 日別表の値に付く `(z+2.1)` は**ベースラインからの乖離が ±1.5SD 以上**のときだけ
-出る z 値。以前は太字で印を付けていたが、+1.5SD と +3SD が同じ見た目に潰れて
+出る z 値（閾値は `src/lib/analytics/mind.py` の `Z_FLAG_THRESHOLD`。STATE.md の「直近7日の日別」も同じ）。以前は太字で印を付けていたが、+1.5SD と +3SD が同じ見た目に潰れて
 逸脱の大きさが読めなかったため、値そのものを出すようにした。
 
 ## 睡眠負債

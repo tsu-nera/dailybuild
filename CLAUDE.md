@@ -227,6 +227,9 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 ## Report Generation
 
 `scripts/generate_{body,mind,sleep}_report_{daily,interval}.py` は Jinja2 テンプレートでデータ準備と表示を分けている。
+**`*_daily.py` は名前に反して `/daily-review` からは読まれない。** `/weekly-review` が `--week`、`/monthly-review` が
+`--month` で呼ぶ期間レポートで、`*_interval.py` は `/monthly-review` だけが読む。`/daily-review` は STATE.md
+（エージェント）と Grafana（人、[docs/grafana.md](docs/grafana.md)）を読む。
 指標の定義・睡眠負債の計算条件・週次テーブルの母集団は [docs/reports.md](docs/reports.md)。
 
 ## Configuration
