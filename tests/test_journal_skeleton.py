@@ -444,10 +444,13 @@ def _write_series_csv(root, name, column, rows):
 
 
 def _write_innerscan(root, rows):
-    """data/healthplanet_innerscan.csv を date,weight,body_fat_rate で書く"""
+    """data/healthplanet_innerscan.csv を date,weight,body_fat_rate,body_water_rate で書く
+
+    body_water_rate は空にする。実データの列を揃えるためだけに置く
+    """
     (root / 'data').mkdir(exist_ok=True)
-    lines = ['date,weight,body_fat_rate']
-    lines += [f'{date},{weight},{fat}' for date, weight, fat in rows]
+    lines = ['date,weight,body_fat_rate,body_water_rate']
+    lines += [f'{date},{weight},{fat},' for date, weight, fat in rows]
     (root / 'data' / 'healthplanet_innerscan.csv').write_text(
         '\n'.join(lines) + '\n', encoding='utf-8')
 

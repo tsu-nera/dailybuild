@@ -87,6 +87,46 @@ def weekly_set_progress(sets_table, week_label, targets):
     return rows
 
 
+def weekly_set_status(df_workouts, week_label, session_dates, muscle_map, targets):
+    """
+    指定週の部位別セット数の残量と、Hevy export 未反映の疑いがある日を返す
+
+    body レポートと STATE.md（journal_skeleton.py）が共有する。片方だけ直すと
+    同じ週について2つのセット数が出る。
+
+    Parameters
+    ----------
+    df_workouts : DataFrame
+        hevy_csv.parse_hevy_csv() の戻り値
+    week_label : str
+        対象週のラベル（`YYYY-Wxx`）
+    session_dates : iterable of datetime.date
+        exercise_source の筋トレセッションがあった日。export 未反映の検出に使う
+    muscle_map : dict
+        load_muscle_mapping() の戻り値
+    targets : dict
+        load_weekly_set_targets() の戻り値
+
+    Returns
+    -------
+    dict
+        {'week_label', 'rows', 'missing_export_dates'}。missing_export_dates は
+        今週のうち、筋トレセッションがあるのに workouts.csv に同日のセットが1件も
+        無い日（`YYYY-MM-DD`）。あればセット数は過少の可能性がある
+    """
+    sets_table, _unmapped = weekly_muscle_sets(df_workouts, muscle_map, [week_label])
+    rows = weekly_set_progress(sets_table, week_label, targets)
+
+    year_str, week_str = week_label.split('-W')
+    monday = pd.Timestamp.fromisocalendar(int(year_str), int(week_str), 1).date()
+    week_dates = {monday + pd.Timedelta(days=i) for i in range(7)}
+    hevy_dates = set(pd.to_datetime(df_workouts['start_dt']).dt.date) & week_dates
+    missing = sorted(d.strftime('%Y-%m-%d')
+                     for d in (set(session_dates) & week_dates) - hevy_dates)
+
+    return {'week_label': week_label, 'rows': rows, 'missing_export_dates': missing}
+
+
 def add_week_label(df, date_column='start_dt'):
     """ISO週ラベル（`YYYY-Wxx`）の列 week_label を追加する"""
     df = df.copy()

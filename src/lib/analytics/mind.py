@@ -424,6 +424,10 @@ def prepare_exertion_balance_daily_data(start_date, end_date, df_activity, df_zo
 from lib.analytics.mind_sleep import prepare_sleep_patterns_daily_data  # noqa: F401
 
 
+# |z| がこれ以上の日にベースラインからの逸脱として印（z フラグ）を付ける。
+# mind レポートと STATE.md（journal_skeleton.py）が共有する
+Z_FLAG_THRESHOLD = 1.5
+
 # ベースライン計算期間の定義
 BASELINE_WINDOWS = {
     'hrv_daily': 60,        # HRVは日々の変動が大きいため長期
