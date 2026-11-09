@@ -138,6 +138,37 @@ def test_未マウントの_reports_へは書かずに落ちる(tmp_path, monkey
     assert not target.exists()
 
 
-def test_grafana_ダッシュボード_json_は_goals_uid():
-    path = Path(__file__).parent.parent / 'scripts/ops/grafana/dashboards/goals.json'
-    assert json.loads(path.read_text(encoding='utf-8'))['uid'] == 'goals'
+
+
+def test_grafana_画面ごとの_json_は全クエリに_url_options_を持つ():
+    """url_options が無いと画面側の Infinity が落ちて全パネルが空になる（API だけでは見つからない）"""
+    for uid in ('goals', 'body', 'sleep', 'mind'):
+        path = Path(__file__).parent.parent / f'scripts/ops/grafana/dashboards/{uid}.json'
+        d = json.loads(path.read_text(encoding='utf-8'))
+        assert d['uid'] == uid
+        for p in d['panels']:
+            for t in p.get('targets', []):
+                assert t['url_options'] == {'method': 'GET'}, (uid, p['title'])
+
+
+def test_daily_は記録の無い日を空欄にし0で埋めない(fake, monkeypatch):
+    """体重計に乗らない日・運動しない日・栄養の 0 kcal 行を 0 として書くと推移に偽の谷ができる"""
+    tmp = fake['tmp']
+    pd.DataFrame([{'date': '2026-11-07', 'weight': 60.9, 'body_fat_rate': 13.6, 'body_fat_mass': 8.28,
+                   'muscle_mass': 49.9, 'body_water_rate': 60.3}]).to_csv(tmp / 'inner.csv', index=False)
+    pd.DataFrame([{'date': '2026-11-06', 'calories': 0, 'protein': 0.0},
+                  {'date': '2026-11-07', 'calories': 1521, 'protein': 110.3}]).to_csv(tmp / 'nut.csv', index=False)
+    monkeypatch.setattr(dashboard, 'collect_daily_detail', lambda hi, days: [])
+    rows = dashboard.build_daily(
+        dt.date(2026, 11, 3), TODAY, sleep_csv=fake['sleep_csv'], innerscan_csv=tmp / 'inner.csv',
+        spo2_csv=tmp / 'none.csv', nutrition_csv=tmp / 'nut.csv', exercise_csv=tmp / 'none_ex.csv')
+    by = {r['date']: r for r in rows}
+
+    assert by['2026-11-07']['weight'] == 60.9
+    assert by['2026-11-07']['protein_g'] == 110.3
+    assert by['2026-11-06']['weight'] is None
+    assert by['2026-11-06']['protein_g'] is None          # 0 kcal の行は記録なし
+    assert by['2026-11-07']['cycling_min'] is None        # セッションの無い日
+    assert by[MISSING.isoformat()]['bed_h'] is None       # 睡眠の欠測日
+    assert by['2026-11-07']['bed_h'] == 22.0
+    assert set(rows[0]) == set(dashboard.COLUMNS['daily'])

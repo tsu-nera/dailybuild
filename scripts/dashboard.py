@@ -9,6 +9,7 @@ Artifact へは agent が添付ファイルとして上げ直す（スクリプ�
 
 同じ数値を Grafana 用の CSV 7本（nights / weeks / sets / status / current / sets_now /
 freshness）としても reports/dashboard/ へ全上書きで書く（docs/grafana.md）。欠測は空セル。
+加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
@@ -28,18 +29,26 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import hevy_csv  # noqa: E402
+from lib import exercise_source, hevy_csv  # noqa: E402
+from lib.analytics import activity, body  # noqa: E402
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.analytics import workout  # noqa: E402
 from lib.analytics.sleep.rise import load_steps, minutes_late, rise_time  # noqa: E402
 from lib.utils.private_data import ensure_dir, require_private_path, require_private_write  # noqa: E402
 from lib.utils.targets import get_target  # noqa: E402
-from journal_skeleton import collect_pipeline  # noqa: E402
+from journal_skeleton import collect_daily_detail, collect_pipeline  # noqa: E402
 
 SLEEP_CSV = project_root / 'data/wearable/sleep.csv'
 STEPS_CSV = project_root / 'data/wearable/steps_intraday.csv'
 WORKOUTS_CSV = project_root / 'data/hevy/workouts.csv'
+INNERSCAN_CSV = project_root / 'data/healthplanet_innerscan.csv'
+SPO2_CSV = project_root / 'data/wearable/spo2.csv'
+NUTRITION_CSV = project_root / 'data/wearable/nutrition.csv'
+EXERCISE_CSV = project_root / 'data/googlehealth/exercise.csv'
 CSV_DIR = project_root / 'reports/dashboard'
+
+# daily.csv の期間。推移は Grafana の時間範囲で絞るので、表は長めに持つ
+DAILY_DAYS = 365
 
 # 週の睡眠時間の目安。bed_time の宣言（rise_time − 睡眠7時間 − 入眠15分）と同じ7時間
 SLEEP_PER_NIGHT_H = 7
@@ -59,6 +68,14 @@ COLUMNS = {
     'current': _WEEK_COLS + [f'prev_{c}' for c in _WEEK_COLS] + ['gap_h'],
     'sets_now': _SET_COLS,
     'freshness': ['name', 'last', 'behind', 'tolerance'],
+    # Body / Sleep / Mind 画面。metrics_daily.csv に無い計算（FFMI・ステージ・ベースライン帯・運動）を持つ。
+    # bed_h / wake_h は時計の時刻を数値にしたもの（入床は 12時より前なら +24。01:30 → 25.5）
+    'daily': ['date',
+              'weight', 'body_fat_rate', 'body_water_rate', 'muscle_kg', 'lbm_kg', 'ffmi',
+              'cycling_min', 'cycling_hr', 'strength_min', 'protein_g',
+              'deep_min', 'light_min', 'rem_min', 'bed_h', 'wake_h', 'debt_h',
+              'hrv', 'hrv_base', 'hrv_lo', 'hrv_hi', 'rhr', 'rhr_base', 'rhr_lo', 'rhr_hi',
+              'spo2_avg', 'spo2_min'],
 }
 
 
@@ -207,6 +224,100 @@ def build_tables(today: dt.date, weeks: int, *, sleep_csv: Path = SLEEP_CSV,
     }
 
 
+def _clock_h(ts, evening: bool = False) -> float | None:
+    if ts is None or pd.isna(ts):
+        return None
+    t = pd.Timestamp(ts)
+    h = t.hour + t.minute / 60
+    return round(h + 24 if evening and h < 12 else h, 2)
+
+
+def _by_date(path: Path, date_col: str = 'date') -> pd.DataFrame:
+    """日付 index（datetime.date）の DataFrame。無ければ空。同じ日が複数あれば最後の行"""
+    if not path.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(path)
+    df['_date'] = pd.to_datetime(df[date_col]).dt.date
+    return df.drop_duplicates('_date', keep='last').set_index('_date')
+
+
+def _num(df: pd.DataFrame, day: dt.date, col: str, digits: int = 1) -> float | None:
+    if df.empty or day not in df.index or col not in df.columns:
+        return None
+    v = pd.to_numeric(df.at[day, col], errors='coerce')
+    return None if pd.isna(v) else round(float(v), digits)
+
+
+def _sport_by_day(sessions, calc) -> dict:
+    stats = calc(sessions) if sessions is not None else None
+    return {pd.Timestamp(r['date']).date(): r for r in (stats or {}).get('daily', [])}
+
+
+def build_daily(lo: dt.date, hi: dt.date, *, sleep_csv: Path = SLEEP_CSV,
+                innerscan_csv: Path = INNERSCAN_CSV, spo2_csv: Path = SPO2_CSV,
+                nutrition_csv: Path = NUTRITION_CSV, exercise_csv: Path = EXERCISE_CSV) -> list[dict]:
+    """Body / Sleep / Mind 画面の日次表。データの無い日・指標は空セル（0にしない）
+
+    体組成は body レポートと同じ healthplanet_innerscan.csv と body.prepare_body_df()。
+    HRV / RHR のベースラインは STATE.md と同じ collect_daily_detail()（mind レポートと同じ関数・窓）。
+    帯（lo / hi）は ±1SD。z の判定は Grafana でしない。
+    """
+    raw_sleep = pd.read_csv(sleep_csv)
+    main = _main_sleep(raw_sleep, lo, hi).set_index('date')
+    debt = _debt_by_day(raw_sleep, lo, hi)
+
+    comp = _by_date(innerscan_csv)
+    if not comp.empty:
+        comp = body.prepare_body_df(comp)
+    spo2 = _by_date(spo2_csv)
+    nut = _by_date(nutrition_csv)
+    sessions = exercise_source.load_sessions(lo, hi, csv_path=exercise_csv)
+    cycling = _sport_by_day(sessions, activity.calc_cycling_stats_for_period)
+    strength = _sport_by_day(sessions, activity.calc_strength_stats_for_period)
+    vitals = {r['date']: {c['label']: c for c in r['vitals']}
+              for r in collect_daily_detail(hi, days=(hi - lo).days + 1)}
+
+    rows = []
+    for day in pd.date_range(lo, hi, freq='D').date:
+        row = {c: None for c in COLUMNS['daily']}
+        row['date'] = day.isoformat()
+        for col, src, digits in (('weight', 'weight', 1), ('body_fat_rate', 'body_fat_rate', 1),
+                                 ('body_water_rate', 'body_water_rate', 1), ('muscle_kg', 'muscle_mass', 1),
+                                 ('lbm_kg', 'lbm', 1), ('ffmi', 'ffmi', 2)):
+            row[col] = _num(comp, day, src, digits)
+        # nutrition.csv は記録の無い日を 0 で持つ行がある。0 kcal は記録なしとして空にする
+        if (_num(nut, day, 'calories') or 0) > 0:
+            row['protein_g'] = _num(nut, day, 'protein')
+        if day in cycling:
+            row['cycling_min'] = cycling[day]['duration']
+            hr = cycling[day]['avg_hr']
+            row['cycling_hr'] = None if hr is None else round(hr)
+        if day in strength:
+            row['strength_min'] = strength[day]['duration']
+        if day in main.index:
+            r = main.loc[day]
+            for col, src in (('deep_min', 'deepMinutes'), ('light_min', 'lightMinutes'), ('rem_min', 'remMinutes')):
+                v = pd.to_numeric(r.get(src), errors='coerce')
+                row[col] = None if pd.isna(v) else int(v)
+            row['bed_h'] = _clock_h(pd.to_datetime(r['startTime']), evening=True)
+            row['wake_h'] = _clock_h(pd.to_datetime(r['endTime']))
+        row['debt_h'] = debt.get(day)
+        for key, label, digits in (('hrv', 'HRV', 1), ('rhr', 'RHR', 1)):
+            c = vitals.get(day, {}).get(label)
+            if not c:
+                continue
+            row[key] = None if c['value'] is None else round(c['value'], digits)
+            if c['baseline'] is not None:
+                row[f'{key}_base'] = round(c['baseline'], 1)
+                if c['std'] is not None:
+                    row[f'{key}_lo'] = round(c['baseline'] - c['std'], 1)
+                    row[f'{key}_hi'] = round(c['baseline'] + c['std'], 1)
+        row['spo2_avg'] = _num(spo2, day, 'avg_spo2')
+        row['spo2_min'] = _num(spo2, day, 'min_spo2')
+        rows.append(row)
+    return rows
+
+
 def write_csvs(tables: dict[str, list[dict]], csv_dir: Path) -> list[Path]:
     """表ごとに全上書き。欠測（None）は空セルのまま書く（0にしない）"""
     ensure_dir(csv_dir)
@@ -225,7 +336,9 @@ def write_csvs(tables: dict[str, list[dict]], csv_dir: Path) -> list[Path]:
 def cmd_build(args) -> int:
     # 読み込み元の symlink 未マウントは「データなし」で正常終了して欠測を捏造するので、ここで落とす
     require_private_path(SLEEP_CSV)
-    tables = build_tables(dt.date.today(), args.weeks)
+    today = dt.date.today()
+    tables = build_tables(today, args.weeks)
+    tables['daily'] = build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)
     nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
 
     out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
@@ -233,7 +346,7 @@ def cmd_build(args) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, ensure_ascii=False, indent=1))
     written = write_csvs(tables, Path(args.csv_dir))
-    print(f'{path}  nights={len(nights)} weeks={len(weeks)} sets={len(sets)}', file=sys.stderr)
+    print(f'{path}  nights={len(nights)} weeks={len(weeks)} sets={len(sets)} daily={len(tables["daily"])}', file=sys.stderr)
     for p in written:
         print(f'  {p}', file=sys.stderr)
     return 0

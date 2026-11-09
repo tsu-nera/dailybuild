@@ -1,8 +1,30 @@
-# Grafana（週の目標ダッシュボード）
+# Grafana（人が見るレポート画面）
 
-vaio で動く Grafana。週の目標（睡眠・部位別セット数）とデータ鮮度を、Claude のセッション無しで
-スマホから見る。claude.ai の Dashboard 試作（`scripts/dashboard/index.html`）は更新に
+vaio で動く Grafana。日次レポート（body / sleep / mind の markdown）に代わる人の画面で、
+Claude のセッション無しにスマホから見る。claude.ai の Dashboard 試作（`scripts/dashboard/index.html`）は更新に
 セッションが要るので、日次で更新されるこちらが本線。
+
+## 画面
+
+4枚。どれもタグ `dailybuild` を持ち、上部のリンクで行き来する。
+
+| uid | 画面 | 中身 | 既定の期間 |
+|---|---|---|---|
+| `goals` | 週の目標 | 今週の睡眠・入床/離床の達成・負債・部位別セット数・データ鮮度 | 週単位の表 |
+| `body` | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・今週の部位別セット数・タンパク質 | 90日 |
+| `sleep` | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
+| `mind` | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
+
+`body` `sleep` `mind` は時系列で、期間は右上の時間範囲で変える（`daily.csv` は直近365日、`metrics_daily.csv` は全期間）。
+日付だけの CSV を UTC 0時として読むので、3画面の timezone は `utc`（`browser` にすると日付が9時間ずれて見える）。
+
+日次レポートから移さなかったもの（2026-11-10、#255）:
+
+- 心拍ゾーン（Z1〜Z5・Zone2）: 日次レポートでも全日 `-`。Zone2 目標は廃止済み
+- カロリー分析（Balance / In / Out / TEF / EAT）: 摂取カロリーの記録が疎で、体重トレンドを kcal に換算しない方針
+- 皮膚温Δ・深部体温・血圧: 疎で、日次の判断に使っていない。必要なら `scratch` で足す
+- HRV の深睡眠 RMSSD・SpO2 / 呼吸数のベースライン: 判断に使っているのは HRV（日次）と RHR のベースラインだけ
+- 睡眠中の心拍分析（Dip 率・最低心拍の時刻）・睡眠サイクル・栄養と睡眠: sleep レポート固有の探索用の節で、日次レビューの判断に使っていない
 
 ## データの流れ
 
@@ -11,11 +33,12 @@ daily-fetch.sh ─┬ dashboard.py build ─────▶ reports/dashboard/*.
                 └ journal_skeleton.py ───▶ reports/metrics_daily.csv ─┘
 ```
 
-nginx が配るのは次の8本（`http://files/<name>.csv`）。設定は `scripts/ops/grafana/nginx/default.conf`。
+nginx が配るのは次の9本（`http://files/<name>.csv`）。設定は `scripts/ops/grafana/nginx/default.conf`。
 
 | CSV | 作り手 | 用途 |
 |---|---|---|
 | `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` | `dashboard.py` | 週の目標画面 |
+| `daily` | `dashboard.py` | Body / Sleep / Mind 画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
 
 `reports/` の他のファイル（journal の md など）は mount はされるが配らない（nginx の `alias` で1本だけ出す）。
@@ -23,7 +46,7 @@ nginx が配るのは次の8本（`http://files/<name>.csv`）。設定は `scri
 
 - 計算は **`scripts/dashboard.py` に1本**（`metrics_daily.csv` は `journal_skeleton.py`）。Grafana では集計も判定もしない（クエリは列の選択と並べ替えだけ）。
   claude.ai 版（同じスクリプトの JSON）と同じ数字になる
-- CSV は7本（`nights` `weeks` `sets` `status` `current` `sets_now` `freshness`）。毎日**全上書き**で、
+- `dashboard.py` の CSV は8本（`nights` `weeks` `sets` `status` `current` `sets_now` `freshness` `daily`）。毎日**全上書き**で、
   `data/` には置かない。欠測は0でなく空セル
 - `current.csv` は「今週」の1行（先週の値は `prev_` 接頭辞、`gap_h = total_h - goal_h`）。
   Grafana の filter 式で今週を選ばせると判定がダッシュボード側に入るので、今週・先週の選択は dashboard.py がやる
@@ -48,16 +71,16 @@ docker compose pull && docker compose up -d   # イメージ更新
 ## ダッシュボードの編集
 
 **画面での編集を正本にする**（provisioning は `allowUiUpdates: true`）。画面で足したパネルは、agent が
-HTTP API で取り出して `dashboards/goals.json` に書き戻して commit する:
+HTTP API で取り出して `dashboards/<uid>.json` に書き戻して commit する（uid は `goals` `body` `sleep` `mind`）:
 
 ```bash
-curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/uid/goals \
-  | jq '.dashboard | del(.id, .version)' > scripts/ops/grafana/dashboards/goals.json
+curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/uid/<uid> \
+  | jq '.dashboard | del(.id, .version)' > scripts/ops/grafana/dashboards/<uid>.json
 ```
 
 ## 対話で足すパネル（scratch）
 
-「この期間だけこれを見たい」は、正本の `goals` に足さず `scratch` ダッシュボード（uid `scratch`）に置く。
+「この期間だけこれを見たい」は、正本の4画面に足さず `scratch` ダッシュボード（uid `scratch`）に置く。
 
 - agent が HTTP API（`POST /api/dashboards/db`）で直接書く。**commit しない**（`dashboards/` に置かない）
 - 材料は主に `metrics_daily.csv` の列。Grafana では列を選ぶだけで、集計・判定は書かない（下の「パネル・指標を足す」と同じ規約）
@@ -81,3 +104,4 @@ curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/u
    `/api/ds/query` に直接投げると通るので API だけの確認では見つからない（2026-11-07）。
    確認は画面で開くか、ブラウザのコンソールを見る
 5. `filterExpression` は `selector` ではなく列の `text` 名で評価する。絞る列も `columns` に入れる
+6. 時系列パネルは `date` 列を `type: timestamp`・`timestampFormat: 2006-01-02` で読み、ダッシュボードの timezone を `utc` にする
