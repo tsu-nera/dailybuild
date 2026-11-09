@@ -18,11 +18,11 @@
     - `mind.py` - メンタルコンディション分析
   - `utils/` - 共通ユーティリティ
     - `report_args.py` - レポート引数パースと期間フィルタリング
-- `templates/` - Markdownレポートテンプレート
+- `templates/` - Markdownレポートテンプレート（読み手は [reports.md](reports.md) の「読み手」）
   - `body/` - 体組成レポート
     - `base.md.j2` - 基本構造
-    - `daily_report.md.j2` - 日次レポート
-    - `interval_report.md.j2` - 週次隔レポート
+    - `daily_report.md.j2` - 期間レポート（`--week` / `--month`。名前は日次だが `/weekly-review`・`/monthly-review` が読む）
+    - `interval_report.md.j2` - 8週トレンド（`/monthly-review` が読む）
     - `sections/` - セクションテンプレート
   - `mind/` - メンタルコンディションレポート
     - `base.md.j2`, `daily_report.md.j2`
