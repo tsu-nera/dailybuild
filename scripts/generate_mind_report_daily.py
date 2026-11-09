@@ -227,6 +227,9 @@ def prepare_mind_report_data(responsiveness_daily, exertion_balance_daily, sleep
         # 心拍ゾーンメタ情報
         'hr_zone_meta': hr_zone_meta,
 
+        # z フラグの閾値（STATE.md と共有）
+        'z_flag_threshold': mind.Z_FLAG_THRESHOLD,
+
         # heart_rate_intraday.csv の鮮度通知
 
         # チャート

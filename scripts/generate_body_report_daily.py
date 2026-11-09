@@ -328,33 +328,10 @@ def _prepare_weekly_sets_data(target_end, strength_data):
             week_label = workout.recent_iso_weeks(1)[0]
 
         df_workouts = hevy_csv.parse_hevy_csv(WORKOUTS_CSV)
-        muscle_map = workout.load_muscle_mapping()
-        sets_table, _unmapped = workout.weekly_muscle_sets(df_workouts, muscle_map, [week_label])
-        rows = workout.weekly_set_progress(sets_table, week_label, targets)
-
-        # 今週のうち、exercise.csv（strength_data）にセッションがあるのに workouts.csv
-        # に同日のセットが1件も無い日 = export が追いついていない疑い
-        missing_export_dates = []
-        if strength_data:
-            year_str, week_str = week_label.split('-W')
-            monday = pd.Timestamp.fromisocalendar(int(year_str), int(week_str), 1).date()
-            week_dates = {monday + pd.Timedelta(days=i) for i in range(7)}
-
-            session_dates = {
-                _normalize_to_date(row['date']) for row in strength_data
-            } & week_dates
-
-            hevy_dates = set(pd.to_datetime(df_workouts['start_dt']).dt.date) & week_dates
-
-            missing_export_dates = sorted(
-                d.strftime('%Y-%m-%d') for d in (session_dates - hevy_dates)
-            )
-
-        return {
-            'week_label': week_label,
-            'rows': rows,
-            'missing_export_dates': missing_export_dates,
-        }
+        session_dates = {_normalize_to_date(row['date']) for row in strength_data or []}
+        return workout.weekly_set_status(
+            df_workouts, week_label, session_dates,
+            workout.load_muscle_mapping(), targets)
     except Exception:
         return None
 

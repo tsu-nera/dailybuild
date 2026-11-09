@@ -39,7 +39,10 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
+from lib.analytics import mind as mind_lib  # noqa: E402
 from lib.analytics import sleep as sleep_lib  # noqa: E402
+from lib.analytics import workout as workout_lib  # noqa: E402
+from lib import exercise_source, hevy_csv  # noqa: E402
 from lib.bowel.render import CATEGORY_BOUNDS  # noqa: E402
 from lib.analytics.sleep.sleep_analysis import calc_sleep_timing  # noqa: E402
 from lib.analytics.weight_daily import load_weight_daily  # noqa: E402
@@ -191,6 +194,8 @@ _METRIC_SPECS = [
     ('steps', '歩数', 'act', lambda d: d['steps'], '', 0),
     ('weight', '体重', 'body', lambda d: d['weight'], 'kg', 1),
     ('body_fat', '体脂肪率', 'body', lambda d: d['body_fat_rate'], '%', 1),
+    # BIA の筋肉量・体脂肪率の振れが水分の振れかを見分けるために並べる
+    ('body_water', '体水分率', 'body', lambda d: d['body_water_rate'], '%', 1),
     ('mind_score', '主観 mind', 'man', lambda d: d['mind_score'], '', 1),
     ('body_score', '主観 body', 'man', lambda d: d['body_score'], '', 1),
     ('head_score', '主観 head', 'man', lambda d: d['head_score'], '', 1),
@@ -871,6 +876,105 @@ def _fmt_streak(row: dict) -> str:
     return body
 
 
+# STATE.md「直近7日の日別」に出す自律神経指標。(ラベル, ソースキー, 値の列, BASELINE_WINDOWS のキー, 桁数)
+# ベースラインと z は mind レポートと同じ mind.calculate_baseline_metrics() で求める
+_BASELINE_SPECS = [
+    ('HRV', 'hrv', 'daily_rmssd', 'hrv_daily', 1),
+    ('RHR', 'rhr', 'resting_heart_rate', 'rhr', 0),
+]
+
+
+def collect_daily_detail(target: dt.date, days: int = 7) -> list[dict]:
+    """直近 days 日の入床・起床時刻と、HRV / RHR のベースライン・z を日ごとに返す
+
+    ベースラインは全履歴に対して移動平均を取る（mind レポートと同じ関数・窓）。
+    入床・起床は主睡眠（isMainSleep）の startTime / endTime。昼寝を選ばない。
+    """
+    ts = pd.Timestamp(target)
+    dates = pd.date_range(ts - pd.Timedelta(days=days - 1), ts, freq='D')
+
+    sleep = _main_sleep(_read(*_SOURCE_PATHS['sleep']))
+    if not sleep.empty:
+        sleep = sleep.groupby('_date').first()
+
+    frames = {}
+    for _label, key, col, window, _digits in _BASELINE_SPECS:
+        df = _read(*_SOURCE_PATHS[key])
+        if df.empty or col not in df.columns:
+            frames[key] = pd.DataFrame()
+            continue
+        df = df.groupby('_date').first().sort_index()
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+        frames[key] = mind_lib.calculate_baseline_metrics(
+            df, col, baseline_window=mind_lib.BASELINE_WINDOWS[window])
+
+    rows = []
+    for day in dates:
+        row = {'date': day.date(), 'bed': None, 'wake': None, 'vitals': []}
+        if not sleep.empty and day in sleep.index:
+            for field, src in (('bed', 'startTime'), ('wake', 'endTime')):
+                value = sleep.loc[day].get(src)
+                if pd.notna(value):
+                    row[field] = pd.to_datetime(value).strftime('%H:%M')
+        for label, key, col, _window, digits in _BASELINE_SPECS:
+            df = frames[key]
+            cell = {'label': label, 'digits': digits,
+                    'value': None, 'z': None, 'baseline': None, 'std': None}
+            if not df.empty and day in df.index:
+                rec = df.loc[day]
+                for name, src in (('value', col), ('z', f'{col}_z_score'),
+                                  ('baseline', f'{col}_baseline'),
+                                  ('std', f'{col}_baseline_std')):
+                    v = rec.get(src)
+                    cell[name] = float(v) if pd.notna(v) else None
+            row['vitals'].append(cell)
+        rows.append(row)
+    return rows
+
+
+def collect_weekly_sets(target: dt.date) -> dict | None:
+    """対象日の ISO 週の部位別セット数（目標・今週・残り）。body レポートと同じ関数
+
+    workouts.csv が無い、または `weekly_sets` の目標が空なら None。
+    """
+    # BASE_DIR からその都度組み立てる（テストが BASE_DIR を差し替えるため）
+    workouts_csv = BASE_DIR / 'data' / 'hevy' / 'workouts.csv'
+    if not workouts_csv.exists():
+        return None
+    targets = workout_lib.load_weekly_set_targets()
+    if not targets:
+        return None
+    week_label = workout_lib.recent_iso_weeks(1, today=pd.Timestamp(target))[0]
+    year_str, week_str = week_label.split('-W')
+    monday = dt.date.fromisocalendar(int(year_str), int(week_str), 1)
+    sessions = exercise_source.load_sessions(
+        monday, monday + dt.timedelta(days=6),
+        csv_path=BASE_DIR / 'data' / 'googlehealth' / 'exercise.csv')
+    session_dates = set()
+    if sessions is not None:
+        strength = sessions[sessions['exercise_type'].isin(exercise_source.STRENGTH_TYPES)]
+        session_dates = set(strength['start'].dt.date)
+    return workout_lib.weekly_set_status(
+        hevy_csv.parse_hevy_csv(workouts_csv), week_label, session_dates,
+        workout_lib.load_muscle_mapping(), targets)
+
+
+def _fmt_vital(cell: dict) -> tuple[str, str]:
+    """(値セル, 基準セル)。|z| が閾値以上なら mind レポートと同じ (z±x.x) を付ける"""
+    if cell['value'] is None:
+        value = '-'
+    else:
+        value = f"{cell['value']:.{cell['digits']}f}"
+        if cell['z'] is not None and abs(cell['z']) >= mind_lib.Z_FLAG_THRESHOLD:
+            value += f" (z{cell['z']:+.1f})"
+    if cell['baseline'] is None:
+        base = '-'
+    else:
+        std = '-' if cell['std'] is None else f"{cell['std']:.1f}"
+        base = f"{cell['baseline']:.1f} ± {std}"
+    return value, base
+
+
 def render_state(target: dt.date) -> str:
     """STATE.md の全文。生成物なので毎回まるごと差し替える"""
     lines = [
@@ -894,6 +998,36 @@ def render_state(target: dt.date) -> str:
             f"| {_fmt(m['prior'], m['unit'], m['digits'])} "
             f"| {_fmt_delta(m['recent'], m['prior'], m['unit'], m['digits'])} |"
         )
+
+    lines += ['', '## 直近7日の日別', '']
+    detail = collect_daily_detail(target)
+    header = ['日付', '入床', '起床']
+    for label, *_ in _BASELINE_SPECS:
+        header += [label, f'{label} 基準']
+    lines += ['| ' + ' | '.join(header) + ' |', '|' + '---|' * len(header)]
+    for row in detail:
+        cells = [f"{row['date'].strftime('%m-%d')} ({WEEKDAY_JA[row['date'].weekday()]})",
+                 row['bed'] or '-', row['wake'] or '-']
+        for cell in row['vitals']:
+            cells += list(_fmt_vital(cell))
+        lines.append('| ' + ' | '.join(cells) + ' |')
+    windows = '・'.join(f"{label} {mind_lib.BASELINE_WINDOWS[w]}日"
+                        for label, _k, _c, w, _d in _BASELINE_SPECS)
+    lines += ['', f'> 入床・起床は主睡眠の開始・終了（Fitbit）。布団を出た時刻ではない。'
+                  f'基準は移動平均 ± SD（{windows}）。'
+                  f'`(z±x.x)` は |z| ≥ {mind_lib.Z_FLAG_THRESHOLD} の日。']
+
+    sets = collect_weekly_sets(target)
+    if sets:
+        lines += ['', f"## 今週の部位別セット数（{sets['week_label']}）", '',
+                  '| 部位 | 今週 | 目標 | 残り |', '|---|---|---|---|']
+        lines += [f"| {r['label']} | {r['actual']} | {r['target']} | {r['remaining']} |"
+                  for r in sets['rows']]
+        lines += ['', '> 目標は `config/exercise_muscles.yaml` の `weekly_sets`。']
+        if sets['missing_export_dates']:
+            lines.append('> Hevy の export に入っていないセッションがある（'
+                         + ', '.join(sets['missing_export_dates'])
+                         + '）。セット数は過少の可能性がある')
 
     lines += ['', '## 継続中のストリーク', '']
     streaks = collect_streaks(target)

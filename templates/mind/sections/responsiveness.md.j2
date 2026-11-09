@@ -1,6 +1,6 @@
 {% macro val(v, z, digits=1) -%}
 {%- if v is none -%}-
-{%- else -%}{{ v|number_format(digits) }}{% if z and z|abs >= 1.5 %} (z{{ '%+.1f'|format(z) }}){% endif %}
+{%- else -%}{{ v|number_format(digits) }}{% if z and z|abs >= z_flag_threshold %} (z{{ '%+.1f'|format(z) }}){% endif %}
 {%- endif -%}
 {%- endmacro %}
 ## 🧘 反応性

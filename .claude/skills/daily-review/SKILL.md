@@ -1,13 +1,14 @@
 ---
 name: daily-review
-description: データ取得→レポート生成→AIレビューを一括実行する日次レビュースキル
+description: データ取得→STATE.md 読込→AIレビューを一括実行する日次レビュースキル
 user-invocable: true
 allowed-tools: Bash, Read, Glob
 ---
 
 # 日次レビュースキル
 
-データ取得、レポート生成、AIレビューを3ステップで実行する。
+データ取得と AI レビューを実行する。読む入力は STATE.md・日次記録・週次目標で、
+日次レポートは生成・参照しない（人が見る画面は Grafana。docs/grafana.md）。
 レビュー後のディスカッションを経て、記録は `/journal` スキルで保存する。
 
 ## オプション
@@ -16,14 +17,11 @@ allowed-tools: Bash, Read, Glob
 |------------|------|------------|
 | `--no-fetch` | Step 1 の ssh 起動をスキップ（rsync・pull・`--state-only` は行う） | なし |
 | `--fetch N` | 取得日数を指定（例: `--fetch 7` で過去7日分） | 2 |
-| `--only body\|sleep\|mind` | 指定したレポートのみ生成・レビュー | 全3種 |
 
 例:
 - `/daily-review` → 全3ステップ実行
-- `/daily-review --no-fetch` → vaio の起動はスキップ（pull と STATE 再生成は行う）、レポート生成→レビュー
-- `/daily-review --fetch 7` → 過去7日分取得してから全レポート生成
-- `/daily-review --only body` → 体組成レポートのみ生成・レビュー
-- `/daily-review --no-fetch --only sleep` → 睡眠レポートのみ生成・レビュー
+- `/daily-review --no-fetch` → vaio の起動はスキップ（pull と STATE 再生成は行う）、レビュー
+- `/daily-review --fetch 7` → 過去7日分取得してからレビュー
 
 ## Step 0: 起動時刻の確認
 
@@ -33,10 +31,10 @@ allowed-tools: Bash, Read, Glob
 date '+%Y-%m-%d %H:%M %A'
 ```
 
-この値を `CURRENT_DATE` / `CURRENT_TIME` / `CURRENT_WEEKDAY` として保持し、Step 3 のレビューで必ず参照する。
+この値を `CURRENT_DATE` / `CURRENT_TIME` / `CURRENT_WEEKDAY` として保持し、Step 2 のレビューで必ず参照する。
 特に **当日（CURRENT_DATE）のデータは未完了**である点に注意する（後述「当日データの扱い」）。
 
-続けて次の2つを読む。レポートは常に「今の状態」しか持たないので、これを読まないと
+続けて次の2つを読む。これを読まないと
 **毎回ゼロから同じトレンドを導出し直し、前回なんと言ったかを知らないまま
 レビューすることになる**。同じ助言を繰り返す失敗と、何日も続く異常を
 「今日始まったこと」として書く失敗が、どちらもここで防げる。
@@ -51,7 +49,7 @@ STATE.md は生成物で git の追跡対象外。**新しい環境では存在�
 
 `STATE.md` は生成物で、**継続日数と未解決アクションの一次情報はここ**。
 文中で数え直さない。索引の最新週が今週でない場合、その空白期間はレビューが
-回っていない期間なので、Step 3 でその旨に触れる。
+回っていない期間なので、Step 2 でその旨に触れる。
 
 ## Step 1: データ取得
 
@@ -77,7 +75,7 @@ pull と `--state-only` だけ行って手元の既存データでレビュー�
 ssh の出力（routine のログ）をそのまま読む。個々の取得コマンドは `daily-fetch.sh` が持ち、
 1ステップ失敗しても後続は続行して、失敗したステップ名が最後にまとめて出る。
 
-**報告してよい失敗・警告は、Step 3 で読む入力（レポート3種・日次記録）を
+**報告してよい失敗・警告は、Step 2 で読む入力（STATE.md の元データ・日次記録）を
 欠けさせるものだけ**。それ以外は、スクリプトやパイプライン表に出ていても末尾を含めて触れない。
 扱う場合は、どのデータが欠けた状態でレビューしているかを明示する。
 
@@ -89,7 +87,7 @@ ssh の出力（routine のログ）をそのまま読む。個々の取得コ�
 grep -E '^\| (睡眠時間|HRV) \| - \|' reports/journal/STATE.md
 ```
 
-どちらかが `-` なら、**Step 2 以降に進まず、ここで止めて本人に通知する**
+どちらかが `-` なら、**Step 2 に進まず、ここで止めて本人に通知する**
 （「昨晩の Fitbit 同期がまだ。スマホで Fitbit アプリを開いて同期してから `/daily-review` を再実行して」）。
 自分で取得し直さない・欠測のまま分析しない。前夜の睡眠と HRV が無いレビューは結論が変わるため
 （端末未同期のラグであることが多く、同期後の再取得でそろう）。
@@ -99,33 +97,10 @@ grep -E '^\| (睡眠時間|HRV) \| - \|' reports/journal/STATE.md
 `uv run scripts/early_rising.py timeline --date <CURRENT_DATE>` で照度・生活音の立ち上がりと突き合わせ、
 Fitbit の睡眠終了より後に起きた形跡なら同じく止めて同期を頼む。
 
-## Step 2: レポート生成
+## Step 2: AIレビュー
 
-`--only <type>` が指定されている場合は該当するコマンドのみ実行する。指定がなければ3つすべて実行する。
-
-```bash
-# 体組成レポート（直近7日）-- --only body または指定なしの場合
-uv run python scripts/generate_body_report_daily.py --days 7 --no-charts
-
-# 睡眠レポート（直近30日）-- --only sleep または指定なしの場合
-uv run python scripts/generate_sleep_report_daily.py --days 30 --no-charts
-
-# メンタルレポート（直近14日）-- --only mind または指定なしの場合
-uv run python scripts/generate_mind_report_daily.py --days 14 --no-charts
-```
-
-`--no-charts` は Step 3 のレビューが画像を読まないため。人が `mdcat` で見るときは
-外して叩くとグラフ付きで出る。
-
-エラーがあれば報告する。
-
-## Step 3: AIレビュー
-
-`--only <type>` が指定されている場合は該当するレポートのみ読み込む。指定がなければすべて読み込む。
-
-- `tmp/body_report/REPORT.md`（body または指定なし）
-- `tmp/sleep_report/REPORT.md`（sleep または指定なし）
-- `tmp/mind_report/REPORT.md`（mind または指定なし）
+Step 0 で読んだ STATE.md が主な入力。現在値・変化に加え、「直近7日の日別」（入床・起床、
+HRV / RHR のベースラインと z フラグ）と「今週の部位別セット数」を持つ。
 
 加えて、daily-review が読むフォーム（`config/forms.yaml` の `review: daily`。現在は日次記録
 ＝気分・身体・頭・睡眠の主観スコアとコメント）の直近7日分を読み込む（`--no-fetch` の場合も含む）:
@@ -137,9 +112,9 @@ uv run scripts/forms.py show --review daily --days 7
 骨組みの「予定」欄を読み、予定のあった日の歩数・疲労は予定の負荷として読む
 （歩数の増加を活動量の改善と読まない）。疲労は HRV でなく翌朝の主観 body が主計器。
 
-STATE.md の「直近7日 / 前7日 / 変化」列は機械が同じ式で毎日出すので、レポートの
-日次テーブルを目視で追うより判断がぶれない。**トレンドの一次情報はこちらを使い、
-レポートの日次テーブルは裏取りに使う。**
+STATE.md の「直近7日 / 前7日 / 変化」列は機械が同じ式で毎日出すので、日次の値を
+目視で追うより判断がぶれない。**トレンドの一次情報はこちらを使う。** 日別の裏取りが
+要るときは `reports/metrics_daily.csv` を読む。
 
 当週の週ファイル（`reports/journal/$(date '+%G-W%V').md`）は、**前回の判断の
 理由を辿る必要があるときだけ**開く。数値・ストリーク・アクションの状態は
@@ -154,7 +129,7 @@ uv run python scripts/show_targets.py --interval weekly
 ```
 
 このスクリプトは目標値・方向（up/down/zero）の一覧を返すだけで、現在値や残差は算出しない。
-**現在値はレポートから読み取って自分で評価すること**（Zone2の残り分、睡眠負債の現在値など）。
+**現在値は STATE.md から読み取って自分で評価すること**（睡眠負債の現在値など）。
 
 ### 当日データの扱い
 
@@ -181,7 +156,7 @@ uv run python scripts/show_targets.py --interval weekly
 - 体重トレンド（kg/週。カロリー収支には換算しない）とタンパク質摂取量（g/kg/日、1.6-1.8が下限、2.0は上限で必達ラインではない）。タンパク質は記録がある日だけ評価し、欠けていても触れない（手入力が続かないため。記録を促さない）。記録日数を分母にした達成率は出さない
 - 筋トレ: 実施頻度・時間・強度（HR）の傾向
 - 筋トレの方針・物差し・ゲートは `~/repo/gtd/goals/strength.md` が正本。Body を書く前に読み、助言をその「やり方」に合わせる（独自の配分を作らない）。`next_check` が今日以前なら「確認日」と1行出すだけで、ゲートの判定はしない。筋トレの助言は ACTIONS.md に積まず、同ファイルの「経過」に1行足す
-- 部位別セット数の週内残量（body レポートの「今週の部位別セット数」）。残りの日数への配置を決めるのに使う。0セットの部位があれば次にそこを入れる。export 未反映の警告が出ている週は残量が過少なので断定しない
+- 部位別セット数の週内残量（STATE.md の「今週の部位別セット数」）。残りの日数への配置を決めるのに使う。0セットの部位があれば次にそこを入れる。export 未反映の警告が出ている週は残量が過少なので断定しない
 - サイクリング: 距離・時間・強度の傾向、Z2/Z3-4/Z5 ゾーン分布
 - 異常値や急激な変動の検出
 
@@ -190,7 +165,7 @@ uv run python scripts/show_targets.py --interval weekly
 - 睡眠効率（85%以上が目標）
 - 深い睡眠・REM睡眠の割合
 - 就寝・起床時刻の規則性
-- 睡眠負債: sleep レポートのアルゴリズム値を参照（欠測日を睡眠0hで計上するため、連続欠測週は絶対値を使わない）
+- 睡眠負債: STATE.md の値を参照（欠測日を睡眠0hで計上するため、連続欠測週は絶対値を使わない）
 - 曜日による傾向の違い
 
 #### メンタル（Mind）
@@ -201,8 +176,8 @@ uv run python scripts/show_targets.py --interval weekly
 
 #### 週次目標進捗（Targets）
 - `config/targets.yaml` で宣言された週次目標について、目標値とdirectionを確認
-- 現在値はBody/Sleep/Mindレポートから読み取り、残差・達成状況を自分で判断
-- 例: Zone2が週150min目標に対してbody/workoutレポートのfatBurn週合計と比較してあと何分か、睡眠負債がsleepレポートの現在値で目標0hからどれだけ離れているか
+- 現在値は STATE.md から読み取り、残差・達成状況を自分で判断
+- 例: 睡眠負債が STATE.md の現在値で目標0hからどれだけ離れているか、入床・起床が目標時刻からどれだけ離れているか
 - 未達の目標があれば「今日のアドバイス」に残り日数で達成可能なアクションを盛り込む
 
 #### 日次記録（Daily Summary）
@@ -245,7 +220,7 @@ uv run python scripts/show_targets.py --interval weekly
 具体的なアクション（2-3個）
 ```
 
-## Step 4: ジャーナルへ記録（確認不要）
+## Step 3: ジャーナルへ記録（確認不要）
 
 `journal` スキルの daily モードで、当日エントリの `review:` 区間・`ACTIONS.md`・索引を更新する。**「記録しますか?」と聞かず、レビューを出したらそのまま書く。**（当週の Weekly Summary は週が完了するまで書かない）
 
