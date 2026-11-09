@@ -1,0 +1,654 @@
+{
+  "uid": "body",
+  "title": "Body",
+  "tags": [
+    "dailybuild"
+  ],
+  "links": [
+    {
+      "title": "画面",
+      "type": "dashboards",
+      "tags": [
+        "dailybuild"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "editable": true,
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "refresh": "",
+  "schemaVersion": 41,
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "体重・除脂肪量 (kg)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "weight",
+              "text": "体重",
+              "type": "number"
+            },
+            {
+              "selector": "lbm_kg",
+              "text": "除脂肪量",
+              "type": "number"
+            },
+            {
+              "selector": "muscle_kg",
+              "text": "筋肉量",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "HealthPlanet（healthplanet_innerscan.csv）。筋肉量・体脂肪率は体水分の振れを追う。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "体脂肪率・体水分率 (%)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "body_fat_rate",
+              "text": "体脂肪率",
+              "type": "number"
+            },
+            {
+              "selector": "body_water_rate",
+              "text": "体水分率",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "同じ日に両方が動いていたら水分の振れ。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "FFMI",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "ffmi",
+              "text": "FFMI",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "body.prepare_body_df() と同じ式。目標は gtd goals/strength.md。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "サイクリング（分/日）・平均心拍",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "cycling_min",
+              "text": "サイクリング 分",
+              "type": "number"
+            },
+            {
+              "selector": "cycling_hr",
+              "text": "平均心拍",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "平均心拍"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "exercise.csv（platform 重複解決済み）。セッションの無い日は空白。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "筋トレ（分/日）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 8,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "strength_min",
+              "text": "筋トレ 分",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "exercise.csv の筋トレセッション。部位別セット数は下の表（Hevy export）。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "今週の部位別セット数",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/sets_now.csv",
+          "columns": [
+            {
+              "selector": "muscle",
+              "text": "部位",
+              "type": "string"
+            },
+            {
+              "selector": "sets",
+              "text": "今週",
+              "type": "number"
+            },
+            {
+              "selector": "target",
+              "text": "目標",
+              "type": "number"
+            },
+            {
+              "selector": "remaining",
+              "text": "残り",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      },
+      "description": "週ごとの推移は「週の目標」画面。Hevy の export が未反映の日は少なく出る"
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "タンパク質 (g/日)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "protein_g",
+              "text": "タンパク質",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "nutrition.csv。記録の無い日（0 kcal の行を含む）は空白。記録は促さない"
+    }
+  ]
+}
