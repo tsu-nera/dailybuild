@@ -313,3 +313,48 @@ def test_merge_into_csv_without_asin_column(tmp_path):
     assert df['message_id'].tolist() == ['old', 'm1', 'm1']
     assert df.loc[0, 'asin'] == '' and df.loc[0, 'item'] == '古い商品'
     assert asins(csv)['ブレーキシュー'] == 'B000TEST02'
+
+
+HIDDEN = 'プライバシー保護のため、商品は非表示になっています'
+
+AMAZON_HIDDEN_BODY = f"""
+注文番号
+250-0000000-0000003
+
+* {HIDDEN}
+  数量: 1
+  1000 JPY
+
+* ブレーキシュー
+  数量: 1
+  847 JPY
+
+* {HIDDEN}
+  数量: 1
+  2000 JPY
+"""
+
+
+def rows_by_price(csv):
+    df = pd.read_csv(csv, dtype=str, keep_default_na=False)
+    return dict(zip(df['price'], df['asin']))
+
+
+def test_hidden_items_get_asin_in_link_order(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    html = (item_links('B000HIDE01', HIDDEN, HIDDEN)
+            + item_links('B000TEST02', 'ブレーキシュー', 'ブレーキシュー')
+            + item_links('B000HIDE02', HIDDEN, HIDDEN)
+            + recommended_link('B000RECO99'))
+    run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_HIDDEN_BODY, html=html)]), csv)
+    assert rows_by_price(csv) == {'1000': 'B000HIDE01', '847': 'B000TEST02',
+                                  '2000': 'B000HIDE02'}
+
+
+def test_hidden_items_stay_empty_when_link_count_differs(tmp_path):
+    csv = tmp_path / 'gmail.csv'
+    # 伏せ字の行は2つ、伏せ字のリンクは1つ。順番で決めると片方を取り違えうる
+    html = (item_links('B000HIDE01', HIDDEN, HIDDEN)
+            + item_links('B000TEST02', 'ブレーキシュー', 'ブレーキシュー'))
+    run(FakeService([message('m1', gmail.AMAZON_SENDER, AMAZON_HIDDEN_BODY, html=html)]), csv)
+    assert rows_by_price(csv) == {'1000': '', '847': 'B000TEST02', '2000': ''}

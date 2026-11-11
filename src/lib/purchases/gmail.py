@@ -17,7 +17,10 @@ Amazon の過去分は開示データ（amazon_export、data/purchases/amazon.cs
 
 asin は Amazon の text/html 本文にある注文商品へのリンク（ref が `fed_asin_title`）から取り、
 品名（画像の alt か、切り詰められたリンク文字の前方一致）で行と照合する。
-1件に決まらない行・楽天の行は空（順番で対応付けない）。
+Amazon が品名を伏せた商品（「プライバシー保護のため、商品は非表示になっています」）は
+行もリンクも同じ伏せ字なので品名では決まらない。同じ品名の行とリンクの数が等しいときだけ、
+その品名の中で並び順に対応付ける（リンクは本文の商品と同じ順に並ぶ）。
+それでも決まらない行・楽天の行は空。
 """
 
 import datetime as dt
@@ -156,6 +159,24 @@ def match_asin(item: str, candidates: dict[str, dict[str, set[str]]]) -> str:
     return prefix[0] if len(prefix) == 1 else ''
 
 
+def assign_asins(items: list[str], candidates: dict[str, dict[str, set[str]]]) -> list[str]:
+    """行ごとの ASIN。同じ品名の行が複数あるときは、その品名のリンクが同数の場合だけ順に対応付ける
+
+    同じ品名の行が複数あるのは、伏せ字の商品か同名の別商品。品名だけで照合すると
+    全行が同じ ASIN を取るので、数が合わなければ空にする。
+    """
+    names = [_normalize(item) for item in items]
+    asins = []
+    for item, name in zip(items, names):
+        if names.count(name) > 1:
+            links = [a for a, c in candidates.items() if name in c['full']]  # dict は本文の出現順
+            rows = [i for i, n in enumerate(names) if n == name]
+            asins.append(links[rows.index(len(asins))] if len(links) == len(rows) else '')
+        else:
+            asins.append(match_asin(item, candidates))
+    return asins
+
+
 def search_query(since: dt.datetime) -> str:
     """allowlist の送信元に絞った Gmail 検索式（after は epoch 秒で tz の曖昧さを避ける）"""
     senders = ' OR '.join(PARSERS)
@@ -187,9 +208,10 @@ def to_rows(message: dict, text: str, html_body: str = '') -> list[dict] | None:
     order_date = received.isoformat(timespec='seconds')
     candidates = (ordered_item_candidates(html_body)
                   if sender == AMAZON_SENDER and html_body else {})
-    return [{'order_date': order_date, 'shop': shop, 'order_id': order_id,
-             'asin': match_asin(item['item'], candidates) if candidates else '',
-             **item, 'message_id': message['id']} for item in items]
+    asins = (assign_asins([item['item'] for item in items], candidates) if candidates
+             else [''] * len(items))
+    return [{'order_date': order_date, 'shop': shop, 'order_id': order_id, 'asin': asin,
+             **item, 'message_id': message['id']} for item, asin in zip(items, asins)]
 
 
 # 最後の行より少し前から取り直す。message_id で差し替えるので重なっても二重にならない
