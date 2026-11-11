@@ -39,10 +39,7 @@
         "includeAll": false,
         "refresh": 1,
         "sort": 1,
-        "current": {
-          "text": "Impact ホエイ プロテイン",
-          "value": "Impact ホエイ プロテイン"
-        },
+        "current": {},
         "query": {
           "queryType": "infinity",
           "query": "",
