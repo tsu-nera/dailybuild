@@ -6,7 +6,7 @@ import uuid
 import pytest
 
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
-                                   find_rows, fit_name, move_item, write_csv)
+                                   find_rows, fit_name, mercari_sales, move_item, write_csv)
 
 NIL = '00000000-0000-0000-0000-000000000000'
 ITEM_TYPE = {'id': 't-item', 'name': 'Item', 'isLocation': False}
@@ -198,3 +198,27 @@ def test_find_filters():
     assert [r['key'] for r in find_rows(rows, 'pc', include_disposed=True)] == ['manual:1', 'manual:3']
     assert [r['key'] for r in find_rows(rows, location='キッチン')] == ['manual:2']
     assert [r['key'] for r in find_rows(rows, tag='ノート')] == ['manual:1']
+
+
+def test_mercari_sales_prefers_web_date(tmp_path):
+    (tmp_path / 'mercari.csv').write_text(
+        'date,direction,item_id,item,counterparty,price,status,message_id\n'
+        '2021-02-27T08:00:00+09:00,sell,m1,HHKB,x,18000,,a\n'
+        '2021-03-01T08:00:00+09:00,buy,m2,本,x,500,,b\n', encoding='utf-8')
+    (tmp_path / 'mercari_web.csv').write_text(
+        'date,direction,item_id,item,price,paid_price,seller_shipping_fee,status\n'
+        '2021-02-26T08:36:41+09:00,sell,m1,HHKB,18000,,,done\n', encoding='utf-8')
+
+    sales = mercari_sales(tmp_path)
+
+    assert sales == {'m1': {'date': '2021-02-26', 'price': 18000.0}}
+
+
+def test_dispose_with_sale_keeps_price_and_buyer():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', 'PC', name='HHKB')
+
+    dispose_item(hb, 'manual:1', '2021-02-26', 'メルカリで売却（m1）', 18000.0, 'メルカリ')
+
+    e = next(iter(hb.entities.values()))
+    assert (e['archived'], e['soldPrice'], e['soldTo']) == (True, 18000.0, 'メルカリ')

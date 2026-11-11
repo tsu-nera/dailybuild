@@ -12,7 +12,8 @@ Usage:
     python scripts/homebox.py add manual --name 'フライパン' --category 日用品 \\
         --acquired-on 2026-11-11 --note '店名・価格'      # manual は manual:<次の番号> を振る
     python scripts/homebox.py add uniqlo:2026-05-27:482300:03 --category ファッション --subcategory トップス
-    python scripts/homebox.py dispose manual:12 --date 2026-11-11 --how 'メルカリで売却'
+    python scripts/homebox.py dispose manual:12 --date 2026-11-11 --how '粗大ごみ'
+    python scripts/homebox.py dispose manual:12 --mercari m72763833954   # 売却日・売値は mercari.csv から
     python scripts/homebox.py move manual:12 クローゼット       # 末端の名前か経路（'メイン / 机'）
     python scripts/homebox.py find 耳栓                        # key・品名・メモの部分一致
     python scripts/homebox.py find --location 玄関 --tag 家電  # 場所は経路の部分一致、タグはカテゴリかサブカテゴリ
@@ -32,7 +33,7 @@ import re
 
 from lib.clients.homebox_client import HomeboxClient
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
-                                   find_rows, load_items, move_item, purchase_lookup,
+                                   find_rows, load_items, mercari_sales, move_item, purchase_lookup,
                                    write_csv)
 from lib.utils.private_data import ensure_dir, require_private_path
 
@@ -72,7 +73,17 @@ def cmd_add(args, client) -> None:
 
 
 def cmd_dispose(args, client) -> None:
-    entity = dispose_item(client, args.key, args.date, args.how)
+    date, how, price, sold_to = args.date, args.how, 0.0, ''
+    if args.mercari:
+        sale = mercari_sales(require_private_path(PURCHASES_DIR)).get(args.mercari)
+        if sale is None:
+            raise InventoryError(f'{args.mercari} の売却が mercari.csv に無い（先に purchases.py fetch-mercari）')
+        date = date or sale['date']
+        price, sold_to = sale['price'], 'メルカリ'
+        how = how or f'メルカリで売却（{args.mercari}）'
+    if not date:
+        raise InventoryError('--date か --mercari が要る')
+    entity = dispose_item(client, args.key, date, how, price, sold_to)
     print(f'手放した: {args.key} {entity["name"]}', file=sys.stderr)
     export(client)
 
@@ -111,8 +122,9 @@ def main() -> int:
 
     p = sub.add_parser('dispose', help='手放した印を付ける')
     p.add_argument('key')
-    p.add_argument('--date', required=True)
+    p.add_argument('--date', default='')
     p.add_argument('--how', default='', help='手放し方（売却・粗大ごみなど）')
+    p.add_argument('--mercari', default='', metavar='ITEM_ID', help='メルカリの売却から日付・売値を埋める')
     p.set_defaults(func=cmd_dispose)
 
     p = sub.add_parser('move', help='場所を変える')
