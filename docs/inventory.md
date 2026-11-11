@@ -11,6 +11,7 @@ dailybuild-private の `data/inventory/` に、持ち物まわりの台帳を全
 
 - 補充する物（使えば無くなる）は `consumables.csv`、買い替える物（本・電子機器・服・取り付ける部品）は `items.csv`。
   迷う物は「補充のペースで買っているか」で決める
+- もう買わない品目は行を消さず `consumables.csv` の `ended_on` に日付を入れる（`items.csv` の `disposed_on` と同じ考え方）。次に買う頃を出さず、表の最後に回る
 - どの台帳も `key` 列で引く。key は変えない（購入履歴・Grafana・器への同期がこれでつながる）
 - 店の注文そのものは `data/purchases/<店>.csv`（取り込みスクリプトが書く生データ）。台帳はそれを `purchase_rules.csv` で引く
 - 計算（次に買う頃・1kg あたりの値段）は `src/lib/consumables.py` → `dashboard.py` が `reports/dashboard/consumables.csv`
