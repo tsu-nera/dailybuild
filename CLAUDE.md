@@ -195,7 +195,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 `data/body_sizes.csv` は服・靴・メガネを買うための体のサイズ（胸囲・股下・足長・度数など）。
 縦持ち `date,measure,value,unit,source,note` で、測った・伝えられた時に agent が1行足す。
 `date` は測った日（不明なら記録した日にして `note` に書く）。身長・腹囲は `data/checkup.csv`
-にあるので写さない。物の表記サイズと合ったかは `data/inventory/items.csv` の `note` に書く。
+にあるので写さない。物の表記サイズと合ったかは持ち物の note（正本は Homebox、[docs/homebox.md](docs/homebox.md)）に書く。
 本人と agent が共に書く置き場は未設計で、具体例が集まったら決め直す（2026-10-18）。
 
 ## データソース別の詳細
@@ -214,6 +214,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）・HA の state 履歴を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物。state 履歴の開始時点の行は時刻が丸められているので保存しない |
 | `scripts/dashboard.py` / `scripts/ops/grafana/` を変更するとき | [docs/grafana.md](docs/grafana.md) — 計算は dashboard.py に1本。Grafana 側で集計・判定しない。欠測は空セル |
+| 持ち物（`scripts/homebox.py` / `data/inventory/items.csv`）を扱うとき | [docs/homebox.md](docs/homebox.md) — 正本は Homebox で items.csv は日次の写し。一覧は `includeArchived` を付けないと手放した物が消える。PUT は全欄置き換え |
 | `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
 | `scripts/timeline.py` / 場所ごとの訪問（Google マップ Timeline の export）を扱うとき | [docs/timeline.md](docs/timeline.md) — 同じ訪問が hierarchyLevel 違いで重複する。座標は度記号付きの文字列。取得は手動 export 頼み。名前は places.csv の辞書（Places API）|
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
