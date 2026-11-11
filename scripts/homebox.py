@@ -67,7 +67,7 @@ def cmd_add(args, client) -> None:
         print(f'warning: {key} は data/purchases/ に無い（先に purchases.py fetch するか key を確かめる）',
               file=sys.stderr)
     entity = add_item(client, key, args.category, args.subcategory, args.name,
-                      args.acquired_on, args.note, joined)
+                      args.acquired_on, args.note, joined, args.url)
     print(f'追加: {key} {entity["name"]}', file=sys.stderr)
     export(client)
 
@@ -118,6 +118,7 @@ def main() -> int:
     p.add_argument('--name', default='')
     p.add_argument('--acquired-on', default='')
     p.add_argument('--note', default='')
+    p.add_argument('--url', default='', help='商品ページ（Amazon・楽天・メルカリは key から自動。ユニクロ・店頭は手で渡す）')
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser('dispose', help='手放した印を付ける')

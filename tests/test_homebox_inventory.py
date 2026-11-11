@@ -6,7 +6,8 @@ import uuid
 import pytest
 
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
-                                   find_rows, fit_name, mercari_sales, move_item, write_csv)
+                                   find_rows, fit_name, mercari_sales, move_item, notes_with_link,
+                                   write_csv)
 
 NIL = '00000000-0000-0000-0000-000000000000'
 ITEM_TYPE = {'id': 't-item', 'name': 'Item', 'isLocation': False}
@@ -78,7 +79,8 @@ class FakeHomebox:
         return chain
 
 
-JOINED = {'name': '耳栓', 'purchaseDate': '2026-01-02', 'purchasePrice': 3000.0, 'purchaseFrom': 'Amazon'}
+JOINED = {'name': '耳栓', 'purchaseDate': '2026-01-02', 'purchasePrice': 3000.0, 'purchaseFrom': 'Amazon',
+          'url': 'https://www.amazon.co.jp/dp/B0'}
 
 
 def test_add_twice_does_not_duplicate():
@@ -222,3 +224,14 @@ def test_dispose_with_sale_keeps_price_and_buyer():
 
     e = next(iter(hb.entities.values()))
     assert (e['archived'], e['soldPrice'], e['soldTo']) == (True, 18000.0, 'メルカリ')
+
+
+def test_product_page_link_goes_into_notes():
+    hb = FakeHomebox()
+    add_item(hb, 'amazon:1-2:B0', '日用品', note='寝室用', joined=JOINED)
+    add_item(hb, 'manual:1', '家電', name='鍋')
+
+    notes = {e['name']: e['notes'] for e in hb.entities.values()}
+    assert notes['耳栓'] == '寝室用\n\n[商品ページ（Amazon）](https://www.amazon.co.jp/dp/B0)'
+    assert notes['鍋'] == ''
+    assert notes_with_link('', 'https://x', '') == '[商品ページ（リンク）](https://x)'
