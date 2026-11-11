@@ -4,7 +4,7 @@
 正本は data/inventory/ の2本で、書くのは agent。表示は Grafana だが、計算はここに置いて
 CSV に出す（表示の器を Notion などに替えても同じ CSV を流せるように）。
 
-- consumables.csv: 補充する品目（1品目1行、key は変えない）。keep は持っておく数、subscription は定期購入の頻度
+- consumables.csv: 補充する品目（1品目1行、key は変えない）。keep は持っておく数、subscription は定期購入の頻度、ended_on はもう買わないと決めた日（行は消さず、次に買う頃を出さない）
 - purchase_rules.csv: 店の注文の行を品目に結びつける規則。amazon は match が ASIN（完全一致）、
   それ以外の source は match が商品名への正規表現。size は1注文1個あたりの量（品目の unit）で、
   空なら商品名の「1KG」「500g」から読む
@@ -19,7 +19,7 @@ from pathlib import Path
 import pandas as pd
 
 ITEM_COLUMNS = ['key', 'name', 'category', 'location', 'shop', 'unit', 'keep', 'subscription',
-                'last_purchase', 'purchases', 'interval_days', 'next_purchase', 'total_yen']
+                'last_purchase', 'purchases', 'interval_days', 'next_purchase', 'total_yen', 'ended_on']
 PURCHASE_COLUMNS = ['date', 'key', 'name', 'shop', 'product', 'quantity', 'unit', 'yen', 'yen_per_kg']
 
 SHOP = {'amazon': 'Amazon', 'myprotein': 'マイプロテイン'}
@@ -100,12 +100,14 @@ def build(items_csv: Path, rules_csv: Path, purchase_csvs: dict[str, Path]) -> t
         # 次に買う頃 = 最後の購入日 + 購入間隔の中央値（同じ日の複数注文は1回）。2回未満は出さない
         gaps = [(b - a).days for a, b in zip(days, days[1:])]
         interval = int(pd.Series(gaps).median()) if gaps else None
+        ended = getattr(it, 'ended_on', '') or None
         rows.append({'key': it.key, 'name': it.name, 'category': it.category, 'location': it.location,
                      'shop': it.shop, 'unit': it.unit, 'keep': it.keep or None,
                      'subscription': it.subscription or None,
                      'last_purchase': days[-1].isoformat() if days else None, 'purchases': len(days),
                      'interval_days': interval,
-                     'next_purchase': (days[-1] + dt.timedelta(days=interval)).isoformat() if interval else None,
-                     'total_yen': round(mine['yen'].sum()) if len(mine) else None})
-    rows.sort(key=lambda r: (r['next_purchase'] or '9999', r['name']))
+                     'next_purchase': (days[-1] + dt.timedelta(days=interval)).isoformat()
+                     if interval and not ended else None,
+                     'total_yen': round(mine['yen'].sum()) if len(mine) else None, 'ended_on': ended})
+    rows.sort(key=lambda r: (r['ended_on'] is not None, r['next_purchase'] or '9999', r['name']))
     return rows, purchases
