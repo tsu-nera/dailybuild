@@ -50,7 +50,9 @@ CSV_DIR = project_root / 'reports/dashboard'
 CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
 PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
 PURCHASE_CSVS = {'amazon': project_root / 'data/purchases/amazon.csv',
-                 'myprotein': project_root / 'data/purchases/myprotein.csv'}
+                 'myprotein': project_root / 'data/purchases/myprotein.csv',
+                 'rakuten': project_root / 'data/purchases/rakuten.csv',
+                 'store': project_root / 'data/purchases/store.csv'}
 
 # daily.csv の期間。推移は Grafana の時間範囲で絞るので、表は長めに持つ
 DAILY_DAYS = 365

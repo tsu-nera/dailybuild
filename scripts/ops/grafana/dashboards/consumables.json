@@ -117,6 +117,11 @@
               "type": "string"
             },
             {
+              "selector": "last_shop",
+              "text": "最後の店",
+              "type": "string"
+            },
+            {
               "selector": "purchases",
               "text": "回数",
               "type": "number"
@@ -139,11 +144,6 @@
             {
               "selector": "location",
               "text": "保存場所",
-              "type": "string"
-            },
-            {
-              "selector": "shop",
-              "text": "購入元",
               "type": "string"
             },
             {
@@ -187,12 +187,12 @@
               "次に買う頃": 1,
               "間隔 日": 2,
               "最終購入": 3,
-              "回数": 4,
-              "持つ数": 5,
-              "定期": 6,
-              "分類": 7,
-              "保存場所": 8,
-              "購入元": 9,
+              "最後の店": 4,
+              "回数": 5,
+              "持つ数": 6,
+              "定期": 7,
+              "分類": 8,
+              "保存場所": 9,
               "単位": 10,
               "累計 円": 11,
               "終了": 12
@@ -204,7 +204,7 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "1kg あたりの値段: ${item}",
+      "title": "1単位あたりの値段（店ごと）: ${item}",
       "gridPos": {
         "x": 0,
         "y": 10,
@@ -243,8 +243,13 @@
               "type": "string"
             },
             {
-              "selector": "yen_per_kg",
-              "text": "円/kg",
+              "selector": "shop",
+              "text": "shop",
+              "type": "string"
+            },
+            {
+              "selector": "yen_per_unit",
+              "text": "円",
               "type": "number"
             }
           ],
@@ -257,6 +262,18 @@
           "options": {
             "excludeByName": {
               "name": true
+            }
+          }
+        },
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "shop"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": false
             }
           }
         }
@@ -276,7 +293,9 @@
       },
       "options": {
         "legend": {
-          "showLegend": false
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
         },
         "tooltip": {
           "mode": "single"
@@ -349,8 +368,8 @@
               "type": "number"
             },
             {
-              "selector": "yen_per_kg",
-              "text": "円/kg",
+              "selector": "yen_per_unit",
+              "text": "円/単位",
               "type": "number"
             }
           ]
@@ -388,7 +407,7 @@
               "量": 4,
               "単位": 5,
               "金額 円": 6,
-              "円/kg": 7
+              "円/単位": 7
             }
           }
         }
