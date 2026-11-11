@@ -6,7 +6,7 @@ import uuid
 import pytest
 
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
-                                   fit_name, write_csv)
+                                   find_rows, fit_name, move_item, write_csv)
 
 NIL = '00000000-0000-0000-0000-000000000000'
 ITEM_TYPE = {'id': 't-item', 'name': 'Item', 'isLocation': False}
@@ -21,12 +21,18 @@ class FakeHomebox:
     def entity_types(self):
         return [ITEM_TYPE, LOC_TYPE]
 
-    def list_entities(self, entity_type_id):
-        return [{'id': e['id'], 'name': e['name']} for e in self.entities.values()
-                if e['entityType']['id'] == entity_type_id]
-
     def get_entity(self, entity_id):
         return copy.deepcopy(self.entities[entity_id])
+
+    def add_location(self, name, parent=None):
+        eid = str(uuid.uuid4())
+        self.entities[eid] = {'id': eid, 'name': name, 'entityType': LOC_TYPE,
+                              'parent': {'id': parent} if parent else None}
+        return eid
+
+    def list_entities(self, entity_type_id):
+        return [{'id': e['id'], 'name': e['name'], 'parent': e.get('parent')}
+                for e in self.entities.values() if e['entityType']['id'] == entity_type_id]
 
     def create_entity(self, body):
         eid = str(uuid.uuid4())
@@ -42,6 +48,8 @@ class FakeHomebox:
             if k == 'tagIds':
                 # 本物と同じく、物に埋め込むタグには親を載せない
                 e['tags'] = [dict(t, parentId=NIL) for t in self.tag_list if t['id'] in v]
+            elif k == 'parentId':
+                e['parent'] = {'id': v, 'name': self.entities[v]['name']}
             elif k == 'fields':
                 e['fields'] = [dict(f, id=f.get('id') or str(uuid.uuid4())) for f in v]
             else:
@@ -62,7 +70,12 @@ class FakeHomebox:
         return tag
 
     def entity_path(self, entity_id):
-        return [{'name': 'self'}]
+        chain, e = [], self.entities[entity_id]
+        while e:
+            chain.insert(0, {'name': e['name']})
+            parent = e.get('parent')
+            e = self.entities[parent['id']] if parent else None
+        return chain
 
 
 JOINED = {'name': '耳栓', 'purchaseDate': '2026-01-02', 'purchasePrice': 3000.0, 'purchaseFrom': 'Amazon'}
@@ -137,3 +150,51 @@ def test_empty_export_does_not_overwrite(tmp_path):
 def test_long_name_is_cut_to_255_bytes():
     name = fit_name('耳栓' * 200)
     assert len(name.encode()) <= 255 and name.endswith('…')
+
+
+def _home():
+    hb = FakeHomebox()
+    main = hb.add_location('メイン')
+    hb.add_location('机', main)
+    hb.add_location('クローゼット', main)
+    entrance = hb.add_location('玄関・キッチン')
+    hb.add_location('棚', main)
+    hb.add_location('棚', entrance)
+    add_item(hb, 'manual:1', 'PC', 'ノート', name='ノートPC')
+    return hb
+
+
+def test_move_by_leaf_name_and_export_path():
+    hb = _home()
+
+    move_item(hb, 'manual:1', '机')
+
+    assert export_rows(hb)[0]['location'] == 'メイン / 机'
+
+
+def test_move_refuses_ambiguous_and_unknown_location():
+    hb = _home()
+
+    with pytest.raises(InventoryError, match='複数'):
+        move_item(hb, 'manual:1', '棚')
+    with pytest.raises(InventoryError, match='無い'):
+        move_item(hb, 'manual:1', '押し入れ')
+    move_item(hb, 'manual:1', '玄関・キッチン / 棚')
+
+    assert export_rows(hb)[0]['location'] == '玄関・キッチン / 棚'
+
+
+def test_find_filters():
+    rows = [
+        {'key': 'manual:1', 'name': 'ノートPC', 'category': 'PC', 'subcategory': 'ノート',
+         'location': 'メイン / 机', 'status': 'owned', 'note': ''},
+        {'key': 'manual:2', 'name': '電子レンジ', 'category': '家電', 'subcategory': 'キッチン家電',
+         'location': '玄関・キッチン / キッチン', 'status': 'owned', 'note': ''},
+        {'key': 'manual:3', 'name': '古いPC', 'category': 'PC', 'subcategory': '',
+         'location': '', 'status': 'disposed', 'note': ''},
+    ]
+
+    assert [r['key'] for r in find_rows(rows, 'pc')] == ['manual:1']
+    assert [r['key'] for r in find_rows(rows, 'pc', include_disposed=True)] == ['manual:1', 'manual:3']
+    assert [r['key'] for r in find_rows(rows, location='キッチン')] == ['manual:2']
+    assert [r['key'] for r in find_rows(rows, tag='ノート')] == ['manual:1']

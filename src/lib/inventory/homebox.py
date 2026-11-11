@@ -237,3 +237,56 @@ def write_csv(rows: list[dict], path: Path) -> None:
     tmp = path.with_suffix('.csv.tmp')
     tmp.write_text(buf.getvalue(), encoding='utf-8')
     tmp.replace(path)
+
+
+# ---- 場所の解決と移動・検索 ----
+
+def location_paths(client) -> dict[str, str]:
+    """場所の id → 根からの経路（'メイン / 机'）"""
+    loc_type = next(t['id'] for t in client.entity_types() if t['isLocation'])
+    summaries = {s['id']: s for s in client.list_entities(loc_type)}
+
+    def path(sid: str) -> str:
+        s = summaries[sid]
+        parent = (s.get('parent') or {}).get('id')
+        return f'{path(parent)} / {s["name"]}' if parent in summaries else s['name']
+
+    return {sid: path(sid) for sid in summaries}
+
+
+def resolve_location(client, name: str) -> str:
+    """経路（'メイン / 机'）か末端の名前（'机'）から場所の id を引く。曖昧・不在は止める"""
+    paths = location_paths(client)
+    hits = [sid for sid, p in paths.items() if p == name] or \
+           [sid for sid, p in paths.items() if p.split(' / ')[-1] == name]
+    if not hits:
+        raise InventoryError(f'場所「{name}」が無い。ある場所: {", ".join(sorted(paths.values()))}')
+    if len(hits) > 1:
+        raise InventoryError(f'場所「{name}」が複数ある（経路で指定する）: {", ".join(paths[h] for h in hits)}')
+    return hits[0]
+
+
+def move_item(client, key: str, location: str) -> dict:
+    entity = load_items(client).get(key)
+    if entity is None:
+        raise InventoryError(f'{key} が Homebox に無い')
+    body = _update_body(entity)
+    body['parentId'] = resolve_location(client, location)
+    return client.update_entity(entity['id'], body)
+
+
+def find_rows(rows: list[dict], query: str = '', location: str = '', tag: str = '',
+              include_disposed: bool = False) -> list[dict]:
+    """export_rows の結果を絞る。query は key・品名・メモの部分一致、location は経路の部分一致"""
+    out = []
+    for r in rows:
+        if r['status'] == 'disposed' and not include_disposed:
+            continue
+        if query and not any(query.lower() in r[c].lower() for c in ('key', 'name', 'note')):
+            continue
+        if location and location not in r['location']:
+            continue
+        if tag and tag not in (r['category'].split(';') + [r['subcategory']]):
+            continue
+        out.append(r)
+    return out
