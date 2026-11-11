@@ -11,6 +11,13 @@ services:
       TZ: Asia/Tokyo
       GROCY_CURRENCY: JPY
       GROCY_DEFAULT_LOCALE: ja
+      # 使うのは在庫・買い物リスト・電池（定期交換品）だけ。家事・タスクは Todoist、説明書は Homebox が持つ
+      GROCY_FEATURE_FLAG_RECIPES: "false"
+      GROCY_FEATURE_FLAG_RECIPES_MEALPLAN: "false"
+      GROCY_FEATURE_FLAG_CHORES: "false"
+      GROCY_FEATURE_FLAG_TASKS: "false"
+      GROCY_FEATURE_FLAG_EQUIPMENT: "false"
+      GROCY_FEATURE_FLAG_CALENDAR: "false"
     volumes:
       - grocy-data:/config
     ports:
