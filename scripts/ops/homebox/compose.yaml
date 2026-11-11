@@ -1,0 +1,20 @@
+# 持ち物の器の試用（#263）。起動は vaio で:
+#   cd ~/repo/dailybuild/scripts/ops/homebox && docker compose up -d
+# .env（git 外）に HBOX_AUTH_API_KEY_PEPPER（32バイト以上、openssl rand -base64 48）。変えると発行済み API key が全部無効になる
+services:
+  homebox:
+    image: ghcr.io/sysadminsmedia/homebox:0.27.1
+    environment:
+      HBOX_AUTH_API_KEY_PEPPER: ${HBOX_AUTH_API_KEY_PEPPER}
+      HBOX_OPTIONS_ALLOW_ANALYTICS: "false"
+      # 初回の利用者を作ったら false にして起動し直す
+      HBOX_OPTIONS_ALLOW_REGISTRATION: ${HBOX_ALLOW_REGISTRATION:-false}
+      TZ: Asia/Tokyo
+    volumes:
+      - homebox-data:/data
+    ports:
+      - "${HOMEBOX_BIND:-127.0.0.1}:3100:7745"
+    restart: unless-stopped
+
+volumes:
+  homebox-data:
