@@ -9,7 +9,8 @@ Artifact へは agent が添付ファイルとして上げ直す（スクリプ�
 
 同じ数値を Grafana 用の CSV 7本（nights / weeks / sets / status / current / sets_now /
 freshness）としても reports/dashboard/ へ全上書きで書く（docs/grafana.md）。欠測は空セル。
-加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）を書く。
+加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
+消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
@@ -29,7 +30,7 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import exercise_source, hevy_csv  # noqa: E402
+from lib import consumables, exercise_source, hevy_csv  # noqa: E402
 from lib.analytics import activity, body  # noqa: E402
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.analytics import workout  # noqa: E402
@@ -46,6 +47,10 @@ SPO2_CSV = project_root / 'data/wearable/spo2.csv'
 NUTRITION_CSV = project_root / 'data/wearable/nutrition.csv'
 EXERCISE_CSV = project_root / 'data/googlehealth/exercise.csv'
 CSV_DIR = project_root / 'reports/dashboard'
+CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
+PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
+PURCHASE_CSVS = {'amazon': project_root / 'data/purchases/amazon.csv',
+                 'myprotein': project_root / 'data/purchases/myprotein.csv'}
 
 # daily.csv の期間。推移は Grafana の時間範囲で絞るので、表は長めに持つ
 DAILY_DAYS = 365
@@ -76,6 +81,9 @@ COLUMNS = {
               'deep_min', 'light_min', 'rem_min', 'bed_h', 'wake_h', 'debt_h',
               'hrv', 'hrv_base', 'hrv_lo', 'hrv_hi', 'rhr', 'rhr_base', 'rhr_lo', 'rhr_hi',
               'spo2_avg', 'spo2_min'],
+    # 消耗品画面（lib/consumables.py）
+    'consumables': consumables.ITEM_COLUMNS,
+    'consumable_purchases': consumables.PURCHASE_COLUMNS,
 }
 
 
@@ -339,6 +347,9 @@ def cmd_build(args) -> int:
     today = dt.date.today()
     tables = build_tables(today, args.weeks)
     tables['daily'] = build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)
+    tables['consumables'], tables['consumable_purchases'] = consumables.build(
+        require_private_path(CONSUMABLES_CSV), require_private_path(PURCHASE_RULES_CSV),
+        {k: require_private_path(v) for k, v in PURCHASE_CSVS.items()})
     nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
 
     out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
