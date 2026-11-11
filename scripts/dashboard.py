@@ -16,6 +16,8 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 Usage:
     uv run scripts/dashboard.py build [--weeks 8] [--out tmp/dashboard/goals.json]
                                       [--csv-dir reports/dashboard]
+    uv run scripts/dashboard.py consumables [--csv-dir reports/dashboard]
+        消耗品の2本だけ作り直す（台帳を書いた直後に Grafana へ反映する用。全体の build は約10秒、これは約2秒）
 """
 
 import argparse
@@ -344,15 +346,27 @@ def write_csvs(tables: dict[str, list[dict]], csv_dir: Path) -> list[Path]:
     return paths
 
 
+def consumable_tables(today: dt.date) -> dict[str, list[dict]]:
+    items, purchases = consumables.build(
+        require_private_path(CONSUMABLES_CSV), require_private_path(PURCHASE_RULES_CSV),
+        {k: require_private_path(v) for k, v in PURCHASE_CSVS.items()}, require_private_path(STOCKTAKE_CSV), today)
+    return {'consumables': items, 'consumable_purchases': purchases}
+
+
+def cmd_consumables(args) -> int:
+    tables = consumable_tables(dt.date.today())
+    for p in write_csvs(tables, Path(args.csv_dir)):
+        print(f'  {p}', file=sys.stderr)
+    return 0
+
+
 def cmd_build(args) -> int:
     # 読み込み元の symlink 未マウントは「データなし」で正常終了して欠測を捏造するので、ここで落とす
     require_private_path(SLEEP_CSV)
     today = dt.date.today()
     tables = build_tables(today, args.weeks)
     tables['daily'] = build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)
-    tables['consumables'], tables['consumable_purchases'] = consumables.build(
-        require_private_path(CONSUMABLES_CSV), require_private_path(PURCHASE_RULES_CSV),
-        {k: require_private_path(v) for k, v in PURCHASE_CSVS.items()}, require_private_path(STOCKTAKE_CSV), today)
+    tables.update(consumable_tables(today))
     nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
 
     out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
@@ -374,6 +388,9 @@ def main(argv=None) -> int:
     b.add_argument('--out', default=str(project_root / 'tmp/dashboard/goals.json'))
     b.add_argument('--csv-dir', default=str(CSV_DIR))
     b.set_defaults(func=cmd_build)
+    c = sub.add_parser('consumables', help='消耗品の CSV 2本だけ作り直す')
+    c.add_argument('--csv-dir', default=str(CSV_DIR))
+    c.set_defaults(func=cmd_consumables)
     args = p.parse_args(argv)
     return args.func(args)
 
