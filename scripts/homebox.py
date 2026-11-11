@@ -13,9 +13,13 @@ Usage:
         --acquired-on 2026-11-11 --note '店名・価格'      # manual は manual:<次の番号> を振る
     python scripts/homebox.py add uniqlo:2026-05-27:482300:03 --category ファッション --subcategory トップス
     python scripts/homebox.py dispose manual:12 --date 2026-11-11 --how 'メルカリで売却'
+    python scripts/homebox.py move manual:12 クローゼット       # 末端の名前か経路（'メイン / 机'）
+    python scripts/homebox.py find 耳栓                        # key・品名・メモの部分一致
+    python scripts/homebox.py find --location 玄関 --tag 家電  # 場所は経路の部分一致、タグはカテゴリかサブカテゴリ
+    python scripts/homebox.py find --all                       # 手放した物も含める
 
 add は同じ key があれば何もせず止まる。品名・購入日・価格・購入先は key から data/purchases/ を引いて埋める。
-どれも最後に export まで行う。ログは stderr。
+add / dispose / move は最後に export まで行う。find は Homebox を直接読み、表を stdout に出す。ログは stderr。
 """
 
 import sys
@@ -28,7 +32,8 @@ import re
 
 from lib.clients.homebox_client import HomeboxClient
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
-                                   load_items, purchase_lookup, write_csv)
+                                   find_rows, load_items, move_item, purchase_lookup,
+                                   write_csv)
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
@@ -72,6 +77,23 @@ def cmd_dispose(args, client) -> None:
     export(client)
 
 
+def cmd_move(args, client) -> None:
+    entity = move_item(client, args.key, args.location)
+    print(f'移した: {args.key} {entity["name"]} → {args.location}', file=sys.stderr)
+    export(client)
+
+
+def cmd_find(args, client) -> None:
+    rows = find_rows(export_rows(client), args.query, args.location, args.tag, args.all)
+    print('| key | 品名 | カテゴリ | 場所 | 状態 |')
+    print('|---|---|---|---|---|')
+    for r in rows:
+        category = '/'.join(c for c in (r['category'], r['subcategory']) if c)
+        status = '手放した' if r['status'] == 'disposed' else ''
+        print(f"| {r['key']} | {r['name']} | {category} | {r['location'] or '-'} | {status} |")
+    print(f'{len(rows)} 件', file=sys.stderr)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -92,6 +114,18 @@ def main() -> int:
     p.add_argument('--date', required=True)
     p.add_argument('--how', default='', help='手放し方（売却・粗大ごみなど）')
     p.set_defaults(func=cmd_dispose)
+
+    p = sub.add_parser('move', help='場所を変える')
+    p.add_argument('key')
+    p.add_argument('location', help="末端の名前（'机'）か経路（'メイン / 机'）")
+    p.set_defaults(func=cmd_move)
+
+    p = sub.add_parser('find', help='探す（Homebox を直接読む）')
+    p.add_argument('query', nargs='?', default='')
+    p.add_argument('--location', default='')
+    p.add_argument('--tag', default='')
+    p.add_argument('--all', action='store_true', help='手放した物も含める')
+    p.set_defaults(func=cmd_find)
 
     args = parser.parse_args()
     try:
