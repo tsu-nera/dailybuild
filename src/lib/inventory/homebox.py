@@ -13,6 +13,7 @@ import io
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 KEY_FIELD = 'key'
 NAME_MAX_BYTES = 255  # ent schema の MaxLen(255)。len は UTF-8 のバイト数で数える
@@ -157,6 +158,16 @@ def _tag_ids(client, category: str, subcategory: str) -> list[str]:
     return ids
 
 
+def url_alive(url: str) -> bool:
+    """商品ページが開けるか。楽天は店が下げると、メルカリは出品者が取引後に消すと 404 になる
+    （2026-11-11: 2019〜2020 の購入で楽天1件・メルカリ1件が 404、2021 のメルカリは生きていた）"""
+    try:
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, allow_redirects=True)
+    except requests.RequestException:
+        return False
+    return r.status_code == 200
+
+
 def notes_with_link(note: str, url: str, source: str) -> str:
     """Homebox のメモは markdown で描画されるので、商品ページはリンクの1行で足す"""
     if not url:
@@ -167,7 +178,7 @@ def notes_with_link(note: str, url: str, source: str) -> str:
 
 def add_item(client, key: str, category: str, subcategory: str = '', name: str = '',
              acquired_on: str = '', note: str = '', joined: dict | None = None,
-             url: str = '') -> dict:
+             url: str = '', alive=url_alive) -> dict:
     """物を1つ足す。同じ key が既にあれば何もせず止める（二重登録しない）"""
     if key in load_items(client):
         raise InventoryError(f'{key} は登録済み')
@@ -175,11 +186,13 @@ def add_item(client, key: str, category: str, subcategory: str = '', name: str =
     name = name or joined.get('name')
     if not name:
         raise InventoryError(f'{key} の品名が購入データに無い（--name で渡す）')
+    # 渡された url は本人が確かめたものとして信じる。購入データから作った url は開けるときだけ付ける
+    link = url or (joined.get('url', '') if joined.get('url') and alive(joined['url']) else '')
     created = client.create_entity({'name': fit_name(name), 'entityTypeId': _item_type_id(client),
                                     'quantity': 1})
     body = _update_body(client.get_entity(created['id']))
     body.update({
-        'notes': notes_with_link(note, url or joined.get('url', ''), joined.get('purchaseFrom', '')),
+        'notes': notes_with_link(note, link, joined.get('purchaseFrom', '')),
         'purchaseDate': acquired_on or joined.get('purchaseDate', ''),
         'purchasePrice': joined.get('purchasePrice', 0.0),
         'purchaseFrom': joined.get('purchaseFrom', ''),

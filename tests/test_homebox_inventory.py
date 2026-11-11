@@ -85,10 +85,10 @@ JOINED = {'name': '耳栓', 'purchaseDate': '2026-01-02', 'purchasePrice': 3000.
 
 def test_add_twice_does_not_duplicate():
     hb = FakeHomebox()
-    add_item(hb, 'amazon:1-2:B0', '日用品', joined=JOINED)
+    add_item(hb, 'amazon:1-2:B0', '日用品', joined=JOINED, alive=lambda u: True)
 
     with pytest.raises(InventoryError):
-        add_item(hb, 'amazon:1-2:B0', '日用品', joined=JOINED)
+        add_item(hb, 'amazon:1-2:B0', '日用品', joined=JOINED, alive=lambda u: True)
 
     assert len(hb.entities) == 1
 
@@ -107,7 +107,7 @@ def test_tags_are_reused_and_categories_roundtrip():
 
 def test_joined_purchase_fills_name_date_price():
     hb = FakeHomebox()
-    add_item(hb, 'amazon:1-2:B0', '日用品', joined=JOINED)
+    add_item(hb, 'amazon:1-2:B0', '日用品', joined=JOINED, alive=lambda u: True)
 
     row = export_rows(hb)[0]
     assert (row['name'], row['acquired_on'], row['purchase_price'], row['purchase_from']) == \
@@ -228,10 +228,13 @@ def test_dispose_with_sale_keeps_price_and_buyer():
 
 def test_product_page_link_goes_into_notes():
     hb = FakeHomebox()
-    add_item(hb, 'amazon:1-2:B0', '日用品', note='寝室用', joined=JOINED)
+    add_item(hb, 'amazon:1-2:B0', '日用品', note='寝室用', joined=JOINED, alive=lambda u: True)
     add_item(hb, 'manual:1', '家電', name='鍋')
+    add_item(hb, 'mercari:m1', '家電', joined=dict(JOINED, name='消えた出品', url='https://x/m1'),
+             alive=lambda u: False)
 
     notes = {e['name']: e['notes'] for e in hb.entities.values()}
     assert notes['耳栓'] == '寝室用\n\n[商品ページ（Amazon）](https://www.amazon.co.jp/dp/B0)'
     assert notes['鍋'] == ''
+    assert notes['消えた出品'] == ''
     assert notes_with_link('', 'https://x', '') == '[商品ページ（リンク）](https://x)'

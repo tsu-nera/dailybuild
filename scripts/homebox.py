@@ -118,7 +118,7 @@ def main() -> int:
     p.add_argument('--name', default='')
     p.add_argument('--acquired-on', default='')
     p.add_argument('--note', default='')
-    p.add_argument('--url', default='', help='商品ページ（Amazon・楽天・メルカリは key から自動。ユニクロ・店頭は手で渡す）')
+    p.add_argument('--url', default='', help='商品ページ（Amazon・楽天・メルカリは key から作り、開けるときだけ付ける。ユニクロ・店頭は手で渡す）')
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser('dispose', help='手放した印を付ける')
