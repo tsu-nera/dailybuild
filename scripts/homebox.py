@@ -14,7 +14,8 @@ Usage:
     python scripts/homebox.py add uniqlo:2026-05-27:482300:03 --category ファッション --subcategory トップス
     python scripts/homebox.py dispose manual:12 --date 2026-11-11 --how '粗大ごみ'
     python scripts/homebox.py dispose manual:12 --mercari m72763833954   # 売却日・売値は mercari.csv から
-    python scripts/homebox.py move manual:12 クローゼット       # 末端の名前か経路（'メイン / 机'）
+    python scripts/homebox.py plan manual:12 売却              # 手放すと決めた印（売却・破棄。dispose で閉じる）
+    python scripts/homebox.py move manual:12 クローゼット      # 末端の名前か経路（'メイン / 机'）
     python scripts/homebox.py find 耳栓                        # key・品名・メモの部分一致
     python scripts/homebox.py find --location 玄関 --tag 家電  # 場所は経路の部分一致、タグはカテゴリかサブカテゴリ
     python scripts/homebox.py find --all                       # 手放した物も含める
@@ -30,11 +31,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import argparse
 import re
+import datetime
 
 from lib.clients.homebox_client import HomeboxClient
-from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
-                                   find_rows, load_items, mercari_sales, move_item, purchase_lookup,
-                                   write_csv)
+from lib.inventory.homebox import (DISPOSAL_KINDS, InventoryError, add_item, dispose_item,
+                                   export_rows, find_rows, load_items, mercari_sales, move_item,
+                                   plan_disposal, purchase_lookup, write_csv)
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
@@ -88,6 +90,11 @@ def cmd_dispose(args, client) -> None:
     export(client)
 
 
+def cmd_plan(args, client) -> None:
+    entry = plan_disposal(client, args.key, args.kind, args.date or datetime.date.today().isoformat())
+    print(f'手放す予定: {args.key} {entry["name"]}（{entry["scheduledDate"]}）', file=sys.stderr)
+
+
 def cmd_move(args, client) -> None:
     entity = move_item(client, args.key, args.location)
     print(f'移した: {args.key} {entity["name"]} → {args.location}', file=sys.stderr)
@@ -127,6 +134,12 @@ def main() -> int:
     p.add_argument('--how', default='', help='手放し方（売却・粗大ごみなど）')
     p.add_argument('--mercari', default='', metavar='ITEM_ID', help='メルカリの売却から日付・売値を埋める')
     p.set_defaults(func=cmd_dispose)
+
+    p = sub.add_parser('plan', help='手放すと決めた印（メンテナンス記録の売却・破棄）')
+    p.add_argument('key')
+    p.add_argument('kind', choices=DISPOSAL_KINDS)
+    p.add_argument('--date', default='', help='決めた日（既定は今日）')
+    p.set_defaults(func=cmd_plan)
 
     p = sub.add_parser('move', help='場所を変える')
     p.add_argument('key')

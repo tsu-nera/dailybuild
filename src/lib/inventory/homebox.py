@@ -4,6 +4,8 @@
   UI で足して key の無い物は `homebox:<id>` として書き出す
 - カテゴリは親タグ、サブカテゴリはその子タグ
 - 手放した物は archived + soldDate
+- 手放すと決めた物はメンテナンス記録「売却」「破棄」（予定日＝決めた日。期日は Todoist が持つ）。
+  手放したら完了日を入れて閉じる。売値はメンテナンスの費用でなく soldPrice（費用は合計されるため）
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import pandas as pd
 import requests
 
 KEY_FIELD = 'key'
+DISPOSAL_KINDS = ('売却', '破棄')
 NAME_MAX_BYTES = 255  # ent schema の MaxLen(255)。len は UTF-8 のバイト数で数える
 NIL_ID = '00000000-0000-0000-0000-000000000000'
 COLUMNS = ['key', 'name', 'category', 'subcategory', 'status', 'location',
@@ -226,7 +229,27 @@ def dispose_item(client, key: str, date: str, how: str = '',
         body['soldPrice'] = sold_price
     if sold_to:
         body['soldTo'] = sold_to
-    return client.update_entity(entity['id'], body)
+    updated = client.update_entity(entity['id'], body)
+    for m in client.maintenance(entity['id']):
+        if m['name'] in DISPOSAL_KINDS and not m.get('completedDate'):
+            client.update_maintenance(m['id'], {
+                k: m.get(k, '') for k in ('name', 'description', 'cost', 'scheduledDate')
+            } | {'completedDate': date})
+    return updated
+
+
+def plan_disposal(client, key: str, kind: str, decided_on: str) -> dict:
+    """手放すと決めた印。同じ種類の未完了があれば作らない"""
+    if kind not in DISPOSAL_KINDS:
+        raise InventoryError(f'種類は {"・".join(DISPOSAL_KINDS)} のどれか')
+    entity = load_items(client).get(key)
+    if entity is None:
+        raise InventoryError(f'{key} が Homebox に無い')
+    for m in client.maintenance(entity['id']):
+        if m['name'] == kind and not m.get('completedDate'):
+            return m
+    return client.create_maintenance(entity['id'], {
+        'name': kind, 'scheduledDate': decided_on, 'description': '', 'cost': '0'})
 
 
 def _location(client, entity: dict) -> str:

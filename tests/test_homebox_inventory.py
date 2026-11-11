@@ -7,7 +7,7 @@ import pytest
 
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
                                    find_rows, fit_name, mercari_sales, move_item, notes_with_link,
-                                   write_csv)
+                                   plan_disposal, write_csv)
 
 NIL = '00000000-0000-0000-0000-000000000000'
 ITEM_TYPE = {'id': 't-item', 'name': 'Item', 'isLocation': False}
@@ -18,6 +18,20 @@ class FakeHomebox:
     def __init__(self):
         self.entities: dict[str, dict] = {}
         self.tag_list: list[dict] = []
+        self.maint: dict[str, dict] = {}
+
+    def maintenance(self, entity_id):
+        return [copy.deepcopy(m) for m in self.maint.values() if m['itemID'] == entity_id]
+
+    def create_maintenance(self, entity_id, body):
+        mid = str(uuid.uuid4())
+        self.maint[mid] = {'completedDate': '', **body, 'id': mid, 'itemID': entity_id}
+        return copy.deepcopy(self.maint[mid])
+
+    def update_maintenance(self, entry_id, body):
+        # 本物の PUT も全欄置き換え
+        self.maint[entry_id] = {**body, 'id': entry_id, 'itemID': self.maint[entry_id]['itemID']}
+        return copy.deepcopy(self.maint[entry_id])
 
     def entity_types(self):
         return [ITEM_TYPE, LOC_TYPE]
@@ -224,6 +238,40 @@ def test_dispose_with_sale_keeps_price_and_buyer():
 
     e = next(iter(hb.entities.values()))
     assert (e['archived'], e['soldPrice'], e['soldTo']) == (True, 18000.0, 'メルカリ')
+
+
+def test_plan_twice_does_not_duplicate():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', 'スポーツ用品', name='ストレッチポール')
+
+    plan_disposal(hb, 'manual:1', '売却', '2026-11-11')
+    plan_disposal(hb, 'manual:1', '売却', '2026-11-12')
+
+    assert [m['scheduledDate'] for m in hb.maint.values()] == ['2026-11-11']
+
+
+def test_dispose_closes_only_open_disposal_entries():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', 'スポーツ用品', name='ストレッチポール')
+    eid = next(iter(hb.entities))
+    plan_disposal(hb, 'manual:1', '売却', '2026-11-11')
+    hb.create_maintenance(eid, {'name': '修理', 'scheduledDate': '2026-11-01', 'cost': '0'})
+    hb.create_maintenance(eid, {'name': '破棄', 'scheduledDate': '2025-01-01',
+                                'completedDate': '2025-02-01', 'cost': '0'})
+
+    dispose_item(hb, 'manual:1', '2026-11-20', 'メルカリで売却（m1）', 7000.0, 'メルカリ')
+
+    done = {m['name']: m['completedDate'] for m in hb.maint.values()}
+    assert done == {'売却': '2026-11-20', '修理': '', '破棄': '2025-02-01'}
+    sale = next(m for m in hb.maint.values() if m['name'] == '売却')
+    assert (sale['scheduledDate'], sale['cost']) == ('2026-11-11', '0')
+
+
+def test_plan_refuses_unknown_kind():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', '家電', name='鍋')
+    with pytest.raises(InventoryError):
+        plan_disposal(hb, 'manual:1', '修理', '2026-11-11')
 
 
 def test_product_page_link_goes_into_notes():

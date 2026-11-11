@@ -61,6 +61,16 @@ class HomeboxClient:
         return self._request('PUT', f'/tags/{tag["id"]}',
                              json={'id': tag['id'], 'name': name, 'parentId': parent_id})
 
+    def maintenance(self, entity_id: str) -> list[dict]:
+        return self._request('GET', f'/entities/{entity_id}/maintenance')
+
+    def create_maintenance(self, entity_id: str, body: dict) -> dict:
+        """0.27.1 の UI は scheduledDate 空だと作れない"""
+        return self._request('POST', f'/entities/{entity_id}/maintenance', json=body)
+
+    def update_maintenance(self, entry_id: str, body: dict) -> dict:
+        return self._request('PUT', f'/maintenance/{entry_id}', json=body)
+
     def entity_path(self, entity_id: str) -> list[dict]:
         """根から自分までの経路（自分を含む）"""
         return self._request('GET', f'/entities/{entity_id}/path')
