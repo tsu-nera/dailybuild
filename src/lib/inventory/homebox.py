@@ -65,7 +65,8 @@ def purchase_lookup(purchases_dir: Path) -> dict[str, dict]:
             if r.asin:
                 out[f'amazon:{r.order_id}:{r.asin}'] = {
                     'name': r.item, 'purchaseDate': r.order_date[:10],
-                    'purchasePrice': _price(r.price), 'purchaseFrom': 'Amazon'}
+                    'purchasePrice': _price(r.price), 'purchaseFrom': 'Amazon',
+                    'url': f'https://www.amazon.co.jp/dp/{r.asin}'}
 
     rakuten = _read(purchases_dir / 'rakuten.csv')
     if not rakuten.empty:
@@ -73,7 +74,8 @@ def purchase_lookup(purchases_dir: Path) -> dict[str, dict]:
             for n, r in enumerate(g.itertuples(), start=1):
                 out[f'rakuten:{order_id}:{n}'] = {
                     'name': r.item, 'purchaseDate': r.order_date[:10],
-                    'purchasePrice': _price(r.price), 'purchaseFrom': f'楽天 {r.shop}'}
+                    'purchasePrice': _price(r.price), 'purchaseFrom': f'楽天 {r.shop}',
+                    'url': r.item_url}
 
     for r in _read(purchases_dir / 'uniqlo.csv').itertuples():
         code = r.color.split()[0] if r.color else ''
@@ -89,7 +91,8 @@ def purchase_lookup(purchases_dir: Path) -> dict[str, dict]:
         for r in df[df['direction'] == 'buy'].itertuples():
             out[f'mercari:{r.item_id}'] = {
                 'name': r.item, 'purchaseDate': r.date[:10],
-                'purchasePrice': _price(r.price), 'purchaseFrom': 'メルカリ'}
+                'purchasePrice': _price(r.price), 'purchaseFrom': 'メルカリ',
+                'url': f'https://jp.mercari.com/item/{r.item_id}'}
     return out
 
 
@@ -154,8 +157,17 @@ def _tag_ids(client, category: str, subcategory: str) -> list[str]:
     return ids
 
 
+def notes_with_link(note: str, url: str, source: str) -> str:
+    """Homebox のメモは markdown で描画されるので、商品ページはリンクの1行で足す"""
+    if not url:
+        return note
+    link = f'[商品ページ（{source or "リンク"}）]({url})'
+    return f'{note}\n\n{link}' if note else link
+
+
 def add_item(client, key: str, category: str, subcategory: str = '', name: str = '',
-             acquired_on: str = '', note: str = '', joined: dict | None = None) -> dict:
+             acquired_on: str = '', note: str = '', joined: dict | None = None,
+             url: str = '') -> dict:
     """物を1つ足す。同じ key が既にあれば何もせず止める（二重登録しない）"""
     if key in load_items(client):
         raise InventoryError(f'{key} は登録済み')
@@ -167,7 +179,7 @@ def add_item(client, key: str, category: str, subcategory: str = '', name: str =
                                     'quantity': 1})
     body = _update_body(client.get_entity(created['id']))
     body.update({
-        'notes': note,
+        'notes': notes_with_link(note, url or joined.get('url', ''), joined.get('purchaseFrom', '')),
         'purchaseDate': acquired_on or joined.get('purchaseDate', ''),
         'purchasePrice': joined.get('purchasePrice', 0.0),
         'purchaseFrom': joined.get('purchaseFrom', ''),
