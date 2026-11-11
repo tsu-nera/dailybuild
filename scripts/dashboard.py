@@ -49,6 +49,7 @@ EXERCISE_CSV = project_root / 'data/googlehealth/exercise.csv'
 CSV_DIR = project_root / 'reports/dashboard'
 CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
 PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
+STOCKTAKE_CSV = project_root / 'data/inventory/stocktake.csv'
 PURCHASE_CSVS = {'amazon': project_root / 'data/purchases/amazon.csv',
                  'myprotein': project_root / 'data/purchases/myprotein.csv',
                  'rakuten': project_root / 'data/purchases/rakuten.csv',
@@ -351,7 +352,7 @@ def cmd_build(args) -> int:
     tables['daily'] = build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)
     tables['consumables'], tables['consumable_purchases'] = consumables.build(
         require_private_path(CONSUMABLES_CSV), require_private_path(PURCHASE_RULES_CSV),
-        {k: require_private_path(v) for k, v in PURCHASE_CSVS.items()})
+        {k: require_private_path(v) for k, v in PURCHASE_CSVS.items()}, require_private_path(STOCKTAKE_CSV), today)
     nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
 
     out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}

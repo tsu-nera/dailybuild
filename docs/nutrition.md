@@ -24,7 +24,13 @@
   ずれた場合は例外を投げるので静かには壊れない
 
 市販の冷凍食品・加工食品は成分表に無い。パッケージの栄養成分表示から可食部100g当たりで
-`foods_master.csv` に追記する（`source=manual`）。`build-master` は既存 CSV の
+`foods_master.csv` に追記する（`source=manual`）。
+
+レシートから引いた市販品は `food_id` を**レシートの JAN** にし、`source` に出典を書く
+（`gyomusuper`＝業務スーパー公式の商品ページ、`off`＝Open Food Facts）。引く順は
+ローカル（この CSV）→ OFF（JAN 直引き）→ 公式（品名検索）→ 成分表の一般値。
+**業務スーパー公式サイトの JAN はレシートの JAN と一致しないことが多い**（検索も JAN では当たらない）。
+品名で候補を出し、本人に見た目で確定してもらってから書く。OFF は有志データなので不自然な値は採らない。`build-master` は既存 CSV の
 `source != mext` の行を読み戻してから書くので、成分表を取り直しても手入力分は消えない。
 
 ## 栄養記録の完全性モード（`data/wearable/nutrition.csv`）

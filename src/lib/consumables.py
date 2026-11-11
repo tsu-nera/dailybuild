@@ -9,6 +9,8 @@
 - purchase_rules.csv: 注文の行 → 品目（Grocy の product barcode）。amazon は match が ASIN（完全一致）、
   それ以外の source は match が商品名への正規表現。size は1注文1個あたりの量（品目の unit）で、
   空なら商品名の「1KG」「500g」「1,050g」から読む（unit が kg の品目だけ）
+- stocktake.csv: 棚卸し（Grocy の stock の手動補正）。date の終わりに残っていた量（品目の unit）。
+  在庫は減らす操作を持たず、棚卸し2回の間の「前回の量 + その間の購入 − 今回の量」から1日の使用量を出して推定する
 """
 
 import datetime as dt
@@ -19,7 +21,7 @@ import pandas as pd
 
 ITEM_COLUMNS = ['key', 'name', 'category', 'location', 'unit', 'keep', 'subscription',
                 'last_purchase', 'last_shop', 'purchases', 'interval_days', 'next_purchase', 'total_yen',
-                'ended_on']
+                'ended_on', 'stock_date', 'stock_counted', 'daily_use', 'stock_now', 'runs_out']
 PURCHASE_COLUMNS = ['date', 'key', 'name', 'shop', 'product', 'quantity', 'unit', 'yen', 'yen_per_unit']
 
 _SIZE = re.compile(r'(\d[\d,]*(?:\.\d+)?)\s*(kg|g)(?![a-z])', re.IGNORECASE)
@@ -89,8 +91,38 @@ def match_purchases(raw: pd.DataFrame, rules: pd.DataFrame, items: pd.DataFrame)
     return pd.DataFrame(rows, columns=['date', 'key', 'shop', 'product', 'quantity', 'unit', 'yen'])
 
 
-def build(items_csv: Path, rules_csv: Path, purchase_csvs: dict[str, Path]) -> tuple[list[dict], list[dict]]:
+def estimate_stock(counts: pd.DataFrame, bought: pd.DataFrame, today: dt.date) -> dict:
+    """1品目の棚卸し（date, quantity）と購入（date, quantity）から今の在庫を推定する。
+
+    使用量は最初と最後の棚卸しの間で出す（2回未満なら出さない）。その間の量が増えていたら購入の書き漏れなので
+    使用量を出さない（0 や負で埋めると在庫が減らない品目を捏造する）。
+    """
+    none = dict.fromkeys(['stock_date', 'stock_counted', 'daily_use', 'stock_now', 'runs_out'])
+    if counts.empty:
+        return none
+    counts = counts.sort_values('date', kind='stable')
+    first, last = counts.iloc[0], counts.iloc[-1]
+    d0, d1 = dt.date.fromisoformat(first['date']), dt.date.fromisoformat(last['date'])
+
+    def bought_in(a: dt.date, b: dt.date) -> float:
+        dates = bought['date'].map(dt.date.fromisoformat)
+        return float(bought.loc[(dates > a) & (dates <= b), 'quantity'].sum())
+
+    used = first['quantity'] + bought_in(d0, d1) - last['quantity']
+    rate = used / (d1 - d0).days if d1 > d0 and used >= 0 else None
+    out = {**none, 'stock_date': d1.isoformat(), 'stock_counted': round(last['quantity'], 3),
+           'daily_use': round(rate, 4) if rate is not None else None}
+    if rate:
+        now = max(last['quantity'] + bought_in(d1, today) - rate * (today - d1).days, 0.0)
+        out['stock_now'] = round(now, 3)
+        out['runs_out'] = (today + dt.timedelta(days=int(now / rate))).isoformat()
+    return out
+
+
+def build(items_csv: Path, rules_csv: Path, purchase_csvs: dict[str, Path], stocktake_csv: Path,
+          today: dt.date) -> tuple[list[dict], list[dict]]:
     items = pd.read_csv(items_csv, dtype=str).fillna('')
+    stocktake = pd.read_csv(stocktake_csv, dtype={'date': str, 'key': str, 'quantity': float})
     rules = pd.read_csv(rules_csv, dtype=str).fillna('')
     raw = pd.concat([READERS[name](path) for name, path in purchase_csvs.items()], ignore_index=True)
     bought = match_purchases(raw, rules, items).sort_values('date', kind='stable')
@@ -116,6 +148,7 @@ def build(items_csv: Path, rules_csv: Path, purchase_csvs: dict[str, Path]) -> t
                      'purchases': len(days), 'interval_days': interval,
                      'next_purchase': (days[-1] + dt.timedelta(days=interval)).isoformat()
                      if interval and not ended else None,
-                     'total_yen': round(mine['yen'].sum()) if len(mine) else None, 'ended_on': ended})
+                     'total_yen': round(mine['yen'].sum()) if len(mine) else None, 'ended_on': ended,
+                     **estimate_stock(stocktake[stocktake['key'] == it.key], mine, today)})
     rows.sort(key=lambda r: (r['ended_on'] is not None, r['next_purchase'] or '9999', r['name']))
     return rows, purchases
