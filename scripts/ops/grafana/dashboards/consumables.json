@@ -1,0 +1,395 @@
+{
+  "uid": "consumables",
+  "title": "消耗品",
+  "tags": [
+    "dailybuild"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-6y",
+    "to": "now"
+  },
+  "refresh": "",
+  "links": [
+    {
+      "title": "画面",
+      "type": "dashboards",
+      "tags": [
+        "dailybuild"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "item",
+        "label": "品目",
+        "type": "query",
+        "datasource": {
+          "type": "yesoreyeram-infinity-datasource",
+          "uid": "dashboard-files"
+        },
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "refresh": 1,
+        "sort": 1,
+        "current": {
+          "text": "Impact ホエイ プロテイン",
+          "value": "Impact ホエイ プロテイン"
+        },
+        "query": {
+          "queryType": "infinity",
+          "query": "",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "csv",
+            "source": "url",
+            "parser": "backend",
+            "format": "table",
+            "url": "http://files/consumable_purchases.csv",
+            "url_options": {
+              "method": "GET"
+            },
+            "columns": [
+              {
+                "selector": "name",
+                "text": "name",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "在庫（列の見出しで絞り込み）",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/consumables.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "name",
+              "text": "品目",
+              "type": "string"
+            },
+            {
+              "selector": "status",
+              "text": "状態",
+              "type": "string"
+            },
+            {
+              "selector": "stock_est",
+              "text": "在庫",
+              "type": "number"
+            },
+            {
+              "selector": "unit",
+              "text": "単位",
+              "type": "string"
+            },
+            {
+              "selector": "min_stock",
+              "text": "最小",
+              "type": "number"
+            },
+            {
+              "selector": "days_left",
+              "text": "あと何日",
+              "type": "number"
+            },
+            {
+              "selector": "category",
+              "text": "分類",
+              "type": "string"
+            },
+            {
+              "selector": "location",
+              "text": "保存場所",
+              "type": "string"
+            },
+            {
+              "selector": "shop",
+              "text": "購入元",
+              "type": "string"
+            },
+            {
+              "selector": "last_purchase",
+              "text": "最終購入",
+              "type": "string"
+            },
+            {
+              "selector": "purchases",
+              "text": "回数",
+              "type": "number"
+            },
+            {
+              "selector": "total_yen",
+              "text": "累計 円",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "filterable": true
+          },
+          "noValue": ""
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "品目": 0,
+              "状態": 1,
+              "在庫": 2,
+              "単位": 3,
+              "最小": 4,
+              "あと何日": 5,
+              "分類": 6,
+              "保存場所": 7,
+              "購入元": 8,
+              "最終購入": 9,
+              "回数": 10,
+              "累計 円": 11
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "1kg あたりの値段: ${item}",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/consumable_purchases.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "name",
+              "text": "name",
+              "type": "string"
+            },
+            {
+              "selector": "yen_per_kg",
+              "text": "円/kg",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "name == \"${item}\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "name": true
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": true,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "購入履歴（列の見出しで絞り込み）",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/consumable_purchases.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "date",
+              "text": "購入日",
+              "type": "string"
+            },
+            {
+              "selector": "name",
+              "text": "品目",
+              "type": "string"
+            },
+            {
+              "selector": "shop",
+              "text": "購入元",
+              "type": "string"
+            },
+            {
+              "selector": "product",
+              "text": "商品",
+              "type": "string"
+            },
+            {
+              "selector": "quantity",
+              "text": "量",
+              "type": "number"
+            },
+            {
+              "selector": "unit",
+              "text": "単位",
+              "type": "string"
+            },
+            {
+              "selector": "yen",
+              "text": "金額 円",
+              "type": "number"
+            },
+            {
+              "selector": "yen_per_kg",
+              "text": "円/kg",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "filterable": true
+          },
+          "noValue": ""
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "購入日",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "購入日": 0,
+              "品目": 1,
+              "購入元": 2,
+              "商品": 3,
+              "量": 4,
+              "単位": 5,
+              "金額 円": 6,
+              "円/kg": 7
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
