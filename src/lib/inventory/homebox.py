@@ -177,13 +177,30 @@ def add_item(client, key: str, category: str, subcategory: str = '', name: str =
     return client.update_entity(created['id'], body)
 
 
-def dispose_item(client, key: str, date: str, how: str = '') -> dict:
-    """手放した印（archived + soldDate）。手放し方は soldNotes"""
+def mercari_sales(purchases_dir: Path) -> dict[str, dict]:
+    """item_id → {date, price}。取引日時を持つ mercari_web.csv を優先し、以後の分はメール由来"""
+    out: dict[str, dict] = {}
+    for name in ('mercari.csv', 'mercari_web.csv'):
+        df = _read(purchases_dir / name)
+        if df.empty:
+            continue
+        for r in df[df['direction'] == 'sell'].itertuples():
+            out[r.item_id] = {'date': r.date[:10], 'price': _price(r.price)}
+    return out
+
+
+def dispose_item(client, key: str, date: str, how: str = '',
+                 sold_price: float = 0.0, sold_to: str = '') -> dict:
+    """手放した印（archived + soldDate）。手放し方は soldNotes、売ったなら売値と売り先も"""
     entity = load_items(client).get(key)
     if entity is None:
         raise InventoryError(f'{key} が Homebox に無い')
     body = _update_body(entity)
     body.update({'archived': True, 'soldDate': date, 'soldNotes': how or body.get('soldNotes', '')})
+    if sold_price:
+        body['soldPrice'] = sold_price
+    if sold_to:
+        body['soldTo'] = sold_to
     return client.update_entity(entity['id'], body)
 
 
