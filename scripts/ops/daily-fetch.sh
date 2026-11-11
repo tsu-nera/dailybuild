@@ -101,6 +101,8 @@ step "Habitica"     uv run python scripts/habitica.py cron
 step "Google Calendar" uv run python scripts/gcalendar.py fetch --days "$DAYS"
 # Last.fm の scrobble（スマホの Pano Scrobbler が YouTube の再生を送る）。遅れて届く分のため CSV の最新から14日遡って取り直す
 step "Last.fm"       uv run python scripts/lastfm.py fetch
+# 持ち物の正本は Homebox（vaio の docker）。items.csv はその写しで、ここで全上書きする
+step "持ち物"        uv run python scripts/homebox.py export
 
 # 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
 # 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、

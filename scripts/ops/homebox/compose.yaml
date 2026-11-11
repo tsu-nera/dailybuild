@@ -1,5 +1,6 @@
-# 持ち物の器の試用（#263）。起動は vaio で:
+# 持ち物の正本（#263）。items.csv は scripts/homebox.py export の写し。起動は vaio で:
 #   cd ~/repo/dailybuild/scripts/ops/homebox && docker compose up -d
+# 写真は volume にしか無く items.csv に入らない
 # .env（git 外）に HBOX_AUTH_API_KEY_PEPPER（32バイト以上、openssl rand -base64 48）。変えると発行済み API key が全部無効になる
 services:
   homebox:

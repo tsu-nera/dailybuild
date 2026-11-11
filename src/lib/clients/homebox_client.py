@@ -54,3 +54,13 @@ class HomeboxClient:
 
     def create_tag(self, name: str) -> dict:
         return self._request('POST', '/tags', json={'name': name})
+
+    def create_tag_under(self, name: str, parent_id: str) -> dict:
+        """POST の parentId は効かない（0.27.1）。作ってから PUT で親を付ける"""
+        tag = self.create_tag(name)
+        return self._request('PUT', f'/tags/{tag["id"]}',
+                             json={'id': tag['id'], 'name': name, 'parentId': parent_id})
+
+    def entity_path(self, entity_id: str) -> list[dict]:
+        """根から自分までの経路（自分を含む）"""
+        return self._request('GET', f'/entities/{entity_id}/path')
