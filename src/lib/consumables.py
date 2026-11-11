@@ -11,6 +11,10 @@
   空なら商品名の「1KG」「500g」「1,050g」から読む（unit が kg の品目だけ）
 - stocktake.csv: 棚卸し（Grocy の stock の手動補正）。date の終わりに残っていた量（品目の unit）。
   在庫は減らす操作を持たず、棚卸し2回の間の「前回の量 + その間の購入 − 今回の量」から1日の使用量を出して推定する
+
+月額（サブスクと同じ月割り）は、定期購入＝この台帳の品目について出す。使用量が出ている品目は
+1日の使用量 × 30 × 直近の購入の単価、出ていない品目は直近365日（使い始めて1年未満なら使い始めから）の購入額の月割り。
+購入2回未満・終了した品目は出さない
 """
 
 import datetime as dt
@@ -21,7 +25,8 @@ import pandas as pd
 
 ITEM_COLUMNS = ['key', 'name', 'category', 'location', 'unit', 'keep', 'subscription',
                 'last_purchase', 'last_shop', 'purchases', 'interval_days', 'next_purchase', 'total_yen',
-                'ended_on', 'stock_date', 'stock_counted', 'daily_use', 'stock_now', 'runs_out']
+                'ended_on', 'stock_date', 'stock_counted', 'daily_use', 'stock_now', 'runs_out',
+                'monthly_yen', 'annual_yen', 'monthly_basis']
 PURCHASE_COLUMNS = ['date', 'key', 'name', 'shop', 'product', 'quantity', 'unit', 'yen', 'yen_per_unit']
 
 _SIZE = re.compile(r'(\d[\d,]*(?:\.\d+)?)\s*(kg|g)(?![a-z])', re.IGNORECASE)
@@ -119,6 +124,27 @@ def estimate_stock(counts: pd.DataFrame, bought: pd.DataFrame, today: dt.date) -
     return out
 
 
+def estimate_monthly(bought: pd.DataFrame, daily_use: float | None, today: dt.date) -> dict:
+    """1品目の月額。使用量があれば消費から、無ければ直近365日の購入実額から出す"""
+    none = dict.fromkeys(['monthly_yen', 'annual_yen', 'monthly_basis'])
+    if daily_use is not None and len(bought):
+        last = bought.iloc[-1]
+        if last['quantity']:
+            monthly, basis = daily_use * 30 * last['yen'] / last['quantity'], '使用量'
+        else:
+            return none
+    else:
+        # 購入1回では間隔が無く、今日買った品を12で割ると月数十円の捏造になる。使い始めて1年未満なら経過月数で割る
+        if bought['date'].nunique() < 2:
+            return none
+        days = min(365, (today - dt.date.fromisoformat(bought['date'].min())).days)
+        recent = bought[bought['date'] >= (today - dt.timedelta(days=days)).isoformat()]
+        if recent.empty or days <= 0:
+            return none
+        monthly, basis = recent['yen'].sum() / days * 365 / 12, '購入実績'
+    return {'monthly_yen': round(monthly), 'annual_yen': round(monthly * 12), 'monthly_basis': basis}
+
+
 def build(items_csv: Path, rules_csv: Path, purchase_csvs: dict[str, Path], stocktake_csv: Path,
           today: dt.date) -> tuple[list[dict], list[dict]]:
     items = pd.read_csv(items_csv, dtype=str).fillna('')
@@ -149,6 +175,8 @@ def build(items_csv: Path, rules_csv: Path, purchase_csvs: dict[str, Path], stoc
                      'next_purchase': (days[-1] + dt.timedelta(days=interval)).isoformat()
                      if interval and not ended else None,
                      'total_yen': round(mine['yen'].sum()) if len(mine) else None, 'ended_on': ended,
-                     **estimate_stock(stocktake[stocktake['key'] == it.key], mine, today)})
+                     **(stock := estimate_stock(stocktake[stocktake['key'] == it.key], mine, today)),
+                     **(estimate_monthly(mine, stock['daily_use'], today) if not ended
+                        else dict.fromkeys(['monthly_yen', 'annual_yen', 'monthly_basis']))})
     rows.sort(key=lambda r: (r['ended_on'] is not None, r['next_purchase'] or '9999', r['name']))
     return rows, purchases
