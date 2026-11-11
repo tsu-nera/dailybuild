@@ -72,7 +72,7 @@
     {
       "id": 1,
       "type": "table",
-      "title": "在庫（列の見出しで絞り込み）",
+      "title": "品目と次に買う頃（列の見出しで絞り込み）",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -105,29 +105,34 @@
               "type": "string"
             },
             {
-              "selector": "status",
-              "text": "状態",
+              "selector": "next_purchase",
+              "text": "次に買う頃",
               "type": "string"
             },
             {
-              "selector": "stock_est",
-              "text": "在庫",
+              "selector": "interval_days",
+              "text": "間隔 日",
               "type": "number"
             },
             {
-              "selector": "unit",
-              "text": "単位",
+              "selector": "last_purchase",
+              "text": "最終購入",
               "type": "string"
             },
             {
-              "selector": "min_stock",
-              "text": "最小",
+              "selector": "purchases",
+              "text": "回数",
               "type": "number"
             },
             {
-              "selector": "days_left",
-              "text": "あと何日",
+              "selector": "keep",
+              "text": "持つ数",
               "type": "number"
+            },
+            {
+              "selector": "subscription",
+              "text": "定期",
+              "type": "string"
             },
             {
               "selector": "category",
@@ -145,14 +150,9 @@
               "type": "string"
             },
             {
-              "selector": "last_purchase",
-              "text": "最終購入",
+              "selector": "unit",
+              "text": "単位",
               "type": "string"
-            },
-            {
-              "selector": "purchases",
-              "text": "回数",
-              "type": "number"
             },
             {
               "selector": "total_yen",
@@ -182,16 +182,16 @@
           "options": {
             "indexByName": {
               "品目": 0,
-              "状態": 1,
-              "在庫": 2,
-              "単位": 3,
-              "最小": 4,
-              "あと何日": 5,
-              "分類": 6,
-              "保存場所": 7,
-              "購入元": 8,
-              "最終購入": 9,
-              "回数": 10,
+              "次に買う頃": 1,
+              "間隔 日": 2,
+              "最終購入": 3,
+              "回数": 4,
+              "持つ数": 5,
+              "定期": 6,
+              "分類": 7,
+              "保存場所": 8,
+              "購入元": 9,
+              "単位": 10,
               "累計 円": 11
             }
           }

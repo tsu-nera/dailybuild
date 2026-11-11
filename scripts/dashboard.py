@@ -47,8 +47,8 @@ SPO2_CSV = project_root / 'data/wearable/spo2.csv'
 NUTRITION_CSV = project_root / 'data/wearable/nutrition.csv'
 EXERCISE_CSV = project_root / 'data/googlehealth/exercise.csv'
 CSV_DIR = project_root / 'reports/dashboard'
-CONSUMABLE_ITEMS_CSV = project_root / 'data/consumables/items.csv'
-CONSUMABLE_SOURCES_CSV = project_root / 'data/consumables/sources.csv'
+CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
+PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
 PURCHASE_CSVS = {'amazon': project_root / 'data/purchases/amazon.csv',
                  'myprotein': project_root / 'data/purchases/myprotein.csv'}
 
@@ -348,8 +348,8 @@ def cmd_build(args) -> int:
     tables = build_tables(today, args.weeks)
     tables['daily'] = build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)
     tables['consumables'], tables['consumable_purchases'] = consumables.build(
-        require_private_path(CONSUMABLE_ITEMS_CSV), require_private_path(CONSUMABLE_SOURCES_CSV),
-        {k: require_private_path(v) for k, v in PURCHASE_CSVS.items()}, today)
+        require_private_path(CONSUMABLES_CSV), require_private_path(PURCHASE_RULES_CSV),
+        {k: require_private_path(v) for k, v in PURCHASE_CSVS.items()})
     nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
 
     out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
