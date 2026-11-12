@@ -17,6 +17,14 @@
 - 手放した物は `status=disposed` と `disposed_on`。手放し方は `note` の末尾「手放し方: 」
 - 写真・添付は入らない。Homebox を失うと写真は戻らない
 
+## 中古相場（任意、2026-11-12〜の実験）
+
+- 全部には付けない。売るかもしれない物にだけ custom field `相場検索` を付ける（`homebox.py market <key> --query '...'`）。書式は gtd の `scripts/shopping/price.py` と同じ引数（品名の語・`--min`・`--exclude`）
+- 日次の「中古相場」ステップが、前回から30日空いた物だけメルカリ SOLD（直近90日）の中央値を引く。最新値は custom field `中古相場`、履歴は `data/inventory/market.csv`（1回1行）とメモ末尾の「相場 YYYY-MM-DD: …」
+- SOLD が4件未満の日は `median` を空にした行だけ残し、`中古相場` は前の値のまま。品名の表記揺れで0件になりやすい（メルカリでは `Domane AL 2` でなく `AL2`）。照合は NFKC で全角を潰してから行う
+- mercapi は非公式 API。取れなかった日はステップが失敗し、行が残らないので翌日引き直す
+- custom field の number 型は PUT が 500 になる。`中古相場` は text に円の整数
+
 ## 場所とタグ
 
 - 場所の大区分は Home Assistant のエリア名にそろえる（`メイン` / `玄関・キッチン`）。HA のエリアはセンサーのまとまりなので粗く、探す単位としては足りないので、その下に収納の単位（机・クローゼット・シンク下・靴箱など、agent-private `home/room-layout.md`）を置く。持ち出す物は `持ち歩き`（HA のエリア `持ち物` に当たる）

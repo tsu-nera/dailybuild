@@ -6,6 +6,8 @@
 - 手放した物は archived + soldDate
 - 手放すと決めた物はメンテナンス記録「売却」「破棄」（予定日＝決めた日。期日は Todoist が持つ）。
   手放したら完了日を入れて閉じる。売値はメンテナンスの費用でなく soldPrice（費用は合計されるため）
+- 中古相場は任意の custom field `中古相場`（最新の1つ）。number 型は PUT が 500 になるので text に円の整数を入れる。履歴はメモ末尾の「相場 YYYY-MM-DD: …」行に積む。
+  全部には付けない実験（2026-11-12〜）。定期取得の検索条件は custom field `相場検索`（書式は lib.inventory.market）
 """
 
 from __future__ import annotations
@@ -18,11 +20,13 @@ import pandas as pd
 import requests
 
 KEY_FIELD = 'key'
+MARKET_FIELD = '中古相場'
+QUERY_FIELD = '相場検索'
 DISPOSAL_KINDS = ('売却', '破棄')
 NAME_MAX_BYTES = 255  # ent schema の MaxLen(255)。len は UTF-8 のバイト数で数える
 NIL_ID = '00000000-0000-0000-0000-000000000000'
 COLUMNS = ['key', 'name', 'category', 'subcategory', 'status', 'location',
-           'acquired_on', 'disposed_on', 'purchase_price', 'purchase_from', 'note']
+           'acquired_on', 'disposed_on', 'purchase_price', 'purchase_from', 'market_price', 'note']
 
 
 class InventoryError(RuntimeError):
@@ -109,6 +113,17 @@ def entity_key(entity: dict) -> str | None:
     return None
 
 
+def field_text(entity: dict, name: str) -> str:
+    for f in entity.get('fields') or []:
+        if f.get('name') == name:
+            return f.get('textValue') or ''
+    return ''
+
+
+def market_price(entity: dict) -> float:
+    return _price(field_text(entity, MARKET_FIELD))
+
+
 def _update_body(entity: dict) -> dict:
     """GET の結果を PUT の body に戻す（PUT は全欄置き換えなので触らない欄も送り返す）"""
     keep = ('name', 'description', 'quantity', 'insured', 'archived', 'assetId',
@@ -181,7 +196,7 @@ def notes_with_link(note: str, url: str, source: str) -> str:
 
 def add_item(client, key: str, category: str, subcategory: str = '', name: str = '',
              acquired_on: str = '', note: str = '', joined: dict | None = None,
-             url: str = '', alive=url_alive) -> dict:
+             url: str = '', alive=url_alive, price: float = 0.0, purchase_from: str = '') -> dict:
     """物を1つ足す。同じ key が既にあれば何もせず止める（二重登録しない）"""
     if key in load_items(client):
         raise InventoryError(f'{key} は登録済み')
@@ -197,12 +212,58 @@ def add_item(client, key: str, category: str, subcategory: str = '', name: str =
     body.update({
         'notes': notes_with_link(note, link, joined.get('purchaseFrom', '')),
         'purchaseDate': acquired_on or joined.get('purchaseDate', ''),
-        'purchasePrice': joined.get('purchasePrice', 0.0),
-        'purchaseFrom': joined.get('purchaseFrom', ''),
+        'purchasePrice': price or joined.get('purchasePrice', 0.0),
+        'purchaseFrom': purchase_from or joined.get('purchaseFrom', ''),
         'tagIds': _tag_ids(client, category, subcategory),
     })
     body['fields'].append({'name': KEY_FIELD, 'type': 'text', 'textValue': key})
     return client.update_entity(created['id'], body)
+
+
+def _set_field(body: dict, name: str, text: str) -> None:
+    field = next((f for f in body['fields'] if f['name'] == name), None)
+    if field is None:
+        field = {'name': name, 'type': 'text'}
+        body['fields'].append(field)
+    field['textValue'] = text
+
+
+def _owned(client, key: str) -> dict:
+    entity = load_items(client).get(key)
+    if entity is None:
+        raise InventoryError(f'{key} が Homebox に無い')
+    return entity
+
+
+def set_market_price(client, key: str, price: float, date: str, source: str) -> dict:
+    """中古相場を custom field に入れ（上書き）、メモ末尾に履歴の1行を積む。同じ日の行は差し替える（再実行で積まない）"""
+    entity = _owned(client, key)
+    body = _update_body(entity)
+    _set_field(body, MARKET_FIELD, f'{price:.0f}')
+    prefix = f'相場 {date}: '
+    kept = [b for b in (body.get('notes') or '').split('\n\n') if b and not b.startswith(prefix)]
+    body['notes'] = '\n\n'.join(kept + [f'{prefix}{source} {price:,.0f}円'])
+    return client.update_entity(entity['id'], body)
+
+
+def set_market_query(client, key: str, query: str) -> dict:
+    """定期取得の検索条件（custom field `相場検索`）。空文字で外す"""
+    from lib.inventory.market import parse_query
+    if query:
+        try:
+            parse_query(query)  # 書式が壊れていれば取得の日でなくここで止める
+        except ValueError as e:
+            raise InventoryError(f'相場検索の書式: {e}') from e
+    entity = _owned(client, key)
+    body = _update_body(entity)
+    _set_field(body, QUERY_FIELD, query)
+    return client.update_entity(entity['id'], body)
+
+
+def market_targets(client) -> dict[str, tuple[dict, str]]:
+    """key → (entity, 検索条件)。手放した物は除く"""
+    return {k: (e, q) for k, e in load_items(client).items()
+            if not e.get('archived') and (q := field_text(e, QUERY_FIELD))}
 
 
 def mercari_sales(purchases_dir: Path) -> dict[str, dict]:
@@ -278,6 +339,7 @@ def export_rows(client) -> list[dict]:
         if e.get('soldNotes'):
             notes = f'{notes} 手放し方: {e["soldNotes"]}'.strip()
         price = e.get('purchasePrice') or 0
+        market = market_price(e)
         rows.append({
             'key': key, 'name': e['name'], 'category': category, 'subcategory': subcategory,
             'status': 'disposed' if e.get('archived') else 'owned',
@@ -286,6 +348,7 @@ def export_rows(client) -> list[dict]:
             'disposed_on': e.get('soldDate') or '',
             'purchase_price': f'{price:g}' if price else '',
             'purchase_from': e.get('purchaseFrom') or '',
+            'market_price': f'{market:g}' if market else '',
             'note': notes,
         })
     return sorted(rows, key=lambda r: r['key'])
