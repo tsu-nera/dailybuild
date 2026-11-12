@@ -1,0 +1,569 @@
+{
+  "uid": "consumable-detail",
+  "title": "消耗品の詳細",
+  "tags": [
+    "dailybuild",
+    "home"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-20y",
+    "to": "now"
+  },
+  "refresh": "",
+  "links": [
+    {
+      "title": "← 一覧",
+      "type": "link",
+      "url": "/d/consumables",
+      "keepTime": true
+    },
+    {
+      "title": "健康",
+      "type": "dashboards",
+      "tags": [
+        "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "item",
+        "label": "品目",
+        "type": "query",
+        "datasource": {
+          "type": "yesoreyeram-infinity-datasource",
+          "uid": "dashboard-files"
+        },
+        "hide": 2,
+        "multi": false,
+        "includeAll": false,
+        "refresh": 1,
+        "sort": 0,
+        "current": {},
+        "query": {
+          "queryType": "infinity",
+          "query": "",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "csv",
+            "source": "url",
+            "parser": "backend",
+            "format": "table",
+            "url": "http://files/consumables.csv",
+            "url_options": {
+              "method": "GET"
+            },
+            "columns": [
+              {
+                "selector": "name",
+                "text": "__text",
+                "type": "string"
+              },
+              {
+                "selector": "key",
+                "text": "__value",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "${item:text}",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/consumables.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            },
+            {
+              "selector": "next_purchase",
+              "text": "次に買う頃",
+              "type": "string"
+            },
+            {
+              "selector": "interval_days",
+              "text": "間隔 日",
+              "type": "number"
+            },
+            {
+              "selector": "stock_now",
+              "text": "推定在庫",
+              "type": "number"
+            },
+            {
+              "selector": "runs_out",
+              "text": "尽きる頃",
+              "type": "string"
+            },
+            {
+              "selector": "monthly_yen",
+              "text": "月額 円",
+              "type": "number"
+            },
+            {
+              "selector": "last_purchase",
+              "text": "最終購入",
+              "type": "string"
+            },
+            {
+              "selector": "last_shop",
+              "text": "最後の店",
+              "type": "string"
+            },
+            {
+              "selector": "purchases",
+              "text": "回数",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "key == \"${item}\""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "-",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^(次に買う頃|間隔 日|推定在庫|尽きる頃|月額 円|最終購入|最後の店|回数)$/"
+        },
+        "orientation": "vertical",
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "wideLayout": true,
+        "text": {
+          "titleSize": 12,
+          "valueSize": 16
+        }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "次に買う頃": 0,
+              "間隔 日": 1,
+              "推定在庫": 2,
+              "尽きる頃": 3,
+              "月額 円": 4,
+              "最終購入": 5,
+              "最後の店": 6,
+              "回数": 7
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "1単位あたりの値段（店ごと）",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/consumable_purchases.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp"
+            },
+            {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            },
+            {
+              "selector": "shop",
+              "text": "shop",
+              "type": "string"
+            },
+            {
+              "selector": "yen_per_unit",
+              "text": "円",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "key == \"${item}\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "key": true
+            }
+          }
+        },
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "shop"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": false
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "line",
+            "showPoints": "always",
+            "pointSize": 6,
+            "spanNulls": true,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "購入履歴",
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/consumable_purchases.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            },
+            {
+              "selector": "date",
+              "text": "購入日",
+              "type": "string"
+            },
+            {
+              "selector": "shop",
+              "text": "購入元",
+              "type": "string"
+            },
+            {
+              "selector": "product",
+              "text": "商品",
+              "type": "string"
+            },
+            {
+              "selector": "quantity",
+              "text": "量",
+              "type": "number"
+            },
+            {
+              "selector": "unit",
+              "text": "単位",
+              "type": "string"
+            },
+            {
+              "selector": "yen",
+              "text": "金額 円",
+              "type": "number"
+            },
+            {
+              "selector": "yen_per_unit",
+              "text": "円/単位",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "key == \"${item}\""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          },
+          "noValue": ""
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "key"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "購入日",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "key": 0,
+              "購入日": 1,
+              "購入元": 2,
+              "商品": 3,
+              "量": 4,
+              "単位": 5,
+              "金額 円": 6,
+              "円/単位": 7
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "台帳",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 4
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/consumables.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            },
+            {
+              "selector": "category",
+              "text": "分類",
+              "type": "string"
+            },
+            {
+              "selector": "location",
+              "text": "保存場所",
+              "type": "string"
+            },
+            {
+              "selector": "unit",
+              "text": "単位",
+              "type": "string"
+            },
+            {
+              "selector": "keep",
+              "text": "持つ数",
+              "type": "number"
+            },
+            {
+              "selector": "subscription",
+              "text": "定期",
+              "type": "string"
+            },
+            {
+              "selector": "daily_use",
+              "text": "1日の使用量",
+              "type": "number"
+            },
+            {
+              "selector": "stock_date",
+              "text": "最終棚卸し",
+              "type": "string"
+            },
+            {
+              "selector": "monthly_basis",
+              "text": "月額の根拠",
+              "type": "string"
+            },
+            {
+              "selector": "total_yen",
+              "text": "累計 円",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "key == \"${item}\""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          },
+          "noValue": ""
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "key": 0,
+              "分類": 1,
+              "保存場所": 2,
+              "単位": 3,
+              "持つ数": 4,
+              "定期": 5,
+              "1日の使用量": 6,
+              "最終棚卸し": 7,
+              "月額の根拠": 8,
+              "累計 円": 9
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
