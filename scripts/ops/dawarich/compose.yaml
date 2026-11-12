@@ -1,0 +1,103 @@
+# 位置のライフログの試用（#290）。正本は Drive の Timeline 書き出しと HA の CSV のままで、ここのデータは捨ててよい。起動は vaio で:
+#   cd ~/repo/dailybuild/scripts/ops/dawarich && docker compose up -d
+# 公式 docker/docker-compose.yml（1.22.0）が元。自動更新しない。版を上げるときはリリースノートを読み、db をバックアップしてから
+# .env（git 外）に POSTGRES_PASSWORD と SECRET_KEY_BASE（openssl rand -hex 64）。vaio では DAWARICH_BIND=100.93.3.10
+# APPLICATION_HOSTS に無いホスト名で開くと Rails が弾く
+services:
+  app:
+    image: freikin/dawarich:1.22.0
+    entrypoint: web-entrypoint.sh
+    command: ["bin/rails", "server", "-p", "3000", "-b", "::"]
+    environment:
+      RAILS_ENV: production
+      REDIS_URL: redis://redis:6379
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?}
+      DATABASE_NAME: dawarich
+      APPLICATION_HOSTS: ${DAWARICH_BIND:-127.0.0.1},localhost,127.0.0.1,::1
+      APPLICATION_PROTOCOL: http
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?}
+      SELF_HOSTED: "true"
+      STORE_GEODATA: "true"
+      SIDEKIQ_EMBEDDED: "true"
+      WEB_CONCURRENCY: "0"
+      BACKGROUND_PROCESSING_CONCURRENCY: "2"
+      PROMETHEUS_EXPORTER_ENABLED: "false"
+      RAILS_LOG_TO_STDOUT: "true"
+      TIME_ZONE: Asia/Tokyo
+      TZ: Asia/Tokyo
+    volumes:
+      - public:/var/app/public
+      - watched:/var/app/tmp/imports/watched
+      - storage:/var/app/storage
+      - db-data:/dawarich_db_data
+    ports:
+      - "${DAWARICH_BIND:-127.0.0.1}:3200:3000"
+    stdin_open: true
+    tty: true
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 20m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO - http://127.0.0.1:3000/api/v1/health | grep -q '\"status\"\\s*:\\s*\"ok\"'"]
+      interval: 10s
+      retries: 30
+      start_period: 30s
+      timeout: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+      redis:
+        condition: service_healthy
+        restart: true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 2G
+    restart: unless-stopped
+
+  db:
+    image: postgis/postgis:17-3.5-alpine
+    shm_size: 256m
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: dawarich
+      TZ: Asia/Tokyo
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - shared:/var/shared
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dawarich"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: redis-server --save 900 1 --save 300 10 --appendonly no
+    volumes:
+      - shared:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  shared:
+  public:
+  watched:
+  storage:
