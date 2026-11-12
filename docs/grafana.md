@@ -6,15 +6,18 @@ Claude のセッション無しにスマホから見る。claude.ai の Dashboar
 
 ## 画面
 
-5枚。どれもタグ `dailybuild` を持ち、上部のリンクで行き来する。
+ジャンルごとのフォルダに分ける。JSON は `scripts/ops/grafana/dashboards/<ジャンル>/<uid>.json` に置き、ディレクトリ名がそのまま
+Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`）。フォルダはファイルの置き場所で決まるので、画面の UI では移さない。
+各画面はタグ `dailybuild` とジャンルのタグ（`health` / `money` / `home`）を持ち、上部の「健康 ▾ お金 ▾ 暮らし ▾」のドロップダウン
+（ジャンルのタグで引くリンク）で行き来する。画面を足すときはジャンルのディレクトリに置き、タグとリンクを既存の画面と揃える。
 
-| uid | 画面 | 中身 | 既定の期間 |
-|---|---|---|---|
-| `goals` | 週の目標 | 今週の睡眠・入床/離床の達成・負債・部位別セット数・データ鮮度 | 週単位の表 |
-| `body` | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・今週の部位別セット数・タンパク質 | 90日 |
-| `sleep` | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
-| `consumables` | 消耗品 | 補充する品目の次に買う頃・1kg あたりの値段・購入履歴（台帳は docs/inventory.md） | 6年 |
-| `mind` | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
+| uid | フォルダ | 画面 | 中身 | 既定の期間 |
+|---|---|---|---|---|
+| `goals` | health | 週の目標 | 今週の睡眠・入床/離床の達成・負債・部位別セット数・データ鮮度 | 週単位の表 |
+| `body` | health | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・今週の部位別セット数・タンパク質 | 90日 |
+| `sleep` | health | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
+| `consumables` | home | 消耗品 | 補充する品目の次に買う頃・1kg あたりの値段・購入履歴（台帳は docs/inventory.md） | 6年 |
+| `mind` | health | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
 
 `body` `sleep` `mind` は時系列で、期間は右上の時間範囲で変える（`daily.csv` は直近365日、`metrics_daily.csv` は全期間）。
 日付だけの CSV を UTC 0時として読むので、3画面の timezone は `utc`（`browser` にすると日付が9時間ずれて見える）。
@@ -72,16 +75,16 @@ docker compose pull && docker compose up -d   # イメージ更新
 ## ダッシュボードの編集
 
 **画面での編集を正本にする**（provisioning は `allowUiUpdates: true`）。画面で足したパネルは、agent が
-HTTP API で取り出して `dashboards/<uid>.json` に書き戻して commit する（uid は `goals` `body` `sleep` `mind`）:
+HTTP API で取り出して `dashboards/<ジャンル>/<uid>.json` に書き戻して commit する:
 
 ```bash
 curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/uid/<uid> \
-  | jq '.dashboard | del(.id, .version)' > scripts/ops/grafana/dashboards/<uid>.json
+  | jq '.dashboard | del(.id, .version)' > scripts/ops/grafana/dashboards/<ジャンル>/<uid>.json
 ```
 
 ## 対話で足すパネル（scratch）
 
-「この期間だけこれを見たい」は、正本の4画面に足さず `scratch` ダッシュボード（uid `scratch`）に置く。
+「この期間だけこれを見たい」は、正本の画面に足さず `scratch` ダッシュボード（uid `scratch`）に置く。
 
 - agent が HTTP API（`POST /api/dashboards/db`）で直接書く。**commit しない**（`dashboards/` に置かない）
 - 材料は主に `metrics_daily.csv` の列。Grafana では列を選ぶだけで、集計・判定は書かない（下の「パネル・指標を足す」と同じ規約）

@@ -2,7 +2,8 @@
   "uid": "consumables",
   "title": "消耗品",
   "tags": [
-    "dailybuild"
+    "dailybuild",
+    "home"
   ],
   "timezone": "utc",
   "editable": true,
@@ -14,14 +15,34 @@
   "refresh": "",
   "links": [
     {
-      "title": "画面",
+      "title": "健康",
       "type": "dashboards",
       "tags": [
-        "dailybuild"
+        "health"
       ],
-      "asDropdown": false,
+      "asDropdown": true,
       "includeVars": false,
-      "keepTime": false
+      "keepTime": true
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
     }
   ],
   "templating": {

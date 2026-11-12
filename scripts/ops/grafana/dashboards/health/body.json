@@ -2,16 +2,37 @@
   "uid": "body",
   "title": "Body",
   "tags": [
-    "dailybuild"
+    "dailybuild",
+    "health"
   ],
   "links": [
     {
-      "title": "画面",
+      "title": "健康",
       "type": "dashboards",
       "tags": [
-        "dailybuild"
+        "health"
       ],
-      "asDropdown": false,
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
       "includeVars": false,
       "keepTime": true
     }
