@@ -7,8 +7,11 @@ __pycache__/
 .venv/
 venv/
 
-# Environment variables
+# Environment variables（.env.bak-* や エディタの .env~ も鍵を含む）
 .env
+.env.*
+!.env.example
+*~
 
 # Jupyter
 .ipynb_checkpoints/
