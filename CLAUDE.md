@@ -245,6 +245,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 - `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
 - `gcalendar_token.json` - Google Calendar（readonly）のトークン（`gcalendar.py fetch --login` が生成。`gforms_token.json` とスコープを分けてある）
 - `lastfm_session.json` - Last.fm の認証セッション（`lastfm.py fetch --login` が生成。再生履歴を非公開にしているので API key だけでは読めない）
+- `swarm_token.json` - Foursquare（Swarm）の access token（`swarm.py fetch --login` が生成。期限なし。Client ID / Secret は `.env`）
 - `gmail_token.json` - Gmail（readonly）のトークン（`purchases.py fetch --login` が生成。gtd の modify トークンとは別）
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
@@ -255,7 +256,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 **新しい API キー・token は `config/*.json` でなくリポジトリ直下の `.env` に置く**（他プロジェクトと同じ
 python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは `lib.utils.env` の
 `get_env` / `require_env` に統一し、client ごとに読み込み処理を書かない。キーは `.env.example` が一覧
-（Home Assistant / Toggl / HealthPlanet / Habitica / Last.fm）。`tuya_creds.json` は Tuya 削除（#196）まで残す。OAuth の token・ブラウザ
+（Home Assistant / Toggl / HealthPlanet / Habitica / Last.fm / Foursquare）。`tuya_creds.json` は Tuya 削除（#196）まで残す。OAuth の token・ブラウザ
 セッション・Google 配布の JSON は機械が書く状態なのでファイルのまま `config/` に置く。
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
