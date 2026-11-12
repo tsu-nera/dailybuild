@@ -101,6 +101,8 @@ step "Habitica"     uv run python scripts/habitica.py cron
 step "Google Calendar" uv run python scripts/gcalendar.py fetch --days "$DAYS"
 # Last.fm の scrobble（スマホの Pano Scrobbler が YouTube の再生を送る）。遅れて届く分のため CSV の最新から14日遡って取り直す
 step "Last.fm"       uv run python scripts/lastfm.py fetch
+# Swarm のチェックイン（#92）。手元の最新から7日遡って取り直す。通常1〜2リクエスト
+step "Swarm"         uv run python scripts/swarm.py fetch
 # 持ち物の正本は Homebox（vaio の docker）。items.csv はその写しで、ここで全上書きする
 step "持ち物"        uv run python scripts/homebox.py export
 # 中古相場（メルカリ SOLD の中央値）。検索条件のある物のうち前回から30日空いた物だけ引く。
