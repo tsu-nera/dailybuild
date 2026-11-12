@@ -17,7 +17,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `body` | health | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・今週の部位別セット数・タンパク質 | 90日 |
 | `sleep` | health | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
 | `assets` | money | 資産（B/S） | 今日時点の資産の内訳・資産の推移（積み上げ）・持ち物の中古相場と買値の差（`lib/assets.py`） | 12年 |
-| `consumables` | home | 消耗品 | 一覧。手放していない品目の次に買う頃・尽きる頃・月額・最終購入。品名をクリックすると詳細へ（台帳は docs/inventory.md） | 表のみ |
+| `consumables` | home | 消耗品 | 一覧。手放していない品目の分類・次に買う頃・尽きる頃・月額・最終購入。分類は見出しで絞り込める。品名をクリックすると詳細へ（台帳は docs/inventory.md） | 表のみ |
 | `consumable-detail` | home | 消耗品の詳細 | 1品目の次に買う頃などの数字・1単位あたりの値段（店ごと）・購入履歴・台帳の欄。`?var-item=<key>` で開く（品目を指定しないと最初の品目） | 20年 |
 | `mind` | health | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
 
