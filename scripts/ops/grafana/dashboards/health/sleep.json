@@ -1,17 +1,38 @@
 {
-  "uid": "mind",
-  "title": "Mind",
+  "uid": "sleep",
+  "title": "Sleep",
   "tags": [
-    "dailybuild"
+    "dailybuild",
+    "health"
   ],
   "links": [
     {
-      "title": "画面",
+      "title": "健康",
       "type": "dashboards",
       "tags": [
-        "dailybuild"
+        "health"
       ],
-      "asDropdown": false,
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
       "includeVars": false,
       "keepTime": true
     }
@@ -31,7 +52,7 @@
     {
       "id": 1,
       "type": "timeseries",
-      "title": "HRV (ms)",
+      "title": "睡眠時間 (h)",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
@@ -53,7 +74,7 @@
           "source": "url",
           "parser": "backend",
           "format": "table",
-          "url": "http://files/daily.csv",
+          "url": "http://files/metrics_daily.csv",
           "columns": [
             {
               "selector": "date",
@@ -62,23 +83,8 @@
               "timestampFormat": "2006-01-02"
             },
             {
-              "selector": "hrv",
-              "text": "HRV",
-              "type": "number"
-            },
-            {
-              "selector": "hrv_base",
-              "text": "HRV ベースライン",
-              "type": "number"
-            },
-            {
-              "selector": "hrv_lo",
-              "text": "HRV 下限",
-              "type": "number"
-            },
-            {
-              "selector": "hrv_hi",
-              "text": "HRV 上限",
+              "selector": "sleep_hours",
+              "text": "睡眠時間",
               "type": "number"
             }
           ],
@@ -90,9 +96,9 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "drawStyle": "line",
+            "drawStyle": "bars",
             "lineWidth": 1,
-            "fillOpacity": 0,
+            "fillOpacity": 80,
             "pointSize": 4,
             "showPoints": "always",
             "spanNulls": false,
@@ -102,7 +108,7 @@
               "group": "A"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "dashed"
             }
           },
           "thresholds": {
@@ -111,60 +117,16 @@
               {
                 "color": "text",
                 "value": null
-              }
-            ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "HRV (下限|上限)"
-            },
-            "properties": [
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "fill": "dash",
-                  "dash": [
-                    4,
-                    4
-                  ]
-                }
               },
               {
-                "id": "custom.showPoints",
-                "value": "never"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
+                "color": "text",
+                "value": 7
               }
             ]
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "HRV ベースライン"
-            },
-            "properties": [
-              {
-                "id": "custom.showPoints",
-                "value": "never"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
-              }
-            ]
-          }
-        ]
+          "min": 0
+        },
+        "overrides": []
       },
       "options": {
         "legend": {
@@ -177,12 +139,12 @@
           "sort": "none"
         }
       },
-      "description": "灰色はベースライン（60日移動）と ±1SD。mind レポート・STATE.md と同じ関数。前夜の状態を映す。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+      "description": "点線は 7h（status.csv の sleep_per_night_h と同じ値）。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
     },
     {
       "id": 2,
       "type": "timeseries",
-      "title": "RHR (bpm)",
+      "title": "睡眠負債 (h)",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
@@ -213,23 +175,8 @@
               "timestampFormat": "2006-01-02"
             },
             {
-              "selector": "rhr",
-              "text": "RHR",
-              "type": "number"
-            },
-            {
-              "selector": "rhr_base",
-              "text": "RHR ベースライン",
-              "type": "number"
-            },
-            {
-              "selector": "rhr_lo",
-              "text": "RHR 下限",
-              "type": "number"
-            },
-            {
-              "selector": "rhr_hi",
-              "text": "RHR 上限",
+              "selector": "debt_h",
+              "text": "睡眠負債",
               "type": "number"
             }
           ],
@@ -264,143 +211,8 @@
                 "value": null
               }
             ]
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "RHR (下限|上限)"
-            },
-            "properties": [
-              {
-                "id": "custom.lineStyle",
-                "value": {
-                  "fill": "dash",
-                  "dash": [
-                    4,
-                    4
-                  ]
-                }
-              },
-              {
-                "id": "custom.showPoints",
-                "value": "never"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
-              }
-            ]
           },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "RHR ベースライン"
-            },
-            "properties": [
-              {
-                "id": "custom.showPoints",
-                "value": "never"
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "description": "灰色はベースライン（30日移動）と ±1SD。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
-    },
-    {
-      "id": 3,
-      "type": "timeseries",
-      "title": "呼吸数 (/min)",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 8,
-        "w": 8,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/metrics_daily.csv",
-          "columns": [
-            {
-              "selector": "date",
-              "text": "date",
-              "type": "timestamp",
-              "timestampFormat": "2006-01-02"
-            },
-            {
-              "selector": "breathing_rate",
-              "text": "呼吸数",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "pointSize": 4,
-            "showPoints": "always",
-            "spanNulls": false,
-            "barAlignment": 0,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
+          "min": 0
         },
         "overrides": []
       },
@@ -415,20 +227,20 @@
           "sort": "none"
         }
       },
-      "description": "欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+      "description": "journal_skeleton と同じ build_debt_calculator。欠測日を睡眠0hで計上するので、連続欠測のある期間は絶対値を読まない"
     },
     {
-      "id": 4,
+      "id": 3,
       "type": "timeseries",
-      "title": "SpO2 (%)",
+      "title": "入床・起床（時刻）",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
       "gridPos": {
-        "x": 8,
+        "x": 0,
         "y": 8,
-        "w": 8,
+        "w": 12,
         "h": 8
       },
       "targets": [
@@ -451,13 +263,13 @@
               "timestampFormat": "2006-01-02"
             },
             {
-              "selector": "spo2_avg",
-              "text": "平均",
+              "selector": "bed_h",
+              "text": "入床",
               "type": "number"
             },
             {
-              "selector": "spo2_min",
-              "text": "最低",
+              "selector": "wake_h",
+              "text": "起床",
               "type": "number"
             }
           ],
@@ -492,7 +304,8 @@
                 "value": null
               }
             ]
-          }
+          },
+          "decimals": 1
         },
         "overrides": []
       },
@@ -507,19 +320,117 @@
           "sort": "none"
         }
       },
-      "description": "欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+      "description": "主睡眠の開始・終了（Fitbit）。入床は 24 を足した表記（25.5 = 01:30）。布団を出た時刻（離床）は「週の目標」画面の nights"
     },
     {
-      "id": 5,
+      "id": 4,
       "type": "timeseries",
-      "title": "歩数",
+      "title": "睡眠ステージ（分）",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "deep_min",
+              "text": "深い",
+              "type": "number"
+            },
+            {
+              "selector": "rem_min",
+              "text": "レム",
+              "type": "number"
+            },
+            {
+              "selector": "light_min",
+              "text": "浅い",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "主睡眠のみ。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "睡眠効率 (%)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
         "w": 8,
         "h": 8
       },
@@ -543,8 +454,193 @@
               "timestampFormat": "2006-01-02"
             },
             {
-              "selector": "steps",
-              "text": "歩数",
+              "selector": "sleep_efficiency",
+              "text": "効率",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "text",
+                "value": 85
+              }
+            ]
+          },
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "点線は 85%。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "入眠潜時・起床後臥床（分）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/metrics_daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "sleep_latency",
+              "text": "入眠潜時",
+              "type": "number"
+            },
+            {
+              "selector": "minutes_after_wakeup",
+              "text": "起床後臥床",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "中途覚醒（回）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/metrics_daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "wake_count",
+              "text": "中途覚醒",
               "type": "number"
             }
           ],
@@ -595,111 +691,7 @@
           "sort": "none"
         }
       },
-      "description": "自転車は歩数に出ない。活動量は Body 画面のサイクリング。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
-    },
-    {
-      "id": 6,
-      "type": "timeseries",
-      "title": "主観（朝, 1-5）",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 16,
-        "w": 24,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/metrics_daily.csv",
-          "columns": [
-            {
-              "selector": "date",
-              "text": "date",
-              "type": "timestamp",
-              "timestampFormat": "2006-01-02"
-            },
-            {
-              "selector": "mind_score",
-              "text": "気分",
-              "type": "number"
-            },
-            {
-              "selector": "body_score",
-              "text": "身体",
-              "type": "number"
-            },
-            {
-              "selector": "head_score",
-              "text": "頭",
-              "type": "number"
-            },
-            {
-              "selector": "sleep_score",
-              "text": "睡眠",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 1,
-            "fillOpacity": 0,
-            "pointSize": 4,
-            "showPoints": "always",
-            "spanNulls": false,
-            "barAlignment": 0,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          },
-          "min": 1,
-          "max": 5
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "description": "日次記録（朝）。高いほど良い。記録の無い日は空白。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
+      "description": "短い覚醒は数えない（sleep レポートと同じ）。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
     }
   ]
 }
