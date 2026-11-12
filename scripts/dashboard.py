@@ -10,7 +10,8 @@ Artifact へは agent が添付ファイルとして上げ直す（スクリプ�
 同じ数値を Grafana 用の CSV 7本（nights / weeks / sets / status / current / sets_now /
 freshness）としても reports/dashboard/ へ全上書きで書く（docs/grafana.md）。欠測は空セル。
 加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
-消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）を書く。
+消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
+お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
@@ -18,6 +19,8 @@ Usage:
                                       [--csv-dir reports/dashboard]
     uv run scripts/dashboard.py consumables [--csv-dir reports/dashboard]
         消耗品の2本だけ作り直す（台帳を書いた直後に Grafana へ反映する用。全体の build は約10秒、これは約2秒）
+    uv run scripts/dashboard.py assets [--csv-dir reports/dashboard]
+        お金の3本だけ作り直す（相場を引いた直後など）
 """
 
 import argparse
@@ -32,7 +35,7 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import consumables, exercise_source, hevy_csv  # noqa: E402
+from lib import assets, consumables, exercise_source, hevy_csv  # noqa: E402
 from lib.analytics import activity, body  # noqa: E402
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.analytics import workout  # noqa: E402
@@ -52,6 +55,9 @@ CSV_DIR = project_root / 'reports/dashboard'
 CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
 PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
 STOCKTAKE_CSV = project_root / 'data/inventory/stocktake.csv'
+MF_ASSETS_CSV = project_root / 'data/mf/資産推移.csv'
+ITEMS_CSV = project_root / 'data/inventory/items.csv'
+MARKET_CSV = project_root / 'data/inventory/market.csv'
 PURCHASE_CSVS = {'amazon': project_root / 'data/purchases/amazon.csv',
                  'myprotein': project_root / 'data/purchases/myprotein.csv',
                  'rakuten': project_root / 'data/purchases/rakuten.csv',
@@ -89,6 +95,10 @@ COLUMNS = {
     # 消耗品画面（lib/consumables.py）
     'consumables': consumables.ITEM_COLUMNS,
     'consumable_purchases': consumables.PURCHASE_COLUMNS,
+    # お金の画面（lib/assets.py）。assets_now は最新の1行（Grafana で最新を選ばせない）
+    'assets': assets.ASSET_COLUMNS,
+    'assets_now': assets.ASSET_COLUMNS,
+    'goods': assets.GOODS_COLUMNS,
 }
 
 
@@ -353,6 +363,18 @@ def consumable_tables(today: dt.date) -> dict[str, list[dict]]:
     return {'consumables': items, 'consumable_purchases': purchases}
 
 
+def asset_tables() -> dict[str, list[dict]]:
+    rows, goods = assets.build(require_private_path(MF_ASSETS_CSV), require_private_path(ITEMS_CSV),
+                               require_private_path(MARKET_CSV))
+    return {'assets': rows, 'assets_now': rows[-1:], 'goods': goods}
+
+
+def cmd_assets(args) -> int:
+    for p in write_csvs(asset_tables(), Path(args.csv_dir)):
+        print(f'  {p}', file=sys.stderr)
+    return 0
+
+
 def cmd_consumables(args) -> int:
     tables = consumable_tables(dt.date.today())
     for p in write_csvs(tables, Path(args.csv_dir)):
@@ -367,6 +389,7 @@ def cmd_build(args) -> int:
     tables = build_tables(today, args.weeks)
     tables['daily'] = build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)
     tables.update(consumable_tables(today))
+    tables.update(asset_tables())
     nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
 
     out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
@@ -388,6 +411,9 @@ def main(argv=None) -> int:
     b.add_argument('--out', default=str(project_root / 'tmp/dashboard/goals.json'))
     b.add_argument('--csv-dir', default=str(CSV_DIR))
     b.set_defaults(func=cmd_build)
+    a = sub.add_parser('assets', help='お金の CSV 3本だけ作り直す')
+    a.add_argument('--csv-dir', default=str(CSV_DIR))
+    a.set_defaults(func=cmd_assets)
     c = sub.add_parser('consumables', help='消耗品の CSV 2本だけ作り直す')
     c.add_argument('--csv-dir', default=str(CSV_DIR))
     c.set_defaults(func=cmd_consumables)
