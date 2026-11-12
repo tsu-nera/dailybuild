@@ -12,6 +12,9 @@
     "from": "now-6y",
     "to": "now"
   },
+  "timepicker": {
+    "hidden": true
+  },
   "refresh": "",
   "links": [
     {
@@ -45,57 +48,16 @@
       "keepTime": true
     }
   ],
-  "templating": {
-    "list": [
-      {
-        "name": "item",
-        "label": "品目",
-        "type": "query",
-        "datasource": {
-          "type": "yesoreyeram-infinity-datasource",
-          "uid": "dashboard-files"
-        },
-        "hide": 0,
-        "multi": false,
-        "includeAll": false,
-        "refresh": 1,
-        "sort": 1,
-        "current": {},
-        "query": {
-          "queryType": "infinity",
-          "query": "",
-          "infinityQuery": {
-            "refId": "variable",
-            "type": "csv",
-            "source": "url",
-            "parser": "backend",
-            "format": "table",
-            "url": "http://files/consumable_purchases.csv",
-            "url_options": {
-              "method": "GET"
-            },
-            "columns": [
-              {
-                "selector": "name",
-                "text": "name",
-                "type": "string"
-              }
-            ]
-          }
-        }
-      }
-    ]
-  },
   "panels": [
     {
       "id": 1,
       "type": "table",
-      "title": "品目と次に買う頃（列の見出しで絞り込み）",
+      "title": "品目（品名をクリックで詳細）",
       "gridPos": {
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 10
+        "h": 16
       },
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
@@ -118,6 +80,16 @@
           },
           "columns": [
             {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            },
+            {
+              "selector": "ended_on",
+              "text": "ended_on",
+              "type": "string"
+            },
+            {
               "selector": "name",
               "text": "品目",
               "type": "string"
@@ -128,48 +100,13 @@
               "type": "string"
             },
             {
-              "selector": "monthly_yen",
-              "text": "月額 円",
-              "type": "number"
-            },
-            {
-              "selector": "annual_yen",
-              "text": "年額 円",
-              "type": "number"
-            },
-            {
-              "selector": "monthly_basis",
-              "text": "月額の根拠",
-              "type": "string"
-            },
-            {
-              "selector": "stock_now",
-              "text": "推定在庫",
-              "type": "number"
-            },
-            {
               "selector": "runs_out",
               "text": "尽きる頃",
               "type": "string"
             },
             {
-              "selector": "daily_use",
-              "text": "1日の使用量",
-              "type": "number"
-            },
-            {
-              "selector": "stock_counted",
-              "text": "棚卸しの量",
-              "type": "number"
-            },
-            {
-              "selector": "stock_date",
-              "text": "最終棚卸し",
-              "type": "string"
-            },
-            {
-              "selector": "interval_days",
-              "text": "間隔 日",
+              "selector": "monthly_yen",
+              "text": "月額 円",
               "type": "number"
             },
             {
@@ -181,59 +118,65 @@
               "selector": "last_shop",
               "text": "最後の店",
               "type": "string"
-            },
-            {
-              "selector": "purchases",
-              "text": "回数",
-              "type": "number"
-            },
-            {
-              "selector": "keep",
-              "text": "持つ数",
-              "type": "number"
-            },
-            {
-              "selector": "subscription",
-              "text": "定期",
-              "type": "string"
-            },
-            {
-              "selector": "category",
-              "text": "分類",
-              "type": "string"
-            },
-            {
-              "selector": "location",
-              "text": "保存場所",
-              "type": "string"
-            },
-            {
-              "selector": "unit",
-              "text": "単位",
-              "type": "string"
-            },
-            {
-              "selector": "total_yen",
-              "text": "累計 円",
-              "type": "number"
-            },
-            {
-              "selector": "ended_on",
-              "text": "終了",
-              "type": "string"
             }
-          ]
+          ],
+          "filterExpression": "ended_on == \"\""
         }
       ],
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "minWidth": 60,
-            "filterable": true
+            "minWidth": 80
           },
           "noValue": ""
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "key"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ended_on"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "品目"
+            },
+            "properties": [
+              {
+                "id": "custom.minWidth",
+                "value": 240
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "詳細",
+                    "url": "/d/consumable-detail?var-item=${__data.fields.key}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "showHeader": true,
@@ -244,8 +187,7 @@
             "sum"
           ],
           "fields": [
-            "月額 円",
-            "年額 円"
+            "月額 円"
           ],
           "countRows": false
         }
@@ -255,239 +197,14 @@
           "id": "organize",
           "options": {
             "indexByName": {
-              "品目": 0,
-              "次に買う頃": 1,
-              "月額 円": 2,
-              "年額 円": 3,
-              "月額の根拠": 4,
-              "推定在庫": 5,
-              "尽きる頃": 6,
-              "1日の使用量": 7,
-              "棚卸しの量": 8,
-              "最終棚卸し": 9,
-              "間隔 日": 10,
-              "最終購入": 11,
-              "最後の店": 12,
-              "回数": 13,
-              "持つ数": 14,
-              "定期": 15,
-              "分類": 16,
-              "保存場所": 17,
-              "単位": 18,
-              "累計 円": 19,
-              "終了": 20
-            }
-          }
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "type": "timeseries",
-      "title": "1単位あたりの値段（店ごと）: ${item}",
-      "gridPos": {
-        "x": 0,
-        "y": 10,
-        "w": 24,
-        "h": 9
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/consumable_purchases.csv",
-          "url_options": {
-            "method": "GET"
-          },
-          "columns": [
-            {
-              "selector": "date",
-              "text": "date",
-              "type": "timestamp",
-              "timestampFormat": "2006-01-02"
-            },
-            {
-              "selector": "name",
-              "text": "name",
-              "type": "string"
-            },
-            {
-              "selector": "shop",
-              "text": "shop",
-              "type": "string"
-            },
-            {
-              "selector": "yen_per_unit",
-              "text": "円",
-              "type": "number"
-            }
-          ],
-          "filterExpression": "name == \"${item}\""
-        }
-      ],
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "name": true
-            }
-          }
-        },
-        {
-          "id": "partitionByValues",
-          "options": {
-            "fields": [
-              "shop"
-            ],
-            "keepFields": false,
-            "naming": {
-              "asLabels": false
-            }
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "custom": {
-            "drawStyle": "line",
-            "showPoints": "always",
-            "pointSize": 6,
-            "spanNulls": true,
-            "lineWidth": 1
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "single"
-        }
-      }
-    },
-    {
-      "id": 3,
-      "type": "table",
-      "title": "購入履歴（列の見出しで絞り込み）",
-      "gridPos": {
-        "x": 0,
-        "y": 19,
-        "w": 24,
-        "h": 12
-      },
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/consumable_purchases.csv",
-          "url_options": {
-            "method": "GET"
-          },
-          "columns": [
-            {
-              "selector": "date",
-              "text": "購入日",
-              "type": "string"
-            },
-            {
-              "selector": "name",
-              "text": "品目",
-              "type": "string"
-            },
-            {
-              "selector": "shop",
-              "text": "購入元",
-              "type": "string"
-            },
-            {
-              "selector": "product",
-              "text": "商品",
-              "type": "string"
-            },
-            {
-              "selector": "quantity",
-              "text": "量",
-              "type": "number"
-            },
-            {
-              "selector": "unit",
-              "text": "単位",
-              "type": "string"
-            },
-            {
-              "selector": "yen",
-              "text": "金額 円",
-              "type": "number"
-            },
-            {
-              "selector": "yen_per_unit",
-              "text": "円/単位",
-              "type": "number"
-            }
-          ]
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "minWidth": 60,
-            "filterable": true
-          },
-          "noValue": ""
-        },
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "sortBy": [
-          {
-            "displayName": "購入日",
-            "desc": true
-          }
-        ]
-      },
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "indexByName": {
-              "購入日": 0,
-              "品目": 1,
-              "購入元": 2,
-              "商品": 3,
-              "量": 4,
-              "単位": 5,
-              "金額 円": 6,
-              "円/単位": 7
+              "key": 0,
+              "ended_on": 1,
+              "品目": 2,
+              "次に買う頃": 3,
+              "尽きる頃": 4,
+              "月額 円": 5,
+              "最終購入": 6,
+              "最後の店": 7
             }
           }
         }

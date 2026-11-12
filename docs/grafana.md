@@ -17,7 +17,8 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `body` | health | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・今週の部位別セット数・タンパク質 | 90日 |
 | `sleep` | health | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
 | `assets` | money | 資産（B/S） | 今日時点の資産の内訳・資産の推移（積み上げ）・持ち物の中古相場と買値の差（`lib/assets.py`） | 12年 |
-| `consumables` | home | 消耗品 | 補充する品目の次に買う頃・1kg あたりの値段・購入履歴（台帳は docs/inventory.md） | 6年 |
+| `consumables` | home | 消耗品 | 一覧。手放していない品目の次に買う頃・尽きる頃・月額・最終購入。品名をクリックすると詳細へ（台帳は docs/inventory.md） | 表のみ |
+| `consumable-detail` | home | 消耗品の詳細 | 1品目の次に買う頃などの数字・1単位あたりの値段（店ごと）・購入履歴・台帳の欄。`?var-item=<key>` で開く（品目を指定しないと最初の品目） | 20年 |
 | `mind` | health | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
 
 `body` `sleep` `mind` は時系列で、期間は右上の時間範囲で変える（`daily.csv` は直近365日、`metrics_daily.csv` は全期間）。
@@ -109,5 +110,6 @@ curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/u
    `Cannot read properties of undefined (reading 'method')` で落ち、全パネルが空になる。
    `/api/ds/query` に直接投げると通るので API だけの確認では見つからない（2026-11-07）。
    確認は画面で開くか、ブラウザのコンソールを見る
-5. `filterExpression` は `selector` ではなく列の `text` 名で評価する。絞る列も `columns` に入れる
+5. `filterExpression` は `selector` ではなく列の `text` 名で評価する。絞る列も `columns` に入れる。空欄は `== ""` で引ける（`== null` は全行落ちる）
 6. 時系列パネルは `date` 列を `type: timestamp`・`timestampFormat: 2006-01-02` で読み、ダッシュボードの timezone を `utc` にする
+7. 一覧→詳細は、一覧の表の列に data link（`/d/<詳細の uid>?var-item=${__data.fields.key}`）を付け、詳細は変数で絞る。key 列は override の `custom.hidden` で隠す。変数の表示名と値を分けるには Infinity の列の `text` を `__text` / `__value` にする（`consumables` → `consumable-detail`）
