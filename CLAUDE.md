@@ -160,7 +160,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 日次に潰すと4分の筋トレと63分の通勤が区別できないので `metrics_daily.csv` には混ぜない。
 **`data/` には置かない**。
 
-`scripts/dashboard.py build` は `reports/dashboard/*.csv`（Grafana が読む8本。Body / Sleep / Mind 画面の `daily.csv` を含む）を毎日**全上書き**で
+`scripts/dashboard.py build` は `reports/dashboard/*.csv`（Grafana が読む表を画面ごとに。Body / Sleep / Mind 画面の `daily.csv` を含む。`--only` で一部のグループだけ作り直せる）を毎日**全上書き**で
 生成する（`daily-fetch.sh` の「ダッシュボード」ステップ）。**`data/` には置かない**。詳細は [docs/grafana.md](docs/grafana.md)。
 
 `scripts/habitica.py fetch` は `reports/habits_daily.csv` も毎日**全上書き**で

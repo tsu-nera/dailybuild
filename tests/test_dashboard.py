@@ -179,3 +179,28 @@ def test_daily_は記録の無い日を空欄にし0で埋めない(fake, monkey
     assert by[MISSING.isoformat()]['bed_h'] is None       # 睡眠の欠測日
     assert by['2026-11-07']['bed_h'] == 22.0
     assert set(rows[0]) == set(dashboard.COLUMNS['daily'])
+
+
+def test_build_only_は指定したグループの_csv_だけを書く(tmp_path, monkeypatch):
+    """台帳を書いた直後の作り直しで、他の画面の CSV を空や古い計算で上書きしない"""
+    def boom(*a, **k):
+        raise AssertionError('指定していないグループを計算した')
+    monkeypatch.setattr(dashboard, 'build_tables', boom)
+    monkeypatch.setattr(dashboard, 'build_daily', boom)
+    monkeypatch.setattr(dashboard, 'consumable_tables', lambda today: {'consumables': [], 'consumable_purchases': []})
+    monkeypatch.setattr(dashboard, 'asset_tables', lambda: {'assets': [], 'assets_now': [], 'goods': []})
+    out = tmp_path / 'csv'
+    goals_json = tmp_path / 'goals.json'
+
+    assert dashboard.main(['build', '--only', 'consumables,assets', '--csv-dir', str(out),
+                           '--out', str(goals_json)]) == 0
+    assert {p.name for p in out.iterdir()} == {
+        'consumables.csv', 'consumable_purchases.csv', 'assets.csv', 'assets_now.csv', 'goods.csv'}
+    assert not goals_json.exists()  # JSON は goals を作ったときだけ
+
+
+def test_build_only_に不明なグループ名を渡すと失敗する(tmp_path):
+    with pytest.raises(SystemExit) as e:
+        dashboard.main(['build', '--only', 'assets,nope', '--csv-dir', str(tmp_path / 'csv')])
+    assert e.value.code == 2
+    assert not (tmp_path / 'csv').exists()

@@ -59,8 +59,8 @@ def append_row(path: Path, values: dict[str, str]) -> bool:
 
 def regenerate_dashboard() -> None:
     # dashboard.py は scripts/ 直下。このスクリプトと同じディレクトリなので sys.path[0] から import できる
-    from dashboard import CSV_DIR, consumable_tables, write_csvs
-    for p in write_csvs(consumable_tables(dt.date.today()), CSV_DIR):
+    from dashboard import CSV_DIR, build_groups, write_csvs
+    for p in write_csvs(build_groups(['consumables'], dt.date.today()), CSV_DIR):
         log(f'  {p}')
 
 
