@@ -4,10 +4,11 @@
 直近3時間の recent だけ）。認証は OAuth2 の code フローで、access token に期限は無い
 （Foursquare 側で連携を取り消すまで有効）。
 
-redirect_uri へ飛んだ先のページが開けなくてもよい。アドレスバーの URL に code が載るので、
-それを貼ってもらって token に替える（ローカルでサーバを立てない）。
+code は redirect_uri（既定 localhost:8765）で待ち受けて受け取る。標準入力に貼らせる方式は
+Claude Code の `!` 実行で stdin が無く EOFError になったのでやめた。
 """
 
+import http.server
 import logging
 import os
 import time
@@ -67,6 +68,36 @@ def code_from_redirect(pasted: str) -> str:
     return codes[0]
 
 
+def wait_for_code(redirect_uri: str, timeout_sec: int = 600) -> str:
+    """redirect_uri のホスト・ポートで待ち受け、ブラウザが運んできた code を返す"""
+    parsed = urlparse(redirect_uri)
+    received: dict[str, str] = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            try:
+                received['code'] = code_from_redirect(f'http://localhost{self.path}')
+                status, text = 200, 'OK. このタブは閉じてよい。'
+            except ValueError:
+                status, text = 400, 'code がありません。'
+            self.send_response(status)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(text.encode('utf-8'))
+
+        def log_message(self, *args):
+            pass
+
+    with http.server.HTTPServer((parsed.hostname, parsed.port or 80), Handler) as server:
+        server.timeout = 5
+        deadline = time.monotonic() + timeout_sec
+        while 'code' not in received:
+            if time.monotonic() > deadline:
+                raise TimeoutError(f'{timeout_sec}秒待ったが {redirect_uri} に code が届かない')
+            server.handle_request()
+    return received['code']
+
+
 def exchange_code(client_id: str, client_secret: str, redirect_uri: str, code: str) -> str:
     response = requests.get(TOKEN_URL, params={
         'client_id': client_id, 'client_secret': client_secret,
@@ -101,20 +132,27 @@ def get(path: str, token: str, **params) -> tuple[dict, requests.Response]:
 
 
 def fetch_checkins(token: str, after_timestamp: int | None = None) -> list[dict]:
-    """自分のチェックインを古い順に全件取る（after_timestamp を渡すとそれ以降だけ）
+    """自分のチェックインを新しい順に全件取る（after_timestamp を渡すとそれ以降だけ）
 
     offset ページングで、空ページか offset が count に届いたら止める。
+    sort=oldestfirst は付けない: offset が無視されて毎ページ同じ250件が返る（2026-11-12 実測）。
+    ページ間で id が重なったら取りこぼしなので、保存させずに落とす。
     """
     items: list[dict] = []
+    seen: set[str] = set()
     offset = 0
     started = time.monotonic()
     while True:
-        params = {'limit': PAGE_LIMIT, 'offset': offset, 'sort': 'oldestfirst'}
+        params = {'limit': PAGE_LIMIT, 'offset': offset}
         if after_timestamp is not None:
             params['afterTimestamp'] = after_timestamp
         body, response = get('/users/self/checkins', token, **params)
         page = body['checkins'].get('items') or []
         count = int(body['checkins'].get('count') or 0)
+        dup = seen.intersection(c['id'] for c in page)
+        if dup:
+            raise SwarmError(0, f'offset {offset} のページが前のページと {len(dup)} 件重なった（ページングが壊れている）')
+        seen.update(c['id'] for c in page)
         items.extend(page)
         offset += len(page)
         logger.info('Swarm checkins offset %d/%d: %d件（X-RateLimit-Remaining=%s / Limit=%s, %.0f秒経過）',

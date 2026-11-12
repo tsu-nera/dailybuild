@@ -7,7 +7,7 @@ Swarm（Foursquare）CLI（fetch）
 checkins.jsonl が API の生の checkin（id で upsert）、checkins.csv はそこから作り直す平らな写し。
 
 Usage:
-    python scripts/swarm.py fetch --login   # 初回のみ。URL を開いて許可し、飛んだ先の URL を貼る
+    python scripts/swarm.py fetch --login   # 初回のみ。表示された URL を同じマシンのブラウザで開いて許可する
     python scripts/swarm.py fetch           # 手元の最新から LOOKBACK_DAYS 遡って取り直す（手元が空なら全期間）
     python scripts/swarm.py fetch --full    # 全期間を取り直す
 
@@ -39,10 +39,9 @@ def login() -> str:
         client_id, client_secret, redirect_uri = client.load_credentials()
     except MissingEnvError as exc:
         sys.exit(f'⚠️ {exc}')
-    print('次の URL をブラウザで開いて許可する:', file=sys.stderr)
+    print('次の URL をブラウザで開いて許可する（10分待つ）:', file=sys.stderr)
     print(client.authorize_url(client_id, redirect_uri), file=sys.stderr)
-    print(f'{redirect_uri}?code=... へ飛んだら（ページが開けなくてよい）その URL を貼る:', file=sys.stderr)
-    code = client.code_from_redirect(input('> '))
+    code = client.wait_for_code(redirect_uri)
     token = client.exchange_code(client_id, client_secret, redirect_uri, code)
     store.TOKEN_FILE.write_text(json.dumps({'access_token': token}, indent=2) + '\n', encoding='utf-8')
     store.TOKEN_FILE.chmod(0o600)
