@@ -6,6 +6,7 @@
 
 market.csv は1回の取得で1行（date, key, name, median, count, query）。件数が MIN_SOLD 未満の日は median を空にして
 「調べたが相場にならなかった」を残す（行を作らないと毎日引き直す）。同じ日・同じ key は差し替える。
+手で入れた相場（homebox.py market <key> <price>）も count 空・query に出どころで積む（お金の画面の履歴を1本にする）。
 """
 
 from __future__ import annotations

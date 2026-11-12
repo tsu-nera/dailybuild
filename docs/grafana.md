@@ -16,6 +16,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `goals` | health | 週の目標 | 今週の睡眠・入床/離床の達成・負債・部位別セット数・データ鮮度 | 週単位の表 |
 | `body` | health | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・今週の部位別セット数・タンパク質 | 90日 |
 | `sleep` | health | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
+| `assets` | money | 資産（B/S） | 今日時点の資産の内訳・資産の推移（積み上げ）・持ち物の中古相場と買値の差（`lib/assets.py`） | 12年 |
 | `consumables` | home | 消耗品 | 補充する品目の次に買う頃・1kg あたりの値段・購入履歴（台帳は docs/inventory.md） | 6年 |
 | `mind` | health | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
 
@@ -37,11 +38,12 @@ daily-fetch.sh ─┬ dashboard.py build ─────▶ reports/dashboard/*.
                 └ journal_skeleton.py ───▶ reports/metrics_daily.csv ─┘
 ```
 
-nginx が配るのは次の9本（`http://files/<name>.csv`）。設定は `scripts/ops/grafana/nginx/default.conf`。
+nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scripts/ops/grafana/nginx/default.conf`。
 
 | CSV | 作り手 | 用途 |
 |---|---|---|
 | `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` | `dashboard.py` | 週の目標画面 |
+| `assets` `assets_now` `goods` | `dashboard.py` | お金の画面。MF の資産推移＋持ち物の中古相場（`data/inventory/market.csv`）。相場の無い物・相場の履歴が始まる前は空セル |
 | `daily` | `dashboard.py` | Body / Sleep / Mind 画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
 
@@ -50,7 +52,7 @@ nginx が配るのは次の9本（`http://files/<name>.csv`）。設定は `scri
 
 - 計算は **`scripts/dashboard.py` に1本**（`metrics_daily.csv` は `journal_skeleton.py`）。Grafana では集計も判定もしない（クエリは列の選択と並べ替えだけ）。
   claude.ai 版（同じスクリプトの JSON）と同じ数字になる
-- `dashboard.py` の CSV は8本（`nights` `weeks` `sets` `status` `current` `sets_now` `freshness` `daily`）。毎日**全上書き**で、
+- `dashboard.py` の CSV（上の表）は毎日**全上書き**で、
   `data/` には置かない。欠測は0でなく空セル
 - `current.csv` は「今週」の1行（先週の値は `prev_` 接頭辞、`gap_h = total_h - goal_h`）。
   Grafana の filter 式で今週を選ばせると判定がダッシュボード側に入るので、今週・先週の選択は dashboard.py がやる

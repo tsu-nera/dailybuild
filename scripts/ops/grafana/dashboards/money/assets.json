@@ -1,0 +1,373 @@
+{
+  "uid": "assets",
+  "title": "資産（B/S）",
+  "tags": [
+    "dailybuild",
+    "money"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-12y",
+    "to": "now"
+  },
+  "refresh": "",
+  "links": [
+    {
+      "title": "健康",
+      "type": "dashboards",
+      "tags": [
+        "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": true
+    }
+  ],
+  "description": "金融資産は MoneyForward ME の資産推移をそのまま出す（補正しない）。9口座の連携が切れていて構造的に過少、暗号資産は2023-04から手入力の固定値に近い（reports/money/history.md）。持ち物は「相場検索」を付けた物の中古相場（メルカリ SOLD 中央値）だけで、相場の無い物は合計に入れない。負債は未入力（0ではない）。",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "資産（最新日）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/assets_now.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "total",
+              "text": "合計",
+              "type": "number"
+            },
+            {
+              "selector": "total_financial",
+              "text": "金融資産",
+              "type": "number"
+            },
+            {
+              "selector": "cash",
+              "text": "預金・現金",
+              "type": "number"
+            },
+            {
+              "selector": "funds",
+              "text": "投資信託",
+              "type": "number"
+            },
+            {
+              "selector": "crypto",
+              "text": "暗号資産",
+              "type": "number"
+            },
+            {
+              "selector": "points",
+              "text": "ポイント",
+              "type": "number"
+            },
+            {
+              "selector": "goods_market",
+              "text": "持ち物の相場",
+              "type": "number"
+            },
+            {
+              "selector": "goods_count",
+              "text": "相場のある物",
+              "type": "number"
+            },
+            {
+              "selector": "date",
+              "text": "日付",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—",
+          "unit": "currencyJPY",
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "相場のある物"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "vertical"
+      },
+      "description": "金融資産は MoneyForward ME の資産推移をそのまま出す（補正しない）。9口座の連携が切れていて構造的に過少、暗号資産は2023-04から手入力の固定値に近い（reports/money/history.md）。持ち物は「相場検索」を付けた物の中古相場（メルカリ SOLD 中央値）だけで、相場の無い物は合計に入れない。負債は未入力（0ではない）。"
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "資産の推移（積み上げ）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/assets.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "cash",
+              "text": "預金・現金",
+              "type": "number"
+            },
+            {
+              "selector": "funds",
+              "text": "投資信託",
+              "type": "number"
+            },
+            {
+              "selector": "crypto",
+              "text": "暗号資産",
+              "type": "number"
+            },
+            {
+              "selector": "fx",
+              "text": "FX",
+              "type": "number"
+            },
+            {
+              "selector": "points",
+              "text": "ポイント",
+              "type": "number"
+            },
+            {
+              "selector": "goods_market",
+              "text": "持ち物の相場",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyJPY",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "2019-09 以前は銀行だけ。2026-09 までは月末、以降は日次。持ち物は 2026-11-12 から"
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "持ち物の相場（相場の無い物も行を出す）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/goods.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "name",
+              "text": "品名",
+              "type": "string"
+            },
+            {
+              "selector": "market_price",
+              "text": "中古相場",
+              "type": "number"
+            },
+            {
+              "selector": "purchase_price",
+              "text": "買値",
+              "type": "number"
+            },
+            {
+              "selector": "diff",
+              "text": "相場 − 買値",
+              "type": "number"
+            },
+            {
+              "selector": "last_checked",
+              "text": "相場を調べた日",
+              "type": "string"
+            },
+            {
+              "selector": "acquired_on",
+              "text": "買った日",
+              "type": "string"
+            },
+            {
+              "selector": "category",
+              "text": "カテゴリ",
+              "type": "string"
+            },
+            {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "filterable": true
+          },
+          "noValue": ""
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "中古相場|買値|相場 − 買値"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyJPY"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    }
+  ]
+}

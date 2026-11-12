@@ -142,10 +142,17 @@ def test_未マウントの_reports_へは書かずに落ちる(tmp_path, monkey
 
 def test_grafana_画面ごとの_json_は全クエリに_url_options_を持つ():
     """url_options が無いと画面側の Infinity が落ちて全パネルが空になる（API だけでは見つからない）"""
-    for uid in ('goals', 'body', 'sleep', 'mind'):
-        path = Path(__file__).parent.parent / f'scripts/ops/grafana/dashboards/{uid}.json'
+    paths = sorted((Path(__file__).parent.parent / 'scripts/ops/grafana/dashboards').glob('*/*.json'))
+    assert {p.stem for p in paths} >= {'goals', 'body', 'sleep', 'mind', 'consumables', 'assets'}
+    for path in paths:
         d = json.loads(path.read_text(encoding='utf-8'))
+        uid = path.stem
         assert d['uid'] == uid
+        # フォルダはディレクトリ名、行き来はジャンルのタグ（docs/grafana.md）
+        assert path.parent.name in d['tags'], uid
+        for t in d.get('templating', {}).get('list', []):
+            if 'infinityQuery' in t.get('query', {}):
+                assert t['query']['infinityQuery']['url_options'] == {'method': 'GET'}, (uid, t['name'])
         for p in d['panels']:
             for t in p.get('targets', []):
                 assert t['url_options'] == {'method': 'GET'}, (uid, p['title'])

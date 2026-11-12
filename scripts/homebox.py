@@ -25,7 +25,7 @@ Usage:
     python scripts/homebox.py find --all                       # 手放した物も含める
 
 market の検索条件は custom field `相場検索`（書式は lib.inventory.market）。引いた相場は `中古相場` とメモ、
-履歴は data/inventory/market.csv。--all / --query は最後に中古相場の合計を stdout に出す。
+履歴は data/inventory/market.csv（手で入れた相場も count 空で積む）。--all / --query は最後に中古相場の合計を stdout に出す。
 add は同じ key があれば何もせず止まる。品名・購入日・価格・購入先は key から data/purchases/ を引いて埋める。
 add / dispose / move は最後に export まで行う。find は Homebox を直接読み、表を stdout に出す。ログは stderr。
 """
@@ -160,6 +160,10 @@ def cmd_market(args, client) -> None:
         if not (args.key and args.price is not None and args.source):
             raise InventoryError('手で入れるときは key・価格・--source が要る（定期取得は --query / --all）')
         entity = set_market_price(client, args.key, args.price, date, args.source)
+        path = require_private_path(MARKET_CSV)
+        ensure_dir(path.parent)
+        append_history(path, [{'date': date, 'key': args.key, 'name': entity['name'],
+                               'median': f'{args.price:.0f}', 'count': '', 'query': args.source}])
         print(f'相場: {args.key} {entity["name"]} {args.price:,.0f}円（{date}）', file=sys.stderr)
         export(client)
         return
