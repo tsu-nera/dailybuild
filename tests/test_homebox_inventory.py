@@ -7,7 +7,8 @@ import pytest
 
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
                                    find_rows, fit_name, mercari_sales, move_item, notes_with_link,
-                                   plan_disposal, write_csv)
+                                   plan_disposal, set_market_price, set_market_query, market_targets,
+                                   write_csv)
 
 NIL = '00000000-0000-0000-0000-000000000000'
 ITEM_TYPE = {'id': 't-item', 'name': 'Item', 'isLocation': False}
@@ -286,3 +287,45 @@ def test_product_page_link_goes_into_notes():
     assert notes['鍋'] == ''
     assert notes['消えた出品'] == ''
     assert notes_with_link('', 'https://x', '') == '[商品ページ（リンク）](https://x)'
+
+
+def test_market_price_overwrites_field_and_appends_history():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', '家電', name='ヘッドホン', note='中古', price=16000, purchase_from='ソフマップ')
+    set_market_price(hb, 'manual:1', 7000, '2026-11-01', 'メルカリ SOLD 中央値')
+    set_market_price(hb, 'manual:1', 7150, '2026-11-12', 'メルカリ SOLD 中央値')
+    (row,) = export_rows(hb)
+    assert row['market_price'] == '7150'
+    assert row['purchase_price'] == '16000' and row['purchase_from'] == 'ソフマップ'
+    assert row['note'] == '中古\n\n相場 2026-11-01: メルカリ SOLD 中央値 7,000円\n\n相場 2026-11-12: メルカリ SOLD 中央値 7,150円'
+    e = next(iter(hb.entities.values()))
+    assert [f['name'] for f in e['fields']] == ['key', '中古相場']
+
+
+def test_market_price_is_optional():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', '家電', name='ヘッドホン')
+    assert export_rows(hb)[0]['market_price'] == ''
+
+
+def test_market_price_same_day_rerun_replaces_history_line():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', '家電', name='ヘッドホン', note='中古')
+    set_market_price(hb, 'manual:1', 7000, '2026-11-12', 'メルカリ SOLD 中央値')
+    set_market_price(hb, 'manual:1', 7150, '2026-11-12', 'メルカリ SOLD 中央値')
+    assert export_rows(hb)[0]['note'] == '中古\n\n相場 2026-11-12: メルカリ SOLD 中央値 7,150円'
+
+
+def test_market_targets_skip_disposed_and_bad_query_is_rejected():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', '家電', name='ヘッドホン')
+    add_item(hb, 'manual:2', '家電', name='売った時計')
+    add_item(hb, 'manual:3', '家電', name='条件なし')
+    set_market_query(hb, 'manual:1', 'WH-1000XM3 --min 5000')
+    set_market_query(hb, 'manual:2', 'Charge 6')
+    dispose_item(hb, 'manual:2', '2026-11-12')
+
+    with pytest.raises(InventoryError):
+        set_market_query(hb, 'manual:3', 'Charge 6 --min abc')
+
+    assert {k: q for k, (_, q) in market_targets(hb).items()} == {'manual:1': 'WH-1000XM3 --min 5000'}

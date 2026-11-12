@@ -103,6 +103,9 @@ step "Google Calendar" uv run python scripts/gcalendar.py fetch --days "$DAYS"
 step "Last.fm"       uv run python scripts/lastfm.py fetch
 # 持ち物の正本は Homebox（vaio の docker）。items.csv はその写しで、ここで全上書きする
 step "持ち物"        uv run python scripts/homebox.py export
+# 中古相場（メルカリ SOLD の中央値）。検索条件のある物のうち前回から30日空いた物だけ引く。
+# 取れなかった物は market.csv に行が残らないので翌日また引く
+step "中古相場"      uv run python scripts/homebox.py market --all
 
 # 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
 # 前日までの値で埋まる。考察・Action Plan は従来どおりレビュー（gtd の /reviewing-health）が対話後に追記し、
