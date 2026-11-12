@@ -15,12 +15,10 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
-    uv run scripts/dashboard.py build [--weeks 8] [--out tmp/dashboard/goals.json]
-                                      [--csv-dir reports/dashboard]
-    uv run scripts/dashboard.py consumables [--csv-dir reports/dashboard]
-        消耗品の2本だけ作り直す（台帳を書いた直後に Grafana へ反映する用。全体の build は約10秒、これは約2秒）
-    uv run scripts/dashboard.py assets [--csv-dir reports/dashboard]
-        お金の3本だけ作り直す（相場を引いた直後など）
+    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets] [--weeks 8]
+                                      [--out tmp/dashboard/goals.json] [--csv-dir reports/dashboard]
+        --only を省くと全グループ。指定したグループの CSV だけ作り直す（台帳を書いた直後・相場を引いた
+        直後に Grafana へ反映する用。全体は約10秒）。--out の JSON は goals を作ったときだけ書く
 """
 
 import argparse
@@ -369,35 +367,44 @@ def asset_tables() -> dict[str, list[dict]]:
     return {'assets': rows, 'assets_now': rows[-1:], 'goods': goods}
 
 
-def cmd_assets(args) -> int:
-    for p in write_csvs(asset_tables(), Path(args.csv_dir)):
-        print(f'  {p}', file=sys.stderr)
-    return 0
+# 画面ごとの表のまとまり。新しい画面はここに1グループ足す（サブコマンドを増やさない）
+GROUPS = {
+    'goals': lambda today, weeks: build_tables(today, weeks),
+    'daily': lambda today, weeks: {'daily': build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)},
+    'consumables': lambda today, weeks: consumable_tables(today),
+    'assets': lambda today, weeks: asset_tables(),
+}
 
 
-def cmd_consumables(args) -> int:
-    tables = consumable_tables(dt.date.today())
-    for p in write_csvs(tables, Path(args.csv_dir)):
-        print(f'  {p}', file=sys.stderr)
-    return 0
+def build_groups(names, today: dt.date, weeks: int = 8) -> dict[str, list[dict]]:
+    """names のグループの表をまとめて返す"""
+    if {'goals', 'daily'} & set(names):
+        # 読み込み元の symlink 未マウントは「データなし」で正常終了して欠測を捏造するので、ここで落とす
+        require_private_path(SLEEP_CSV)
+    tables = {}
+    for name in names:
+        tables.update(GROUPS[name](today, weeks))
+    return tables
+
+
+def _groups_arg(value: str) -> list[str]:
+    names = [v.strip() for v in value.split(',') if v.strip()]
+    unknown = [n for n in names if n not in GROUPS]
+    if unknown or not names:
+        raise argparse.ArgumentTypeError(f'不明なグループ: {",".join(unknown) or repr(value)}（{",".join(GROUPS)}）')
+    return names
 
 
 def cmd_build(args) -> int:
-    # 読み込み元の symlink 未マウントは「データなし」で正常終了して欠測を捏造するので、ここで落とす
-    require_private_path(SLEEP_CSV)
-    today = dt.date.today()
-    tables = build_tables(today, args.weeks)
-    tables['daily'] = build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)
-    tables.update(consumable_tables(today))
-    tables.update(asset_tables())
-    nights, weeks, sets = tables['nights'], tables['weeks'], tables['sets']
-
-    out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
-    path = Path(args.out)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(out, ensure_ascii=False, indent=1))
+    tables = build_groups(args.only or list(GROUPS), dt.date.today(), args.weeks)
     written = write_csvs(tables, Path(args.csv_dir))
-    print(f'{path}  nights={len(nights)} weeks={len(weeks)} sets={len(sets)} daily={len(tables["daily"])}', file=sys.stderr)
+    if 'status' in tables:
+        out = {k: tables[k] for k in ('status', 'nights', 'weeks', 'sets')}
+        path = Path(args.out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(out, ensure_ascii=False, indent=1))
+        counts = ' '.join(f'{k}={len(tables[k])}' for k in ('nights', 'weeks', 'sets', 'daily') if k in tables)
+        print(f'{path}  {counts}', file=sys.stderr)
     for p in written:
         print(f'  {p}', file=sys.stderr)
     return 0
@@ -407,16 +414,11 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest='cmd', required=True)
     b = sub.add_parser('build', help='ダッシュボード用の JSON と Grafana 用の CSV を書き出す')
+    b.add_argument('--only', type=_groups_arg, help=f'作るグループをカンマ区切りで（{",".join(GROUPS)}）。省略で全部')
     b.add_argument('--weeks', type=int, default=8)
     b.add_argument('--out', default=str(project_root / 'tmp/dashboard/goals.json'))
     b.add_argument('--csv-dir', default=str(CSV_DIR))
     b.set_defaults(func=cmd_build)
-    a = sub.add_parser('assets', help='お金の CSV 3本だけ作り直す')
-    a.add_argument('--csv-dir', default=str(CSV_DIR))
-    a.set_defaults(func=cmd_assets)
-    c = sub.add_parser('consumables', help='消耗品の CSV 2本だけ作り直す')
-    c.add_argument('--csv-dir', default=str(CSV_DIR))
-    c.set_defaults(func=cmd_consumables)
     args = p.parse_args(argv)
     return args.func(args)
 

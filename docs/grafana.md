@@ -101,7 +101,7 @@ curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/u
 
 ## パネル・指標を足す
 
-1. 計算を `scripts/dashboard.py` に足し、`COLUMNS` に列を足す（CSV に出る）
+1. 計算を `scripts/dashboard.py` に足し、`COLUMNS` に列を足す（CSV に出る）。新しい画面の表は `GROUPS`（対応表）に1グループ足す（サブコマンドを増やさない。`build --only <グループ>` で作り直せる）
 2. Grafana では Infinity の query で列を選ぶだけにする。集計・今週の選択・達成判定を Grafana に書かない
 3. Infinity の query は `type: csv` / `source: url` / `parser: backend` / `format: table` /
    `url: http://files/<name>.csv`、列は `selector` / `text` / `type` を明示する

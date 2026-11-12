@@ -41,7 +41,7 @@ dailybuild-private の `data/inventory/` に、持ち物まわりの台帳を全
 - 定期購入＝この台帳の品目（野菜は載せない）。月額・年額はサブスクと同じ月割りで、使用量（棚卸し）があれば消費から、無ければ購入実績から出す。購入2回未満の品目は出さない
 - 計算（次に買う頃・1単位あたりの値段）は `src/lib/consumables.py` → `dashboard.py` が `reports/dashboard/consumables.csv`
   `consumable_purchases.csv` に出す。器の側では計算しない
-- agent が台帳を書いたら `uv run scripts/dashboard.py consumables` で消耗品の2本だけ作り直す（約3秒。全体の build は約10秒）。日次でも全体の build が作り直す
+- agent が台帳を書いたら `uv run scripts/dashboard.py build --only consumables` で消耗品の2本だけ作り直す（約3秒。全体の build は約10秒）。日次でも全体の build が作り直す
 - 品目を足すときは vaio で `ssh vaio 'cd ~/repo/dailybuild && uv run scripts/consumables.py add <key> --name .. --category .. --unit ..'` を叩く（pull→追記→Grafana 用2本の再生成→commit・push まで1回で済む）
 
 ## 器を替えるとき
