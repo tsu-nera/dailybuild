@@ -112,7 +112,8 @@ def exchange_code(client_id: str, client_secret: str, redirect_uri: str, code: s
 
 def get(path: str, token: str, **params) -> tuple[dict, requests.Response]:
     """v2 を叩いて (response 本体, Response) を返す。429・5xx は待って取り直す"""
-    query = {'oauth_token': token, 'v': API_VERSION, **params}
+    # locale を省くとマシンによって category 名が英語/日本語に揺れ、取り直すたびに行が書き換わる（2026-11-12 実測）
+    query = {'oauth_token': token, 'v': API_VERSION, 'locale': 'en', **params}
     for attempt in range(MAX_RETRIES + 1):
         response = requests.get(f'{API_URL}{path}', params=query, timeout=REQUEST_TIMEOUT)
         if (response.status_code == 429 or response.status_code >= 500) and attempt < MAX_RETRIES:
