@@ -69,7 +69,7 @@ forms:
     cadence: weekly
     stale_after_days: 8
     note: 週次
-    # weekly-review は phq9.py url を直接使う
+    # 週次レビューは phq9.py url を直接使う
     review: null
     fetch: [scripts/phq9.py, fetch, --non-interactive]
     show: null

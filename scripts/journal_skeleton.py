@@ -3,11 +3,11 @@
 """
 ジャーナルの骨組み（数値・変化・欠測）を週ファイルへ追記する
 
-journal スキルは対話の記録が主目的で、人がレビューを回さないと1行も残らない。
+gtd の reviewing-health の記録手順は対話が主目的で、人がレビューを回さないと1行も残らない。
 実際 2026-08-07 から3週間、うつエピソードで HRV が大きく動いた期間が丸ごと
 空いた。記録が最も必要な状態が、記録が最も途切れやすい状態と一致している。
 
-そこで数値の骨組みだけを機械が毎日書く。考察・Action Plan は journal スキルが
+そこで数値の骨組みだけを機械が毎日書く。考察・Action Plan は gtd の reviewing-health の記録手順が
 `<!-- review:start -->` 区間へ書き、機械はその不在を警告するだけ。骨組みは
 `<!-- skeleton:start -->` 〜 `<!-- skeleton:end -->` に囲まれており、
 再実行するとこの区間だけを差し替える。区間外に書かれた考察は保持する。
@@ -63,7 +63,7 @@ WEEKDAY_JA = ['月', '火', '水', '木', '金', '土', '日']
 START_MARKER = '<!-- skeleton:start -->'
 END_MARKER = '<!-- skeleton:end -->'
 
-# 散文側のマーカー。書くのは agent（journal スキル）で、機械は不在を検出するだけ。
+# 散文側のマーカー。書くのは agent（gtd の reviewing-health の記録手順）で、機械は不在を検出するだけ。
 REVIEW_MARKER = '<!-- review:start -->'
 WEEKLY_MARKER = '<!-- weekly:start -->'
 
@@ -637,7 +637,7 @@ STREAK_MAX_GAP = 2
 # データの中の事実ではなく判断で、ここに書くと分析の方向をこの1箇所が固定する。
 # 出してよいのは、**他所で既に宣言された判断**の持続だけ:
 #
-#   睡眠時間      daily-review スキルの観点「7-8時間が理想」
+#   睡眠時間      日次レビューの観点「7-8時間が理想」
 #   睡眠効率      同「85%以上が目標」
 #   睡眠負債      config/targets.yaml（target 0 / direction zero）
 #   主観スコア    config/daily_morning_def.yaml の score.low〜high "1-5"

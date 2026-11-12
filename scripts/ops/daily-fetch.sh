@@ -105,7 +105,7 @@ step "Last.fm"       uv run python scripts/lastfm.py fetch
 step "持ち物"        uv run python scripts/homebox.py export
 
 # 取得の後に置く。骨組みはその日の CSV を読んで書くので、取得が終わっていないと
-# 前日までの値で埋まる。考察・Action Plan は従来どおり /journal が対話後に追記し、
+# 前日までの値で埋まる。考察・Action Plan は従来どおりレビュー（gtd の /reviewing-health）が対話後に追記し、
 # ここが書くのは skeleton マーカーの内側だけ
 step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
 # 週の目標ダッシュボード（Grafana が読む reports/dashboard/*.csv と claude.ai 用 JSON）。判定は dashboard.py だけが持つ

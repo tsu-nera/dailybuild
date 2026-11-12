@@ -74,7 +74,7 @@ def cmd_setup_form(args):
 
 
 def cmd_url(args):
-    """回答用URLを表示する（/weekly-review が回答を促すのに使う）"""
+    """回答用URLを表示する（/reviewing-health weekly が回答を促すのに使う）"""
     conf = load_def()
     if not conf.get('form_id'):
         raise SystemExit(f'form_id が未設定: {DEF_FILE}。先に setup-form を実行すること')

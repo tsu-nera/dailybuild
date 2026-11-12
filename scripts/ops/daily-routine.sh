@@ -1,5 +1,5 @@
 #!/bin/bash
-# 日次取得の入口（vaio 専用）。timer（毎日12:00）と /daily-review・/weekly-review の ssh 起動から呼ばれる。
+# 日次取得の入口（vaio 専用）。timer（毎日12:00）と /reviewing-health daily・/reviewing-health weekly の ssh 起動から呼ばれる。
 #
 # private を pull → daily-fetch.sh → commit → pull --rebase → push の順に回す。
 # daily-fetch.sh が途中で失敗しても取れたソースのデータは正しいので、commit・push は行い、

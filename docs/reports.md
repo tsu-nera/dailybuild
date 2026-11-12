@@ -4,11 +4,11 @@
 
 | レビュー | 読むもの |
 |---|---|
-| `/daily-review` | `reports/journal/STATE.md`（エージェント）、Grafana の Body / Sleep / Mind / 今週の目標 画面（人） |
-| `/weekly-review` | `generate_{body,sleep,mind}_report_daily.py --week current` の期間レポート |
-| `/monthly-review` | 同 `--month current` の期間レポート ＋ `generate_*_report_interval.py --weeks 8` |
+| `/reviewing-health daily` | `reports/journal/STATE.md`（エージェント）、Grafana の Body / Sleep / Mind / 今週の目標 画面（人） |
+| `/reviewing-health weekly` | `generate_{body,sleep,mind}_report_daily.py --week current` の期間レポート |
+| `/reviewing-health monthly` | 同 `--month current` の期間レポート ＋ `generate_*_report_interval.py --weeks 8` |
 
-`*_daily.py` は名前に反して日次では使わない（`/daily-review` は 2026-11 に STATE.md へ移った）。
+`*_daily.py` は名前に反して日次では使わない（`/reviewing-health daily` は 2026-11 に STATE.md へ移った）。
 下の指標定義はレポート・STATE.md・Grafana（`reports/dashboard/daily.csv`）に共通で、計算は `src/lib/analytics/` に1本。
 
 ## mind レポートの指標

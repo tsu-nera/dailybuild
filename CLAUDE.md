@@ -30,6 +30,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 コミットが人の手による履歴を埋めないよう、データは `gtd` に置かない。
 上の表はコードとデータの分け方の説明で、生活のリポジトリ全体の分担は gtd の地図（`~/repo/gtd/summary/README.md`）が正本。
 
+健康レビュー（日次・週次・月次）とジャーナルへの記録の手順は gtd の `reviewing-health` スキルにあり、
+このリポジトリには無い。このセッションで「日次レビュー」などを頼まれたら、gtd で `/reviewing-health` を起動し直すよう本人に伝える。
+
 `keido`（`~/repo/keido`）も同じく取り込まない。週次日記が
 `~/repo/keido/notes/zk/YYYY-wNN.org` にあり（小文字 `w`、ISO week）、
 `reports/journal/YYYY-Wxx.md` と**同じ週キー**で対応する。パスは週から直に
@@ -92,7 +95,7 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 merge が壊れる）。TEPCO は無人取得できないので日次から外してあり、取得自体を停止中
 （[docs/tepco.md](docs/tepco.md)）。vaio の起動は2系統:
 
-- `/daily-review` Step 1 が ssh で起動する（起床後にスマホが同期した睡眠・HRV を取るため）
+- `/reviewing-health daily` Step 1 が ssh で起動する（起床後にスマホが同期した睡眠・HRV を取るため）
 - vaio の systemd user timer が毎日 12:00 に起動する（review を開かない日の安全網）
 
 どちらも `daily-routine.sh` を呼ぶ。`daily-fetch.sh` が失敗しても取れたぶんは
@@ -114,7 +117,7 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days 2"'
 
 `daily-fetch.sh` の最後のステップだけは取得ではなく書き込みで、`journal_skeleton.py` がその日の
 数値・7日平均の変化・欠測を `reports/journal/YYYY-Wxx.md` へ追記する。
-`/journal` は対話の記録が主目的なので、レビューを回さないと1行も残らず、
+レビューの記録（gtd の `/reviewing-health`）は対話が主目的なので、レビューを回さないと1行も残らず、
 実際 2026-08-07 から3週間（うつエピソードで HRV が 25.9→44.7 まで動いた期間）が
 丸ごと空いた。**記録が最も必要な状態が、記録が最も途切れやすい状態と一致する**ため、
 数値だけは対話に依存せず機械が書く。
@@ -228,8 +231,8 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 ## Report Generation
 
 `scripts/generate_{body,mind,sleep}_report_{daily,interval}.py` は Jinja2 テンプレートでデータ準備と表示を分けている。
-**`*_daily.py` は名前に反して `/daily-review` からは読まれない。** `/weekly-review` が `--week`、`/monthly-review` が
-`--month` で呼ぶ期間レポートで、`*_interval.py` は `/monthly-review` だけが読む。`/daily-review` は STATE.md
+**`*_daily.py` は名前に反して `/reviewing-health daily` からは読まれない。** `/reviewing-health weekly` が `--week`、`/reviewing-health monthly` が
+`--month` で呼ぶ期間レポートで、`*_interval.py` は `/reviewing-health monthly` だけが読む。`/reviewing-health daily` は STATE.md
 （エージェント）と Grafana（人、[docs/grafana.md](docs/grafana.md)）を読む。
 指標の定義・睡眠負債の計算条件・週次テーブルの母集団は [docs/reports.md](docs/reports.md)。
 

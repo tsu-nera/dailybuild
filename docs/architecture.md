@@ -21,8 +21,8 @@
 - `templates/` - Markdownレポートテンプレート（読み手は [reports.md](reports.md) の「読み手」）
   - `body/` - 体組成レポート
     - `base.md.j2` - 基本構造
-    - `daily_report.md.j2` - 期間レポート（`--week` / `--month`。名前は日次だが `/weekly-review`・`/monthly-review` が読む）
-    - `interval_report.md.j2` - 8週トレンド（`/monthly-review` が読む）
+    - `daily_report.md.j2` - 期間レポート（`--week` / `--month`。名前は日次だが `/reviewing-health weekly`・`/reviewing-health monthly` が読む）
+    - `interval_report.md.j2` - 8週トレンド（`/reviewing-health monthly` が読む）
     - `sections/` - セクションテンプレート
   - `mind/` - メンタルコンディションレポート
     - `base.md.j2`, `daily_report.md.j2`

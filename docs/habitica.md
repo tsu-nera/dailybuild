@@ -129,4 +129,4 @@ cron が走るのか、人がアプリを開いて走らせたのかを後から
 こちらの POST 以外の経路で走っている。
 
 `daily-fetch.sh` は vaio の systemd timer（毎日12:00、入口は `daily-routine.sh`）と
-`/daily-review` の ssh 起動から走る。vaio が止まっていた日は cron が走らず取りこぼす。
+`/reviewing-health daily` の ssh 起動から走る。vaio が止まっていた日は cron が走らず取りこぼす。

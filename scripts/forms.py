@@ -5,7 +5,7 @@ Google Forms のレジストリ（config/forms.yaml）を扱う
 
 Usage:
     uv run scripts/forms.py list                         # レジストリの表示
-    uv run scripts/forms.py show --review daily --days 7 # daily-review が読む active フォームの show
+    uv run scripts/forms.py show --review daily --days 7 # 日次レビューが読む active フォームの show
     uv run scripts/forms.py show daily_evening --days 7  # 1フォームの show
     uv run scripts/forms.py fetch-list                   # 日次で fetch するフォーム（key<TAB>表示名）
     uv run scripts/forms.py fetch daily_morning          # 1フォームの fetch（daily-fetch.sh が呼ぶ）
