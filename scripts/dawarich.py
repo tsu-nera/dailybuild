@@ -44,10 +44,12 @@ log = logging.getLogger('dawarich')
 
 
 def _compose(*args: str, capture: bool = False) -> str:
+    # cp は進み具合を stderr に出す。失敗は check=True の例外で分かる
     result = subprocess.run(
         ['docker', 'compose', '--project-directory', str(COMPOSE_DIR), *args],
         check=True, text=True, stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE if capture else subprocess.DEVNULL)
+        stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+        stderr=None if capture else subprocess.DEVNULL)
     return result.stdout or ''
 
 
