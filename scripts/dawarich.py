@@ -1,17 +1,24 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Dawarich（位置のライフログ、#290）の CLI（import-routes / name-places）
+Dawarich（位置のライフログ、#290）の CLI（import-routes / export-app-points / name-places）
 
-import-routes: 運動の軌跡ファイル（ROUTE_GLOBS）のうち Dawarich に未投入のものを HTTP API で上げる。
+Dawarich の DB は派生物で、正本は private の data/ にある（TCX・GPSLogger の GPX・Swarm・Timeline の書き出し）。
+Dawarich をやめても data/ だけで作り直せることを保つ。
+
+import-routes: 位置のファイル（ROUTE_GLOBS）のうち Dawarich に未投入のものを HTTP API で上げる。
   どのホストからでも流せる（日次は vaio）。宛先は .env の DAWARICH_URL / DAWARICH_API_KEY で、
   未設定なら warning だけで 0 終了する。二重投入の判定は import 名（＝ファイル名）。
+export-app-points: スマホの Dawarich アプリが送った点は Dawarich の DB にしか無いので、APP_POINTS へ写す。
+  既存の行は消さない。公式アプリは記録係にしない方針（GPSLogger に移行）なので日次には入れず、
+  アプリを止めるときに手で流す。アプリが送っている先のホストで実行する（rails runner）。
 name-places: Dawarich の DB は取り込み直すたびに作り直されるので、手で直さずにこれを流し直す。
   Dawarich が動いているホストの dailybuild で実行する（docker compose で app コンテナに入る）。
 
 Usage:
     python scripts/dawarich.py import-routes --dry-run   # 上げるファイルだけ出す
     python scripts/dawarich.py import-routes             # 未投入の軌跡を上げる
+    python scripts/dawarich.py export-app-points         # アプリの点を data/dawarich/app_points.csv へ写す
     python scripts/dawarich.py name-places --dry-run   # 何件に名前が付き、何件 Places API を引くかだけ出す
     python scripts/dawarich.py name-places             # Unknown の Place を改名して名前を固定する
     python scripts/dawarich.py name-places --max-api 50  # Places API を呼ぶ回数の上限（既定 MAX_API_CALLS）
@@ -40,8 +47,9 @@ import pandas as pd
 from lib import timeline
 from lib.clients import places_client
 from lib.clients.dawarich_client import DawarichClient, not_imported
-from lib.dawarich import place_names
+from lib.dawarich import app_points, place_names
 from lib.utils.env import get_env, require_env
+from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 COMPOSE_DIR = BASE_DIR / 'scripts' / 'ops' / 'dawarich'
@@ -53,7 +61,9 @@ RESULT_PREFIX = 'RESULT_JSON:'
 # Dawarich が読める軌跡ファイル（Tcx::Importer / Fit::Importer）。取得元を足したらここに1行足す
 ROUTE_GLOBS = [
     'data/googlehealth/tcx/*.tcx',  # Fitbit の GPS 付き運動（exercise_route.py fetch）
+    'data/gpslogger/*.gpx',         # GPSLogger の1日1ファイル、前日まで（gpslogger.py fetch）
 ]
+APP_POINTS = BASE_DIR / 'data' / 'dawarich' / 'app_points.csv'
 # Place Details の日次上限 200 のうち、vaio の timeline.py names（最大100）のぶんを残す
 MAX_API_CALLS = 100
 
@@ -164,6 +174,17 @@ def cmd_import_routes(args) -> int:
     return 1 if failed else 0
 
 
+def cmd_export_app_points(args) -> int:
+    rows = rails_runner(RAILS_DIR / 'app_points.rb')
+    path = require_private_path(APP_POINTS)
+    ensure_dir(path.parent)
+    before = len(pd.read_csv(path, dtype=str)) if path.exists() else 0
+    merged = app_points.merge(rows, path)
+    merged.to_csv(path, index=False)
+    log.info('アプリの点: Dawarich %d 件 / CSV %d -> %d 件（%s）', len(rows), before, len(merged), path)
+    return 0
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
     parser = argparse.ArgumentParser(description='Dawarich CLI')
@@ -172,6 +193,9 @@ def main() -> None:
     p_routes = subparsers.add_parser('import-routes', help='未投入の運動の軌跡を上げる')
     p_routes.add_argument('--dry-run', action='store_true', help='上げるファイルだけ出す')
     p_routes.set_defaults(func=cmd_import_routes)
+
+    p_app = subparsers.add_parser('export-app-points', help='アプリの点を private へ写す')
+    p_app.set_defaults(func=cmd_export_app_points)
 
     p_names = subparsers.add_parser('name-places', help='Unknown の Place に名前を付ける')
     p_names.add_argument('--dry-run', action='store_true', help='件数だけ出して DB も API も触らない')
