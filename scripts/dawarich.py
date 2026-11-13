@@ -9,9 +9,14 @@ Dawarich が動いているホスト（mouse）の dailybuild で実行する（
 Usage:
     python scripts/dawarich.py name-places --dry-run   # 何件に名前が付き、何件 Places API を引くかだけ出す
     python scripts/dawarich.py name-places             # Unknown の Place を改名して名前を固定する
+    python scripts/dawarich.py name-places --max-api 50  # Places API を呼ぶ回数の上限（既定 MAX_API_CALLS）
 
 名前の決め方は src/lib/dawarich/place_names.py。手で決める名前は config/private/dawarich_place_names.yaml
 （`<place ID>: {name: ..., note: ...}`）。Places API のキーは .env の GOOGLE_MAPS_API_KEY。
+
+GCP 側で Place Details に1日200回の上限を掛けてあり、vaio の `timeline.py names` と同じ枠を使う。
+引くのは Visit の多い場所から順で、上限に当たったら引けた分だけ改名して非ゼロで終わる。
+翌日また流せば続きから引く（引いた結果は ~/.cache/dailybuild/ に残る）。
 """
 
 import argparse
@@ -39,6 +44,8 @@ OVERRIDES_YAML = BASE_DIR / 'config' / 'private' / 'dawarich_place_names.yaml'
 PLACES_CSV = BASE_DIR / 'data' / 'timeline' / 'places.csv'
 VISITS_CSV = BASE_DIR / 'data' / 'timeline' / 'visits.csv'
 RESULT_PREFIX = 'RESULT_JSON:'
+# Place Details の日次上限 200 のうち、vaio の timeline.py names（最大100）のぶんを残す
+MAX_API_CALLS = 100
 
 log = logging.getLogger('dawarich')
 
@@ -106,7 +113,8 @@ def cmd_name_places(args) -> int:
     if args.dry_run:
         return 0
 
-    failed = lookup(misses) if misses else 0
+    targets = misses[:args.max_api]
+    failed = lookup(targets) if targets else 0
     resolved, _ = place_names.resolve(ids, overrides, home_ids, places, place_names.read_cache())
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -115,6 +123,9 @@ def cmd_name_places(args) -> int:
         result = rails_runner(RAILS_DIR / 'apply_place_names.rb', names_json)
     log.info('改名 %(renamed)d 件 / Visit の name=Unknown を空に %(visit_names_cleared)d 件 / '
              '残る Unknown: Place %(places_unknown)d 件・Visit %(visits_unknown)d / %(visits_total)d 件', result)
+    left = len(misses) - len(targets) + failed
+    if left:
+        log.warning('Places API で引けていない place ID が %d 件残っている。翌日また流す', left)
     return 1 if failed else 0
 
 
@@ -125,6 +136,7 @@ def main() -> None:
 
     p_names = subparsers.add_parser('name-places', help='Unknown の Place に名前を付ける')
     p_names.add_argument('--dry-run', action='store_true', help='件数だけ出して DB も API も触らない')
+    p_names.add_argument('--max-api', type=int, default=MAX_API_CALLS, help='Places API を呼ぶ回数の上限')
     p_names.set_defaults(func=cmd_name_places)
 
     args = parser.parse_args()
