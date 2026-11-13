@@ -1,0 +1,18 @@
+# 位置と写真の付いた短文ログの試用（#295）。ここのデータは捨ててよく、正本にしない。起動は vaio で:
+#   cd ~/repo/dailybuild/scripts/ops/memos && docker compose up -d
+# 公式 scripts/compose.yaml が元。自動更新しない。版を上げるときはリリースノートを読み、volume をバックアップしてから
+# 初回の利用者（管理者）を作ったら、設定画面の「新規登録を許可しない」を有効にする（登録の可否は env でなく DB の設定）
+# vaio では .env（git 外）に MEMOS_BIND=100.93.3.10
+services:
+  memos:
+    image: neosmemo/memos:26.11.0
+    environment:
+      TZ: Asia/Tokyo
+    volumes:
+      - memos-data:/var/opt/memos
+    ports:
+      - "${MEMOS_BIND:-127.0.0.1}:3300:5230"
+    restart: unless-stopped
+
+volumes:
+  memos-data:
