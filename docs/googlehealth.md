@@ -112,6 +112,10 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
 - 取り直さない（ファイルがあれば飛ばす）。記録を後から編集したら TCX を消して取り直す
 - Dawarich の import 名はファイル名のまま。同名で POST すると Dawarich は時刻を足した
   別名で受け付けるので、上げる前に `GET /api/v1/imports` の名前と突き合わせる
+- Dawarich は出どころに優先順位を持たず、軌跡の時間帯にスマホのアプリ・Timeline の点（数km 飛ぶ）が
+  混ざると線が崩れる。`import-routes` は取り込みの終わった軌跡の時間帯から、どの軌跡にも Swarm にも
+  属さない点を消す。**点の削除は DB から消える**ので、消す点は先に `data/dawarich/removed_points.jsonl` へ追記する。
+  Timeline を取り込み直すと同じ点が戻り、翌日また消える
 
 ## カフェイン摂取
 

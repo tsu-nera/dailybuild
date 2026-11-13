@@ -6,11 +6,15 @@ Dawarich（位置のライフログ、#290）の CLI（import-routes / name-plac
 import-routes: 運動の軌跡ファイル（ROUTE_GLOBS）のうち Dawarich に未投入のものを HTTP API で上げる。
   どのホストからでも流せる（日次は vaio）。宛先は .env の DAWARICH_URL / DAWARICH_API_KEY で、
   未設定なら warning だけで 0 終了する。二重投入の判定は import 名（＝ファイル名）。
+  上げた後、取り込みの終わった軌跡の時間帯にある、どの軌跡にも属さない点（スマホのアプリ・
+  Timeline）を消す。Dawarich は出どころに優先順位を持たず、1秒間隔の軌跡に数km 飛ぶ点が混ざって
+  線が崩れるため。削除は DB から消えるので、消す点は先に REMOVED_POINTS へ追記する。
+  時間帯の判定は import の点そのものから取るので、TCX 以外（FIT）でも同じ。
 name-places: Dawarich の DB は取り込み直すたびに作り直されるので、手で直さずにこれを流し直す。
   Dawarich が動いているホストの dailybuild で実行する（docker compose で app コンテナに入る）。
 
 Usage:
-    python scripts/dawarich.py import-routes --dry-run   # 上げるファイルだけ出す
+    python scripts/dawarich.py import-routes --dry-run   # 上げるファイルと消す点の件数だけ出す
     python scripts/dawarich.py import-routes             # 未投入の軌跡を上げる
     python scripts/dawarich.py name-places --dry-run   # 何件に名前が付き、何件 Places API を引くかだけ出す
     python scripts/dawarich.py name-places             # Unknown の Place を改名して名前を固定する
@@ -39,9 +43,10 @@ import pandas as pd
 
 from lib import timeline
 from lib.clients import places_client
-from lib.clients.dawarich_client import DawarichClient, not_imported
+from lib.clients.dawarich_client import DawarichClient, not_imported, overlapping_others, route_imports
 from lib.dawarich import place_names
 from lib.utils.env import get_env, require_env
+from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 COMPOSE_DIR = BASE_DIR / 'scripts' / 'ops' / 'dawarich'
@@ -54,6 +59,10 @@ RESULT_PREFIX = 'RESULT_JSON:'
 ROUTE_GLOBS = [
     'data/googlehealth/tcx/*.tcx',  # Fitbit の GPS 付き運動（exercise_route.py fetch）
 ]
+# 軌跡の時間帯から消した点の写し（1行1点、Dawarich の API の形のまま）。消した点を戻す唯一の材料
+REMOVED_POINTS = BASE_DIR / 'data' / 'dawarich' / 'removed_points.jsonl'
+# 軌跡の時間帯にあっても消さない import の source。Swarm はチェックインという出来事の点で、位置の精度の問題ではない
+KEEP_SOURCES = {'swarm'}
 # Place Details の日次上限 200 のうち、vaio の timeline.py names（最大100）のぶんを残す
 MAX_API_CALLS = 100
 
@@ -148,12 +157,11 @@ def cmd_import_routes(args) -> int:
     client = DawarichClient(url, api_key)
     targets = not_imported(files, client.import_names())
     log.info('軌跡ファイル %d 件のうち Dawarich に未投入 %d 件', len(files), len(targets))
-    if args.dry_run:
-        for p in targets:
-            log.info('  %s', p.name)
-        return 0
     failed = 0
     for p in targets:
+        if args.dry_run:
+            log.info('  %s', p.name)
+            continue
         try:
             result = client.upload(p)
         except Exception as exc:  # 1件の失敗で残りを止めない。翌日また上げる
@@ -161,7 +169,44 @@ def cmd_import_routes(args) -> int:
             failed += 1
             continue
         log.info('%s -> import %s (%s)', p.name, result.get('id'), result.get('status'))
+    try:
+        remove_overlaps(client, {p.name for p in files}, args.dry_run)
+    except Exception as exc:
+        log.error('軌跡の時間帯の点を消せなかった: %r', exc)
+        failed += 1
     return 1 if failed else 0
+
+
+def remove_overlaps(client: DawarichClient, route_names: set[str], dry_run: bool) -> None:
+    imports = client.imports()
+    routes = route_imports(imports, route_names)
+    route_points = {i['id']: client.points(import_id=i['id'], slim=True) for i in routes}
+    keep_ids = {pt['id'] for pts in route_points.values() for pt in pts}
+    for imp in imports:
+        if imp['source'] in KEEP_SOURCES:
+            keep_ids |= {pt['id'] for pt in client.points(import_id=imp['id'], slim=True)}
+    removed = {}
+    for imp in routes:
+        pts = route_points[imp['id']]
+        if not pts:
+            continue
+        window = client.points(start_at=min(pt['timestamp'] for pt in pts),
+                               end_at=max(pt['timestamp'] for pt in pts))
+        others = overlapping_others(window, keep_ids)
+        if others:
+            log.info('%s: 時間帯にある他の点 %d 件', imp['name'], len(others))
+        removed.update((pt['id'], pt) for pt in others)  # 時間の重なる軌跡で同じ点を二重に数えない
+    removed = list(removed.values())
+    log.info('軌跡 %d 本の時間帯から消す点: %d 件', len(routes), len(removed))
+    if dry_run or not removed:
+        return
+    path = require_private_path(REMOVED_POINTS)
+    ensure_dir(path.parent)
+    with path.open('a', encoding='utf-8') as f:
+        for pt in removed:
+            f.write(json.dumps(pt, ensure_ascii=False) + '\n')
+    deleted = client.delete_points([pt['id'] for pt in removed])
+    log.info('消した点: %d 件（写しは %s）', deleted, path)
 
 
 def main() -> None:

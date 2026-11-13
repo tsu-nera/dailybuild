@@ -67,3 +67,15 @@ def test_import_names_with_no_imports(monkeypatch):
     monkeypatch.setattr(dawarich_client.requests, 'get',
                         lambda url, headers, params, timeout: _Resp([], 0))
     assert DawarichClient('http://x', 'k').import_names() == set()
+
+
+def test_route_imports_waits_for_completion():
+    imports = [{'name': 'a.tcx', 'status': 'completed'}, {'name': 'b.tcx', 'status': 'processing'},
+               {'name': 'Timeline.json', 'status': 'completed'}]
+    assert [i['name'] for i in dawarich_client.route_imports(imports, {'a.tcx', 'b.tcx'})] == ['a.tcx']
+
+
+def test_overlapping_others_keeps_every_route_point():
+    # 時間の重なる2本の軌跡（Fitbit とサイコン）が互いの点を消し合わないこと
+    window = [{'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
+    assert dawarich_client.overlapping_others(window, keep_ids={1, 3}) == [{'id': 2}, {'id': 4}]
