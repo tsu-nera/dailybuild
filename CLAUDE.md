@@ -220,6 +220,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 | 持ち物（`scripts/homebox.py` / `data/inventory/items.csv`）を扱うとき | [docs/homebox.md](docs/homebox.md) — 正本は Homebox で items.csv は日次の写し。一覧は `includeArchived` を付けないと手放した物が消える。PUT は全欄置き換え |
 | `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
 | `scripts/timeline.py` / 場所ごとの訪問（Google マップ Timeline の export）を扱うとき | [docs/timeline.md](docs/timeline.md) — 同じ訪問が hierarchyLevel 違いで重複する。座標は度記号付きの文字列。取得は手動 export 頼み。名前は places.csv の辞書（Places API）|
+| `scripts/xoss.py` / XOSS サイコンの FIT・ロードバイクのライドを扱うとき | [docs/xoss.md](docs/xoss.md) — BLE のみで一覧は `workouts.json`。サイズ不一致でも上流は保存する。心拍 0・標高 -500 は無効値。FIT が正本で rides.csv は消さない |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | 習慣の phase / 目標値 / 移行判断を扱うとき | [docs/habits.md](docs/habits.md) — 達成率の分母は `target_per_week` であって `is_due` ではない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |

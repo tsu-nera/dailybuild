@@ -66,9 +66,11 @@ RESULT_PREFIX = 'RESULT_JSON:'
 ROUTE_GLOBS = [
     'data/googlehealth/tcx/*.tcx',  # Fitbit の GPS 付き運動（exercise_route.py fetch）
     'data/gpslogger/*.gpx',         # GPSLogger の1日1ファイル、前日まで（gpslogger.py fetch）
+    'data/xoss/fit/*.fit',          # XOSS サイコン（xoss.py fetch / import）
 ]
-# 時間帯の基準にする import 名の拡張子。サイコンの FIT を足したらここにも足す
-PRECISE_SUFFIXES = ('.tcx',)
+# 時間帯の基準にする import 名の拡張子（Fitbit の TCX・XOSS サイコンの FIT）。
+# TCX と FIT は同時に記録しないので、両者の間に優先順位は無い
+PRECISE_SUFFIXES = ('.tcx', '.fit')
 # 基準の時間帯にあっても消さない import の source。Swarm はチェックインという出来事の点で、位置の精度の問題ではない
 KEEP_SOURCES = {'swarm'}
 APP_POINTS = BASE_DIR / 'data' / 'dawarich' / 'app_points.csv'
