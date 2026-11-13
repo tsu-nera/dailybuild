@@ -70,6 +70,7 @@ step "運動の軌跡"     uv run python scripts/exercise_route.py fetch
 # GPSLogger の GPX（Syncthing で vaio に届く）を前日分まで private へ。Dawarich へ上げるより前
 step "GPSLogger"     uv run python scripts/gpslogger.py fetch
 step "Dawarich 軌跡"  uv run python scripts/dawarich.py import-routes
+step "Dawarich 場所"  uv run python scripts/dawarich.py capture-places
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 # Hevy の export 取得。セッションの有無は Health Connect 経由で exercise.csv に
 # 入るが、部位別セット数の内訳は export にしか無い（Hevy に API は無い）

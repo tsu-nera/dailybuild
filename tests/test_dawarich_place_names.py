@@ -1,7 +1,7 @@
 """
 Dawarich の Unknown の Place に付ける名前（place_names）のテスト
 
-手で決めた名前が辞書に負けないこと、引いたが名前の無かった ID を毎回 API で引き直さないこと、
+自宅が辞書に負けないこと、引いたが名前の無かった ID を毎回 API で引き直さないこと、
 キャッシュに二重に入れないことを確認する。
 """
 
@@ -18,28 +18,26 @@ def _places(*rows):
 EMPTY = _places()
 
 
-def test_priority_override_home_dictionary_cache():
-    places = _places(('A', '辞書A', '', 'ok', ''), ('B', '辞書B', '', 'ok', ''), ('C', '辞書C', '', 'ok', ''))
+def test_priority_home_dictionary_cache():
+    places = _places(('B', '辞書B', '', 'ok', ''), ('C', '辞書C', '', 'ok', ''))
     cache = _places(('C', 'キャッシュC', '', 'ok', ''), ('D', 'キャッシュD', '', 'ok', ''))
-    overrides = {'A': {'name': '手A', 'note': 'ずれている'}}
 
-    resolved, misses = place_names.resolve(['A', 'B', 'C', 'D', 'E'], overrides, {'B'}, places, cache)
+    resolved, misses = place_names.resolve(['B', 'C', 'D', 'E'], {'B'}, places, cache)
 
     assert {k: v['name'] for k, v in resolved.items()} == {
-        'A': '手A', 'B': place_names.HOME_NAME, 'C': '辞書C', 'D': 'キャッシュD'}
-    assert resolved['A']['note'] == 'ずれている'
+        'B': place_names.HOME_NAME, 'C': '辞書C', 'D': 'キャッシュD'}
     assert misses == ['E']
 
 
 def test_not_found_is_not_looked_up_again():
     places = _places(('A', '', '', 'not_found', ''))
     cache = _places(('B', '', '', 'not_found', ''))
-    resolved, misses = place_names.resolve(['A', 'B'], {}, set(), places, cache)
+    resolved, misses = place_names.resolve(['A', 'B'], set(), places, cache)
     assert resolved == {} and misses == []
 
 
 def test_duplicate_ids_are_looked_up_once():
-    _, misses = place_names.resolve(['A', 'A', 'B'], {}, set(), EMPTY, EMPTY)
+    _, misses = place_names.resolve(['A', 'A', 'B'], set(), EMPTY, EMPTY)
     assert misses == ['A', 'B']
 
 

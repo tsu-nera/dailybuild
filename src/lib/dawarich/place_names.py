@@ -3,12 +3,11 @@
 Dawarich は Google Timeline の取り込みで、place ID だけを持つ Place を `Unknown` という名前で作る。
 取り込み直すたびに作り直されるので、DB を手で直さず、取り込みのたびにこの名前を流し直す。
 
-名前の出どころ（上ほど優先）:
-1. 手で決めた名前（config/private/dawarich_place_names.yaml）。Google の place ID が実際に
-   居た場所とずれている時に使う
-2. Timeline で自宅と推定された place ID → `自宅`
-3. Timeline の名前の辞書 data/timeline/places.csv（vaio の日次が書く。ここからは書かない）
-4. Dawarich のホストだけが持つキャッシュ（下の CACHE_FILE）。places.csv に無い分を
+本人が UI で付けた名前は data/dawarich/places.csv（lib.dawarich.place_ledger）が先に当て直す。
+ここが付けるのは、それでも Unknown のまま残った Place の名前。出どころ（上ほど優先）:
+1. Timeline で自宅と推定された place ID → `自宅`
+2. Timeline の名前の辞書 data/timeline/places.csv（vaio の日次が書く。ここからは書かない）
+3. Dawarich のホストだけが持つキャッシュ（下の CACHE_FILE）。places.csv に無い分を
    Places API で引いた結果。places.csv を2台で書くと merge が壊れるので別にしてある
 
 どれにも無い place ID だけが Places API を呼ぶ対象になる。
@@ -17,7 +16,6 @@ Dawarich は Google Timeline の取り込みで、place ID だけを持つ Place
 from pathlib import Path
 
 import pandas as pd
-import yaml
 
 from lib.timeline import PLACE_COLUMNS, read_places
 
@@ -25,14 +23,6 @@ HOME_NAME = '自宅'
 
 # git の外。消えても Places API を引き直すだけ
 CACHE_FILE = Path.home() / '.cache' / 'dailybuild' / 'dawarich_place_names.csv'
-
-
-def read_overrides(path: Path) -> dict[str, dict]:
-    """place ID → {'name', 'note'}。ファイルが無ければ空"""
-    if not path.exists():
-        return {}
-    raw = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
-    return {pid: {'name': v['name'], 'note': v.get('note', '')} for pid, v in raw.items()}
 
 
 def _dictionary(places: pd.DataFrame) -> tuple[dict[str, str], set[str]]:
@@ -43,7 +33,7 @@ def _dictionary(places: pd.DataFrame) -> tuple[dict[str, str], set[str]]:
     return names, tried - set(names)
 
 
-def resolve(place_ids: list[str], overrides: dict[str, dict], home_ids: set[str],
+def resolve(place_ids: list[str], home_ids: set[str],
             places: pd.DataFrame, cache: pd.DataFrame) -> tuple[dict[str, dict], list[str]]:
     """(place ID → {'name', 'note'}, Places API で引く place ID)
 
@@ -54,9 +44,7 @@ def resolve(place_ids: list[str], overrides: dict[str, dict], home_ids: set[str]
     resolved: dict[str, dict] = {}
     misses: list[str] = []
     for pid in dict.fromkeys(place_ids):
-        if pid in overrides:
-            resolved[pid] = overrides[pid]
-        elif pid in home_ids:
+        if pid in home_ids:
             resolved[pid] = {'name': HOME_NAME, 'note': ''}
         elif pid in dict_names:
             resolved[pid] = {'name': dict_names[pid], 'note': ''}

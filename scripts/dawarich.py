@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Dawarich（位置のライフログ、#290）の CLI（import-routes / export-app-points / name-places）
+Dawarich（位置のライフログ、#290）の CLI（import-routes / export-app-points / capture-places / name-places）
 
 Dawarich の DB は派生物で、正本は private の data/ にある（TCX・GPSLogger の GPX・Swarm・Timeline の書き出し）。
 Dawarich をやめても data/ だけで作り直せることを保つ。
@@ -18,21 +18,27 @@ import-routes: 位置のファイル（ROUTE_GLOBS）のうち Dawarich に未�
 export-app-points: スマホの Dawarich アプリが送った点は Dawarich の DB にしか無いので、APP_POINTS へ写す。
   既存の行は消さない。公式アプリは記録係にしない方針（GPSLogger に移行）なので日次には入れず、
   アプリを止めるときに手で流す。アプリが送っている先のホストで実行する（rails runner）。
+capture-places: Place の名前・merge・アーカイブは本人が Dawarich の UI で直す。その判断を外部 ID ごとに
+  PLACE_LEDGER へ写す（日次、vaio）。merge で消えた外部 ID は、前回写した Visit の今の Place から統合先を推定する
+  （lib.dawarich.place_ledger）。.env の DAWARICH_SSH_HOST（Dawarich が動くホスト）へ ssh して rails runner を流し、
+  未設定なら warning だけで 0 終了する。ホストが寝ていれば失敗し、翌日の写しで追いつく。
 name-places: Dawarich の DB は取り込み直すたびに作り直されるので、手で直さずにこれを流し直す。
   Dawarich が動いているホストの dailybuild で実行する（docker compose で app コンテナに入る）。
   先に開始時刻が同じ Visit を1件に減らす（rails/dedupe_visits.rb）。残っていると UI の Place の merge が
   VisitConflict で止まり、UI で Visit を消しても削除済みの行が判定に残るので解けない。
+  次に PLACE_LEDGER を当て直し（作り直された Place だけが変わる）、まだ Unknown の Place に辞書と Places API で名前を付ける。
 
 Usage:
     python scripts/dawarich.py import-routes --dry-run   # 上げるファイルだけ出す
     python scripts/dawarich.py import-routes             # 未投入の軌跡を上げる
     python scripts/dawarich.py export-app-points         # アプリの点を data/dawarich/app_points.csv へ写す
+    python scripts/dawarich.py capture-places          # UI で直した Place を data/dawarich/places.csv へ写す
     python scripts/dawarich.py name-places --dry-run   # 何件に名前が付き、何件 Places API を引くかだけ出す
     python scripts/dawarich.py name-places             # Unknown の Place を改名して名前を固定する
     python scripts/dawarich.py name-places --max-api 50  # Places API を呼ぶ回数の上限（既定 MAX_API_CALLS）
 
-名前の決め方は src/lib/dawarich/place_names.py。手で決める名前は config/private/dawarich_place_names.yaml
-（`<place ID>: {name: ..., note: ...}`）。Places API のキーは .env の GOOGLE_MAPS_API_KEY。
+名前の決め方は src/lib/dawarich/place_names.py。手で直すのは UI だけで、ファイルは書かない。
+Places API のキーは .env の GOOGLE_MAPS_API_KEY。
 
 GCP 側で Place Details に1日200回の上限を掛けてあり、vaio の `timeline.py names` と同じ枠を使う。
 引くのは Visit の多い場所から順で、上限に当たったら引けた分だけ改名して非ゼロで終わる。
@@ -43,6 +49,7 @@ import argparse
 import datetime as dt
 import json
 import logging
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -55,14 +62,16 @@ import pandas as pd
 from lib import gpslogger, timeline
 from lib.clients import places_client
 from lib.clients.dawarich_client import DawarichClient, not_imported, overlapping_others, precise_imports
-from lib.dawarich import app_points, place_names
+from lib.dawarich import app_points, place_ledger, place_names
 from lib.utils.env import get_env, require_env
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 COMPOSE_DIR = BASE_DIR / 'scripts' / 'ops' / 'dawarich'
 RAILS_DIR = COMPOSE_DIR / 'rails'
-OVERRIDES_YAML = BASE_DIR / 'config' / 'private' / 'dawarich_place_names.yaml'
+# DAWARICH_SSH_HOST へ ssh するときの compose のディレクトリ（ssh はホームから始まる）
+REMOTE_COMPOSE_DIR = 'repo/dailybuild/scripts/ops/dawarich'
+PLACE_LEDGER = BASE_DIR / 'data' / 'dawarich' / 'places.csv'
 PLACES_CSV = BASE_DIR / 'data' / 'timeline' / 'places.csv'
 VISITS_CSV = BASE_DIR / 'data' / 'timeline' / 'visits.csv'
 RESULT_PREFIX = 'RESULT_JSON:'
@@ -86,8 +95,12 @@ log = logging.getLogger('dawarich')
 
 def _compose(*args: str, capture: bool = False) -> str:
     # cp は進み具合を stderr に出す。失敗は check=True の例外で分かる
+    host = get_env('DAWARICH_SSH_HOST')
+    cmd = ['docker', 'compose', '--project-directory', REMOTE_COMPOSE_DIR if host else str(COMPOSE_DIR), *args]
+    if host:
+        cmd = ['ssh', host, shlex.join(cmd)]
     result = subprocess.run(
-        ['docker', 'compose', '--project-directory', str(COMPOSE_DIR), *args],
+        cmd,
         check=True, text=True, stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
         stderr=None if capture else subprocess.DEVNULL)
@@ -97,9 +110,14 @@ def _compose(*args: str, capture: bool = False) -> str:
 def rails_runner(script: Path, *files: Path):
     """script を app コンテナで流し、RESULT_JSON の行を読んで返す。files はコンテナの /tmp へ置いて引数で渡す"""
     container_args = []
+    host = get_env('DAWARICH_SSH_HOST')
     for path in (script, *files):
         dest = f'/tmp/dailybuild_{path.name}'
-        _compose('cp', str(path), f'app:{dest}')
+        if host:
+            subprocess.run(['scp', '-q', str(path), f'{host}:{dest}'], check=True)
+            _compose('cp', dest, f'app:{dest}')
+        else:
+            _compose('cp', str(path), f'app:{dest}')
         container_args.append(dest)
     out = _compose('exec', '-T', 'app', 'bin/rails', 'runner', *container_args, capture=True)
     lines = [line for line in out.splitlines() if line.startswith(RESULT_PREFIX)]
@@ -150,14 +168,44 @@ def dedupe_visits(dry_run: bool) -> None:
     log.info('開始時刻が同じ Visit: %(groups)d 組 / 落とす %(dropped)d 件', result)
 
 
+def apply_ledger(dry_run: bool) -> None:
+    ledger = place_ledger.read(PLACE_LEDGER)
+    log.info('UI の判断の写し %d 件（merge %d / アーカイブ %d）', len(ledger),
+             (ledger['merged_into'] != '').sum(), (ledger['archived'] == 'true').sum())
+    if dry_run or ledger.empty:
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        arg = Path(tmp) / 'ledger.json'
+        arg.write_text(json.dumps(place_ledger.decisions(ledger), ensure_ascii=False), encoding='utf-8')
+        result = rails_runner(RAILS_DIR / 'apply_place_ledger.rb', arg)
+    log.info('当て直し: merge %(merged)d / アーカイブ %(archived)d / 改名 %(renamed)d', result)
+    if result['conflicts']:
+        log.warning('merge できなかった外部 ID: %s', result['conflicts'])
+
+
+def cmd_capture_places(args) -> int:
+    if not get_env('DAWARICH_SSH_HOST'):
+        log.warning('DAWARICH_SSH_HOST が .env に無いので写さない')
+        return 0
+    dump = rails_runner(RAILS_DIR / 'dump_places.rb')
+    path = require_private_path(PLACE_LEDGER)
+    ensure_dir(path.parent)
+    prev = place_ledger.read(path)
+    out = place_ledger.update(prev, dump, dt.date.today().isoformat())
+    out.to_csv(path, index=False)
+    log.info('Place の写し: %d -> %d 件（merge %d / アーカイブ %d）（%s）', len(prev), len(out),
+             (out['merged_into'] != '').sum(), (out['archived'] == 'true').sum(), path)
+    return 0
+
+
 def cmd_name_places(args) -> int:
     dedupe_visits(args.dry_run)
+    apply_ledger(args.dry_run)
     ids = rails_runner(RAILS_DIR / 'unknown_places.rb')
-    overrides = place_names.read_overrides(OVERRIDES_YAML)
     places = timeline.read_places(PLACES_CSV)
     home_ids = _home_ids()
 
-    resolved, misses = place_names.resolve(ids, overrides, home_ids, places, place_names.read_cache())
+    resolved, misses = place_names.resolve(ids, home_ids, places, place_names.read_cache())
     log.info('Unknown の Place（Google の place ID）%d 件: 手元で名前が付く %d 件 / Places API で引く %d 件',
              len(ids), len(resolved), len(misses))
     if args.dry_run:
@@ -165,7 +213,7 @@ def cmd_name_places(args) -> int:
 
     targets = misses[:args.max_api]
     failed = lookup(targets) if targets else 0
-    resolved, _ = place_names.resolve(ids, overrides, home_ids, places, place_names.read_cache())
+    resolved, _ = place_names.resolve(ids, home_ids, places, place_names.read_cache())
 
     with tempfile.TemporaryDirectory() as tmp:
         names_json = Path(tmp) / 'place_names.json'
@@ -263,6 +311,9 @@ def main() -> None:
 
     p_app = subparsers.add_parser('export-app-points', help='アプリの点を private へ写す')
     p_app.set_defaults(func=cmd_export_app_points)
+
+    p_capture = subparsers.add_parser('capture-places', help='UI で直した Place を private へ写す')
+    p_capture.set_defaults(func=cmd_capture_places)
 
     p_names = subparsers.add_parser('name-places', help='Unknown の Place に名前を付ける')
     p_names.add_argument('--dry-run', action='store_true', help='件数だけ出して DB も API も触らない')
