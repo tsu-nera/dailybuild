@@ -20,6 +20,8 @@ export-app-points: スマホの Dawarich アプリが送った点は Dawarich �
   アプリを止めるときに手で流す。アプリが送っている先のホストで実行する（rails runner）。
 name-places: Dawarich の DB は取り込み直すたびに作り直されるので、手で直さずにこれを流し直す。
   Dawarich が動いているホストの dailybuild で実行する（docker compose で app コンテナに入る）。
+  先に開始時刻が同じ Visit を1件に減らす（rails/dedupe_visits.rb）。残っていると UI の Place の merge が
+  VisitConflict で止まり、UI で Visit を消しても削除済みの行が判定に残るので解けない。
 
 Usage:
     python scripts/dawarich.py import-routes --dry-run   # 上げるファイルだけ出す
@@ -133,7 +135,23 @@ def lookup(place_ids: list[str]) -> int:
     return len(place_ids) - len(rows)
 
 
+def _level0_keys() -> list[str]:
+    """Timeline の hierarchyLevel 0 の訪問を `<place ID>@<開始の epoch 秒>` で返す（visits.csv は level 0 だけを持つ）"""
+    visits = pd.read_csv(VISITS_CSV, dtype=str, keep_default_na=False)
+    starts = pd.to_datetime(visits['start_time'], format='ISO8601').map(lambda t: int(t.timestamp()))
+    return sorted(set(visits['place_id'] + '@' + starts.astype(str)))
+
+
+def dedupe_visits(dry_run: bool) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        arg = Path(tmp) / 'dedupe.json'
+        arg.write_text(json.dumps({'level0': _level0_keys(), 'dry_run': dry_run}), encoding='utf-8')
+        result = rails_runner(RAILS_DIR / 'dedupe_visits.rb', arg)
+    log.info('開始時刻が同じ Visit: %(groups)d 組 / 落とす %(dropped)d 件', result)
+
+
 def cmd_name_places(args) -> int:
+    dedupe_visits(args.dry_run)
     ids = rails_runner(RAILS_DIR / 'unknown_places.rb')
     overrides = place_names.read_overrides(OVERRIDES_YAML)
     places = timeline.read_places(PLACES_CSV)
