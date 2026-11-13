@@ -3,6 +3,7 @@
 # mouse は使っていないと寝る（~/repo/scripts の mouse-idle-suspend）。開いている画面（websocket）があれば寝ない。
 # 公式 docker/docker-compose.yml（v3.4.1）が元。自動更新しない。版を上げるときはリリースノートを読み、db をバックアップしてから
 # .env（git 外）に DB_PASSWORD（英数字のみ）。mouse では IMMICH_BIND=<mouse の tailnet IP>
+# 写真・サムネイルの置き場は .env の UPLOAD_LOCATION（mouse では /mnt/shared/immich。Windows と共有の NTFS）。DB は NTFS に置かない
 # ML は CPU で始める。CUDA 版の image は数 GB あり、mouse の /home（Docker の置き場）の空きが足りない
 services:
   immich-server:
@@ -15,7 +16,7 @@ services:
       REDIS_HOSTNAME: redis
       TZ: Asia/Tokyo
     volumes:
-      - library:/data
+      - ${UPLOAD_LOCATION:-library}:/data
       - /etc/localtime:/etc/localtime:ro
     ports:
       - "${IMMICH_BIND:-127.0.0.1}:2283:2283"
