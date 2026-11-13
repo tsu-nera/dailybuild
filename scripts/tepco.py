@@ -8,7 +8,7 @@ data/tepco/usage_30min.csv（dailybuild-private への symlink）に蓄積する
 
 Usage:
     python scripts/tepco.py fetch --login              # 初回・セッション切れ時
-    python scripts/tepco.py fetch                      # CSV の最終日から今日まで（週次・mouse で手動）
+    python scripts/tepco.py fetch                      # CSV の最終日から今日まで（週次・iiyama で手動）
     python scripts/tepco.py fetch --days 3
     python scripts/tepco.py fetch --since 2026-05-01   # 過去分の一括取得
 
