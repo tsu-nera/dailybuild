@@ -40,7 +40,7 @@
   "editable": true,
   "time": {
     "from": "now-90d",
-    "to": "now"
+    "to": "now+1d"
   },
   "timezone": "utc",
   "refresh": "",

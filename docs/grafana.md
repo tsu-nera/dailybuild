@@ -23,6 +23,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 
 `body` `sleep` `mind` は時系列で、期間は右上の時間範囲で変える（`daily.csv` は直近365日、`metrics_daily.csv` は全期間）。
 日付だけの CSV を UTC 0時として読むので、3画面の timezone は `utc`（`browser` にすると日付が9時間ずれて見える）。
+期間の終わりは `now+1d` にする。`now` だと当日の行（UTC 0時＝JST 09:00）が JST 09:00 まで範囲の外になり、朝の取得分が見えない。
 
 日次レポートから移さなかったもの（2026-11-10、#255）:
 
