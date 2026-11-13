@@ -52,7 +52,7 @@ def login() -> str:
 def load_token() -> str:
     if not store.TOKEN_FILE.exists():
         sys.exit(f'⚠️ {store.TOKEN_FILE} が無い。初回は fetch --login で作る'
-                 '（vaio では作らず、mouse で作ったものをコピーする）')
+                 '（vaio では作らず、iiyama で作ったものをコピーする）')
     return json.loads(store.TOKEN_FILE.read_text(encoding='utf-8'))['access_token']
 
 

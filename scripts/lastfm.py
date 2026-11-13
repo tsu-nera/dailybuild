@@ -52,7 +52,7 @@ def login(api_key: str, api_secret: str, user: str) -> str:
 def load_session_key() -> str:
     if not store.SESSION_FILE.exists():
         sys.exit(f'⚠️ {store.SESSION_FILE} が無い。初回は fetch --login で作る'
-                 '（vaio では作らず、mouse で作ったものをコピーする）')
+                 '（vaio では作らず、iiyama で作ったものをコピーする）')
     return json.loads(store.SESSION_FILE.read_text(encoding='utf-8'))['key']
 
 

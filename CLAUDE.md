@@ -90,7 +90,7 @@ API クライアントの薄いラッパー。分析方針を変えるたびに�
 `scripts/ops/daily-fetch.sh`（ソースごとの取得リスト＋ジャーナル骨組み）。
 1ステップ失敗しても後続は続行し、失敗したステップ名を出して非ゼロ終了する。
 
-**取得は自宅サーバ vaio だけが走らせる。** mouse（対話マシン）は `daily-routine.sh` も
+**取得は自宅サーバ vaio だけが走らせる。** iiyama（対話マシン）は `daily-routine.sh` も
 `daily-fetch.sh` も自分では走らせない（取得元が2台になると同じ CSV を両側で書き換えて
 merge が壊れる）。TEPCO は無人取得できないので日次から外してあり、取得自体を停止中
 （[docs/tepco.md](docs/tepco.md)）。vaio の起動は2系統:
@@ -339,11 +339,11 @@ git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-priva
 git clone git@github.com:tsu-nera/dailybuild.git ~/repo/dailybuild
 git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-private
 cd ~/repo/dailybuild && uv sync && ./scripts/setup_private_links.sh
-# .env と config/*.json（OAuth token・セッション）を mouse からコピー（gitignore 済みなので clone では来ない）
+# .env と config/*.json（OAuth token・セッション）を iiyama からコピー（gitignore 済みなので clone では来ない）
 uv run playwright install chromium
 uv run scripts/mf.py fetch --login      # GUI セッション（VNC 可）で一度だけ（TEPCO は取得停止中なので不要）
-# config/lastfm_session.json も mouse で `lastfm.py fetch --login` して作り、vaio へコピーする
-# config/gcalendar_token.json は mouse で `gcalendar.py fetch --login` して作り、vaio へコピーする（無いと日次の Google Calendar ステップが失敗する）
+# config/lastfm_session.json も iiyama で `lastfm.py fetch --login` して作り、vaio へコピーする
+# config/gcalendar_token.json は iiyama で `gcalendar.py fetch --login` して作り、vaio へコピーする（無いと日次の Google Calendar ステップが失敗する）
 loginctl enable-linger tsu-nera
 systemctl --user link ~/repo/dailybuild/scripts/ops/systemd/dailybuild-routine.{service,timer}
 systemctl --user enable --now dailybuild-routine.timer

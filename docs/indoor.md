@@ -20,8 +20,8 @@
 - 1 entity が1時間以上の窓で0行なら故障とみなして exit 1（取れた分は保存する）
 - 認証: リポジトリ直下の `.env`（`HA_TOKEN` 必須、`HA_URL` 省略時 `http://localhost:8123`。
   環境変数があればそちらを優先）。HA のプロフィール → セキュリティ → 長期アクセストークンを
-  dailybuild 用に発行し、mouse（開発）と vaio（日次取得）に同じ `.env` を置く。`HA_URL` は両機から
-  届く tailnet 名（`localhost` だと mouse から繋がらない）。`.env.example` からは `cp` で作る
+  dailybuild 用に発行し、iiyama（開発）と vaio（日次取得）に同じ `.env` を置く。`HA_URL` は両機から
+  届く tailnet 名（`localhost` だと iiyama から繋がらない）。`.env.example` からは `cp` で作る
   （`git mv` すると追跡対象になり `.gitignore` が効かず token を commit しうる）。
   sqlite は直接読まない（DB 構造は HA 内部のもの）
 - HA の recorder は `purge_keep_days: 400` で保持する。取得と保持は HA の仕事

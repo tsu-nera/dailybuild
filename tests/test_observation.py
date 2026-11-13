@@ -119,3 +119,15 @@ def test_automated_lights_give_no_lights_off_and_home_needs_noise():
     lms = by_name(d)
     assert lms['消灯'].time is None
     assert lms['帰宅'].time is None   # 自動で点いた照明だけでは帰宅にしない
+
+
+def test_pc_sessions_per_pc_may_overlap_and_ignore_none():
+    iiyama, mouse = E['pcs']
+    hist = {
+        iiyama['app']: [(t(17, 12, 0), 'com.mitchellh.ghostty', False), (t(17, 12, 5), 'emacs', False)],
+        # 止まった側は none のまま。区間を作らない
+        mouse['app']: [(t(17, 11, 58), 'google-chrome', False), (t(17, 12, 3), 'none', False)],
+    }
+    rows = [r for r in items(day_data(hist, [])) if r[3] == 'pc']
+    assert [(a, b) for a, b, _, _ in rows] == [(t(17, 11, 58), t(17, 11, 58)), (t(17, 12, 0), t(17, 12, 5))]
+    assert rows[0][2].startswith('PC mouse') and rows[1][2].startswith('PC iiyama')

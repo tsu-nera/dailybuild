@@ -63,6 +63,11 @@ def phone_entities(d: DayData) -> tuple[str, ...]:
     return tuple(d.ent('phone').values())
 
 
+def pc_entities(cfg) -> tuple[str, ...]:
+    """全 PC の app / power。どれかに届いていれば PC の記録ありとみなす"""
+    return tuple(pc[k] for pc in cfg['entities']['pcs'] for k in ('app', 'power'))
+
+
 def phone_alive_until(d: DayData) -> dt.datetime | None:
     return last_seen(d.hist, phone_entities(d))
 
@@ -239,7 +244,7 @@ def source_status(d: DayData) -> list[tuple[str, str, str]]:
         rows.append((label, 'OK' if n else '記録なし', f'{n}件'))
     n_lights = len(lights_changes(d, 'on')) + len(lights_changes(d, 'off'))
     rows.append(('照明', '自動化' if d.automated('lights') else 'OK', f'変化 {n_lights}回'))
-    pc = last_seen(d.hist, tuple(d.ent('pc').values()))
+    pc = last_seen(d.hist, pc_entities(d.cfg))
     rows.append(('PC', '記録あり' if pc and pc >= d.lo else '記録なし', f'最終 {pc:%m-%d %H:%M}' if pc else '-'))
     srcs = {}
     for e in d.events:

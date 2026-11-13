@@ -33,7 +33,7 @@ import yaml
 
 from lib.clients.homeassistant_client import HomeAssistantError
 from lib.observation.ha import JST, fetch_history
-from lib.observation.landmarks import LANDMARKS, DayData, judge, source_status, window
+from lib.observation.landmarks import LANDMARKS, DayData, judge, pc_entities, source_status, window
 from lib.observation.timeline import items, render, unknown_gaps
 from lib.utils.private_data import ensure_dir, require_private_path
 
@@ -93,7 +93,7 @@ def load_labels() -> dict:
 def entity_ids(cfg) -> list[str]:
     e = cfg['entities']
     return [*e['lights'], e['noise'], e['illuminance'], e['speaker'],
-            *e['phone'].values(), *e['pc'].values()]
+            *e['phone'].values(), *pc_entities(cfg)]
 
 
 def day_data(day: dt.date, cfg, events) -> DayData:

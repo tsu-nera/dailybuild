@@ -51,19 +51,23 @@ def phone_sessions(d: DayData) -> list[tuple]:
 
 
 def pc_sessions(d: DayData) -> list[tuple]:
+    """PC ごとに前面アプリの変化をつないだ区間。2台の区間は時間が重なりうるので PC 名を付ける"""
     gap = dt.timedelta(minutes=d.cfg['pc_session_gap_min'])
-    changes = [(t, s) for t, s, initial in d.hist.get(d.ent('pc', 'app'), ())
-               if not initial and s not in NO_DATA and s != 'none' and _in(d, t)]
-    out = []
-    for t, s in changes:
-        if out and t - out[-1][1] <= gap:
-            out[-1][1] = t
-            out[-1][2].setdefault(app_label(s), 0)
-            out[-1][2][app_label(s)] += 1
-        else:
-            out.append([t, t, {app_label(s): 1}])
-    return [(a, b, 'PC（' + ', '.join(sorted(c, key=c.get, reverse=True)[:3]) + '）', 'pc')
-            for a, b, c in out]
+    rows = []
+    for pc in d.ent('pcs'):
+        changes = [(t, s) for t, s, initial in d.hist.get(pc['app'], ())
+                   if not initial and s not in NO_DATA and s != 'none' and _in(d, t)]
+        out = []
+        for t, s in changes:
+            if out and t - out[-1][1] <= gap:
+                out[-1][1] = t
+                out[-1][2].setdefault(app_label(s), 0)
+                out[-1][2][app_label(s)] += 1
+            else:
+                out.append([t, t, {app_label(s): 1}])
+        rows += [(a, b, f"PC {pc['name']}（" + ', '.join(sorted(c, key=c.get, reverse=True)[:3]) + '）', 'pc')
+                 for a, b, c in out]
+    return sorted(rows, key=lambda r: r[0])
 
 
 def items(d: DayData) -> list[tuple]:
