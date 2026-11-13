@@ -64,6 +64,10 @@ if [ "$DAYS_EXPLICIT" -eq 1 ]; then
 else
   step "Google Health" uv run python scripts/fetch_googlehealth.py --non-interactive
 fi
+# 運動の GPS 軌跡（TCX）。exercise.csv の has_gps=True を読むので Google Health の後。
+# 未取得のものを全部取り、Dawarich に未投入のものを上げる（Dawarich が落ちていれば翌日また上げる）
+step "運動の軌跡"     uv run python scripts/exercise_route.py fetch
+step "Dawarich 軌跡"  uv run python scripts/dawarich.py import-routes
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 # Hevy の export 取得。セッションの有無は Health Connect 経由で exercise.csv に
 # 入るが、部位別セット数の内訳は export にしか無い（Hevy に API は無い）

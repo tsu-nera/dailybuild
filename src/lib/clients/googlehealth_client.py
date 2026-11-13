@@ -28,6 +28,8 @@ import は束縛が固定されるため使わない）。
 認証情報:
   config/googlehealth_creds.json  OAuth クライアント（Cloud Console から取得）
   config/googlehealth_token.json  認可済みトークン（authorize() が生成）
+  config/googlehealth_location_token.json  運動の GPS 軌跡（TCX）用。location スコープを
+                                  日次の全取得のトークンに混ぜないよう分けてある
 """
 
 import datetime as dt
@@ -55,45 +57,53 @@ SCOPES = [
     f'{_SCOPE_PREFIX}.nutrition.readonly',
     f'{_SCOPE_PREFIX}.profile.readonly',
 ]
+# exportExerciseTcx は activity_and_fitness と location の両方を要求する
+LOCATION_TOKEN_FILE = BASE_DIR / 'config/googlehealth_location_token.json'
+LOCATION_SCOPES = [
+    f'{_SCOPE_PREFIX}.activity_and_fitness.readonly',
+    f'{_SCOPE_PREFIX}.location.readonly',
+]
 
 
 class GoogleHealthError(RuntimeError):
     """Google Health API 呼び出しの失敗"""
 
 
-def authorize(interactive: bool = True) -> Credentials:
+def authorize(interactive: bool = True, token_file: Path = TOKEN_FILE,
+              scopes: list[str] = SCOPES) -> Credentials:
     """
     認証済み Credentials を返す
 
     Args:
         interactive: トークンが無い/失効している場合にブラウザを開くか。
                      False なら GoogleHealthError を投げる（CI・cron 用）
+        token_file / scopes: 既定は日次取得のトークン。TCX 用は LOCATION_TOKEN_FILE / LOCATION_SCOPES
     """
     creds = None
-    if TOKEN_FILE.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+    if token_file.exists():
+        creds = Credentials.from_authorized_user_file(str(token_file), scopes)
 
     if creds and creds.valid:
         return creds
 
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
-        TOKEN_FILE.write_text(creds.to_json())
+        token_file.write_text(creds.to_json())
         return creds
 
     if not interactive:
         raise GoogleHealthError(
-            f'有効なトークンがない: {TOKEN_FILE}。'
+            f'有効なトークンがない: {token_file}。'
             'authorize(interactive=True) を対話環境で実行すること'
         )
 
     if not CREDS_FILE.exists():
         raise GoogleHealthError(f'OAuth クライアントがない: {CREDS_FILE}')
 
-    flow = InstalledAppFlow.from_client_secrets_file(str(CREDS_FILE), SCOPES)
+    flow = InstalledAppFlow.from_client_secrets_file(str(CREDS_FILE), scopes)
     # 同意画面が本番環境なら refresh token は無期限（テストモードだと7日で失効する）
     creds = flow.run_local_server(port=8080, access_type='offline', prompt='consent')
-    TOKEN_FILE.write_text(creds.to_json())
+    token_file.write_text(creds.to_json())
     return creds
 
 
