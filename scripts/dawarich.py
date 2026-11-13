@@ -9,6 +9,8 @@ Dawarich をやめても data/ だけで作り直せることを保つ。
 import-routes: 位置のファイル（ROUTE_GLOBS）のうち Dawarich に未投入のものを HTTP API で上げる。
   どのホストからでも流せる（日次は vaio）。宛先は .env の DAWARICH_URL / DAWARICH_API_KEY で、
   未設定なら warning だけで 0 終了する。二重投入の判定は import 名（＝ファイル名）。
+  GPSLogger の GPX は飛んだ network / fused の点を除いて（lib.gpslogger.drop_jumps）同じファイル名で上げる。
+  data/ の GPX は生のまま残す。
   上げた後、精度の高い軌跡（PRECISE_SUFFIXES の import）の時間帯にある他の点（GPSLogger・スマホのアプリ・
   Timeline）を mouse の Dawarich から消す。Dawarich は出どころに優先順位を持たず、1秒間隔の軌跡に数km 飛ぶ点が
   混ざって線が崩れるため。消える点の正本は data/ と Drive にあるので、Dawarich を作り直せば戻る。
@@ -48,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import pandas as pd
 
-from lib import timeline
+from lib import gpslogger, timeline
 from lib.clients import places_client
 from lib.clients.dawarich_client import DawarichClient, not_imported, overlapping_others, precise_imports
 from lib.dawarich import app_points, place_names
@@ -172,7 +174,7 @@ def cmd_import_routes(args) -> int:
             log.info('  %s', p.name)
             continue
         try:
-            result = client.upload(p)
+            result = upload_route(client, p)
         except Exception as exc:  # 1件の失敗で残りを止めない。翌日また上げる
             log.error('%s: %r', p.name, exc)
             failed += 1
@@ -184,6 +186,18 @@ def cmd_import_routes(args) -> int:
         log.error('軌跡の時間帯の点を消せなかった: %r', exc)
         failed += 1
     return 1 if failed else 0
+
+
+def upload_route(client: DawarichClient, path: Path) -> dict:
+    """GPX は飛びを除いた写しを同じファイル名で上げる（import 名を変えないため）。正本は書き換えない"""
+    if path.suffix.lower() != '.gpx':
+        return client.upload(path)
+    filtered, dropped = gpslogger.drop_jumps(path.read_bytes())
+    log.info('%s: 飛んだ点 %d 件を除いて上げる', path.name, dropped)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / path.name
+        tmp_path.write_bytes(filtered)
+        return client.upload(tmp_path)
 
 
 def remove_overlaps(client: DawarichClient, dry_run: bool) -> None:
