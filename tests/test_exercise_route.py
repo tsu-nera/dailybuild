@@ -67,3 +67,16 @@ def test_import_names_with_no_imports(monkeypatch):
     monkeypatch.setattr(dawarich_client.requests, 'get',
                         lambda url, headers, params, timeout: _Resp([], 0))
     assert DawarichClient('http://x', 'k').import_names() == set()
+
+
+def test_precise_imports_skips_gpx_and_unfinished():
+    # GPX は1日分を覆うので基準にすると1日中の他の点が消える
+    imports = [{'name': 'a.tcx', 'status': 'completed'}, {'name': 'b.tcx', 'status': 'processing'},
+               {'name': '2026-11-12.gpx', 'status': 'completed'}, {'name': 'Timeline.json', 'status': 'completed'}]
+    assert [i['name'] for i in dawarich_client.precise_imports(imports, ('.tcx',))] == ['a.tcx']
+
+
+def test_overlapping_others_keeps_every_base_point():
+    # 時間の重なる2本の軌跡（Fitbit とサイコン）が互いの点を消し合わないこと
+    window = [{'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
+    assert dawarich_client.overlapping_others(window, keep_ids={1, 3}) == [{'id': 2}, {'id': 4}]

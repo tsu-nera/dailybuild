@@ -9,6 +9,10 @@ Dawarich をやめても data/ だけで作り直せることを保つ。
 import-routes: 位置のファイル（ROUTE_GLOBS）のうち Dawarich に未投入のものを HTTP API で上げる。
   どのホストからでも流せる（日次は vaio）。宛先は .env の DAWARICH_URL / DAWARICH_API_KEY で、
   未設定なら warning だけで 0 終了する。二重投入の判定は import 名（＝ファイル名）。
+  上げた後、精度の高い軌跡（PRECISE_SUFFIXES の import）の時間帯にある他の点（GPSLogger・スマホのアプリ・
+  Timeline）を mouse の Dawarich から消す。Dawarich は出どころに優先順位を持たず、1秒間隔の軌跡に数km 飛ぶ点が
+  混ざって線が崩れるため。消える点の正本は data/ と Drive にあるので、Dawarich を作り直せば戻る。
+  GPX は1日分を覆うので基準にしない（基準にすると1日中の他の点が消える）。
 export-app-points: スマホの Dawarich アプリが送った点は Dawarich の DB にしか無いので、APP_POINTS へ写す。
   既存の行は消さない。公式アプリは記録係にしない方針（GPSLogger に移行）なので日次には入れず、
   アプリを止めるときに手で流す。アプリが送っている先のホストで実行する（rails runner）。
@@ -46,7 +50,7 @@ import pandas as pd
 
 from lib import timeline
 from lib.clients import places_client
-from lib.clients.dawarich_client import DawarichClient, not_imported
+from lib.clients.dawarich_client import DawarichClient, not_imported, overlapping_others, precise_imports
 from lib.dawarich import app_points, place_names
 from lib.utils.env import get_env, require_env
 from lib.utils.private_data import ensure_dir, require_private_path
@@ -63,6 +67,10 @@ ROUTE_GLOBS = [
     'data/googlehealth/tcx/*.tcx',  # Fitbit の GPS 付き運動（exercise_route.py fetch）
     'data/gpslogger/*.gpx',         # GPSLogger の1日1ファイル、前日まで（gpslogger.py fetch）
 ]
+# 時間帯の基準にする import 名の拡張子。サイコンの FIT を足したらここにも足す
+PRECISE_SUFFIXES = ('.tcx',)
+# 基準の時間帯にあっても消さない import の source。Swarm はチェックインという出来事の点で、位置の精度の問題ではない
+KEEP_SOURCES = {'swarm'}
 APP_POINTS = BASE_DIR / 'data' / 'dawarich' / 'app_points.csv'
 # Place Details の日次上限 200 のうち、vaio の timeline.py names（最大100）のぶんを残す
 MAX_API_CALLS = 100
@@ -158,12 +166,11 @@ def cmd_import_routes(args) -> int:
     client = DawarichClient(url, api_key)
     targets = not_imported(files, client.import_names())
     log.info('軌跡ファイル %d 件のうち Dawarich に未投入 %d 件', len(files), len(targets))
-    if args.dry_run:
-        for p in targets:
-            log.info('  %s', p.name)
-        return 0
     failed = 0
     for p in targets:
+        if args.dry_run:
+            log.info('  %s', p.name)
+            continue
         try:
             result = client.upload(p)
         except Exception as exc:  # 1件の失敗で残りを止めない。翌日また上げる
@@ -171,7 +178,33 @@ def cmd_import_routes(args) -> int:
             failed += 1
             continue
         log.info('%s -> import %s (%s)', p.name, result.get('id'), result.get('status'))
+    try:
+        remove_overlaps(client, args.dry_run)
+    except Exception as exc:
+        log.error('軌跡の時間帯の点を消せなかった: %r', exc)
+        failed += 1
     return 1 if failed else 0
+
+
+def remove_overlaps(client: DawarichClient, dry_run: bool) -> None:
+    imports = client.imports()
+    bases = precise_imports(imports, PRECISE_SUFFIXES)
+    base_points = {i['id']: client.points(import_id=i['id'], slim=True) for i in bases}
+    keep_ids = {pt['id'] for pts in base_points.values() for pt in pts}
+    for imp in imports:
+        if imp['source'] in KEEP_SOURCES:
+            keep_ids |= {pt['id'] for pt in client.points(import_id=imp['id'], slim=True)}
+    removed = set()
+    for imp in bases:
+        pts = base_points[imp['id']]
+        if not pts:
+            continue
+        window = client.points(start_at=min(pt['timestamp'] for pt in pts),
+                               end_at=max(pt['timestamp'] for pt in pts), slim=True)
+        removed |= {pt['id'] for pt in overlapping_others(window, keep_ids)}
+    log.info('軌跡 %d 本の時間帯にある他の点: %d 件', len(bases), len(removed))
+    if removed and not dry_run:
+        log.info('消した点: %d 件', client.delete_points(sorted(removed)))
 
 
 def cmd_export_app_points(args) -> int:
