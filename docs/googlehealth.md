@@ -98,6 +98,21 @@ uv run python scripts/fetch_googlehealth.py --endpoint activity \
   OUTDOOR_BIKE は 1/530、BIKING は 44/140、WEIGHTS・STRENGTH_TRAINING は
   0/43・0/44。レポートはサイクリングの距離を出さない（docs/reports.md 参照）
 
+### GPS 軌跡（TCX）
+
+`exercise_route.py fetch` が `exportExerciseTcx`（`?alt=media` で TCX の生 XML）を
+`data/googlehealth/tcx/<開始日>_<id>.tcx` に1運動1ファイルで置く。Dawarich へは
+`dawarich.py import-routes` が上げる（日次は両方）。
+
+- **軌跡があるのは `has_gps=True` の行だけ**（Fitbit の自転車モードなど手動開始）。
+  自動検出の OUTDOOR_BIKE と HEALTH_CONNECT 側には位置が無い
+- **`location.readonly` スコープが要る**（`activity_and_fitness` と両方。片方だと
+  403 `MISSING_OAUTH_SCOPE`）。日次取得のトークンには混ぜず、
+  `config/googlehealth_location_token.json` に分けてある
+- 取り直さない（ファイルがあれば飛ばす）。記録を後から編集したら TCX を消して取り直す
+- Dawarich の import 名はファイル名のまま。同名で POST すると Dawarich は時刻を足した
+  別名で受け付けるので、上げる前に `GET /api/v1/imports` の名前と突き合わせる
+
 ## カフェイン摂取
 
 ソースは Caffeine Clock（`com.AWSoft.CaffeineClock`、Android）が Health Connect に

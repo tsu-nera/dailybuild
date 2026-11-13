@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Dawarich（位置のライフログ、#290）の後始末 CLI（name-places）
+Dawarich（位置のライフログ、#290）の CLI（import-routes / name-places）
 
-Dawarich の DB は取り込み直すたびに作り直されるので、手で直さずにこれを流し直す。
-Dawarich が動いているホスト（mouse）の dailybuild で実行する（docker compose で app コンテナに入る）。
+import-routes: 運動の軌跡ファイル（ROUTE_GLOBS）のうち Dawarich に未投入のものを HTTP API で上げる。
+  どのホストからでも流せる（日次は vaio）。宛先は .env の DAWARICH_URL / DAWARICH_API_KEY で、
+  未設定なら warning だけで 0 終了する。二重投入の判定は import 名（＝ファイル名）。
+name-places: Dawarich の DB は取り込み直すたびに作り直されるので、手で直さずにこれを流し直す。
+  Dawarich が動いているホストの dailybuild で実行する（docker compose で app コンテナに入る）。
 
 Usage:
+    python scripts/dawarich.py import-routes --dry-run   # 上げるファイルだけ出す
+    python scripts/dawarich.py import-routes             # 未投入の軌跡を上げる
     python scripts/dawarich.py name-places --dry-run   # 何件に名前が付き、何件 Places API を引くかだけ出す
     python scripts/dawarich.py name-places             # Unknown の Place を改名して名前を固定する
     python scripts/dawarich.py name-places --max-api 50  # Places API を呼ぶ回数の上限（既定 MAX_API_CALLS）
@@ -34,8 +39,9 @@ import pandas as pd
 
 from lib import timeline
 from lib.clients import places_client
+from lib.clients.dawarich_client import DawarichClient, not_imported
 from lib.dawarich import place_names
-from lib.utils.env import require_env
+from lib.utils.env import get_env, require_env
 
 BASE_DIR = Path(__file__).parent.parent
 COMPOSE_DIR = BASE_DIR / 'scripts' / 'ops' / 'dawarich'
@@ -44,6 +50,10 @@ OVERRIDES_YAML = BASE_DIR / 'config' / 'private' / 'dawarich_place_names.yaml'
 PLACES_CSV = BASE_DIR / 'data' / 'timeline' / 'places.csv'
 VISITS_CSV = BASE_DIR / 'data' / 'timeline' / 'visits.csv'
 RESULT_PREFIX = 'RESULT_JSON:'
+# Dawarich が読める軌跡ファイル（Tcx::Importer / Fit::Importer）。取得元を足したらここに1行足す
+ROUTE_GLOBS = [
+    'data/googlehealth/tcx/*.tcx',  # Fitbit の GPS 付き運動（exercise_route.py fetch）
+]
 # Place Details の日次上限 200 のうち、vaio の timeline.py names（最大100）のぶんを残す
 MAX_API_CALLS = 100
 
@@ -129,10 +139,39 @@ def cmd_name_places(args) -> int:
     return 1 if failed else 0
 
 
+def cmd_import_routes(args) -> int:
+    files = [p for pattern in ROUTE_GLOBS for p in BASE_DIR.glob(pattern)]
+    url, api_key = get_env('DAWARICH_URL'), get_env('DAWARICH_API_KEY')
+    if not url or not api_key:
+        log.warning('DAWARICH_URL / DAWARICH_API_KEY が .env に無いので上げない（軌跡ファイル %d 件）', len(files))
+        return 0
+    client = DawarichClient(url, api_key)
+    targets = not_imported(files, client.import_names())
+    log.info('軌跡ファイル %d 件のうち Dawarich に未投入 %d 件', len(files), len(targets))
+    if args.dry_run:
+        for p in targets:
+            log.info('  %s', p.name)
+        return 0
+    failed = 0
+    for p in targets:
+        try:
+            result = client.upload(p)
+        except Exception as exc:  # 1件の失敗で残りを止めない。翌日また上げる
+            log.error('%s: %r', p.name, exc)
+            failed += 1
+            continue
+        log.info('%s -> import %s (%s)', p.name, result.get('id'), result.get('status'))
+    return 1 if failed else 0
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
     parser = argparse.ArgumentParser(description='Dawarich CLI')
     subparsers = parser.add_subparsers(dest='command', required=True)
+
+    p_routes = subparsers.add_parser('import-routes', help='未投入の運動の軌跡を上げる')
+    p_routes.add_argument('--dry-run', action='store_true', help='上げるファイルだけ出す')
+    p_routes.set_defaults(func=cmd_import_routes)
 
     p_names = subparsers.add_parser('name-places', help='Unknown の Place に名前を付ける')
     p_names.add_argument('--dry-run', action='store_true', help='件数だけ出して DB も API も触らない')
