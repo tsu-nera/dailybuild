@@ -22,7 +22,7 @@
       ],
       "asDropdown": true,
       "includeVars": false,
-      "keepTime": true
+      "keepTime": false
     },
     {
       "title": "お金",
@@ -32,7 +32,7 @@
       ],
       "asDropdown": true,
       "includeVars": false,
-      "keepTime": true
+      "keepTime": false
     },
     {
       "title": "暮らし",
@@ -42,7 +42,7 @@
       ],
       "asDropdown": true,
       "includeVars": false,
-      "keepTime": true
+      "keepTime": false
     }
   ],
   "description": "金融資産は MoneyForward ME の資産推移をそのまま出す（補正しない）。9口座の連携が切れていて構造的に過少、暗号資産は2023-04から手入力の固定値に近い（reports/money/history.md）。持ち物は「相場検索」を付けた物の中古相場（メルカリ SOLD 中央値）だけで、相場の無い物は合計に入れない。負債は未入力（0ではない）。",

@@ -1150,7 +1150,7 @@
       ],
       "asDropdown": true,
       "includeVars": false,
-      "keepTime": true
+      "keepTime": false
     },
     {
       "title": "お金",
@@ -1160,7 +1160,7 @@
       ],
       "asDropdown": true,
       "includeVars": false,
-      "keepTime": true
+      "keepTime": false
     },
     {
       "title": "暮らし",
@@ -1170,7 +1170,7 @@
       ],
       "asDropdown": true,
       "includeVars": false,
-      "keepTime": true
+      "keepTime": false
     }
   ]
 }
