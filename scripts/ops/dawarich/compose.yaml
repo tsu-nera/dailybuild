@@ -1,7 +1,7 @@
-# 位置のライフログの試用（#290）。正本は Drive の Timeline 書き出しと HA の CSV のままで、ここのデータは捨ててよい。起動は vaio で:
+# 位置のライフログ（#290 で採用、docs/dawarich.md）。正本は private の data/ で、ここの DB は作り直せる派生物。起動は mouse で:
 #   cd ~/repo/dailybuild/scripts/ops/dawarich && docker compose up -d
 # 公式 docker/docker-compose.yml（1.22.0）が元。自動更新しない。版を上げるときはリリースノートを読み、db をバックアップしてから
-# .env（git 外）に POSTGRES_PASSWORD と SECRET_KEY_BASE（openssl rand -hex 64）。vaio では DAWARICH_BIND=100.93.3.10
+# .env（git 外）に POSTGRES_PASSWORD と SECRET_KEY_BASE（openssl rand -hex 64）。DAWARICH_BIND は mouse の Tailscale IP
 # 開くときのホスト名（MagicDNS 名など）は .env の DAWARICH_HOSTS にカンマ区切りで足す。無いホスト名で開くと Rails が 403 で弾く
 services:
   app:

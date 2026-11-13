@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 """
-Dawarich（位置のライフログ、#290）の CLI（import-routes / export-app-points / capture-places / name-places）
+Dawarich（位置のライフログ、#290）の CLI（import-routes / capture-places / name-places）
 
 Dawarich の DB は派生物で、正本は private の data/ にある（TCX・GPSLogger の GPX・Swarm・Timeline の書き出し）。
 Dawarich をやめても data/ だけで作り直せることを保つ。
@@ -15,9 +15,6 @@ import-routes: 位置のファイル（ROUTE_GLOBS）のうち Dawarich に未�
   Timeline）を mouse の Dawarich から消す。Dawarich は出どころに優先順位を持たず、1秒間隔の軌跡に数km 飛ぶ点が
   混ざって線が崩れるため。消える点の正本は data/ と Drive にあるので、Dawarich を作り直せば戻る。
   GPX は1日分を覆うので基準にしない（基準にすると1日中の他の点が消える）。
-export-app-points: スマホの Dawarich アプリが送った点は Dawarich の DB にしか無いので、APP_POINTS へ写す。
-  既存の行は消さない。公式アプリは記録係にしない方針（GPSLogger に移行）なので日次には入れず、
-  アプリを止めるときに手で流す。アプリが送っている先のホストで実行する（rails runner）。
 capture-places: Place の名前・merge・アーカイブは本人が Dawarich の UI で直す。その判断を外部 ID ごとに
   PLACE_LEDGER へ写す（日次、vaio）。merge で消えた外部 ID は、前回写した Visit の今の Place から統合先を推定する
   （lib.dawarich.place_ledger）。.env の DAWARICH_SSH_HOST（Dawarich が動くホスト）へ ssh して rails runner を流し、
@@ -31,7 +28,6 @@ name-places: Dawarich の DB は取り込み直すたびに作り直されるの
 Usage:
     python scripts/dawarich.py import-routes --dry-run   # 上げるファイルだけ出す
     python scripts/dawarich.py import-routes             # 未投入の軌跡を上げる
-    python scripts/dawarich.py export-app-points         # アプリの点を data/dawarich/app_points.csv へ写す
     python scripts/dawarich.py capture-places          # UI で直した Place を data/dawarich/places.csv へ写す
     python scripts/dawarich.py name-places --dry-run   # 何件に名前が付き、何件 Places API を引くかだけ出す
     python scripts/dawarich.py name-places             # Unknown の Place を改名して名前を固定する
@@ -62,7 +58,7 @@ import pandas as pd
 from lib import gpslogger, timeline
 from lib.clients import places_client
 from lib.clients.dawarich_client import DawarichClient, not_imported, overlapping_others, precise_imports
-from lib.dawarich import app_points, place_ledger, place_names
+from lib.dawarich import place_ledger, place_names
 from lib.utils.env import get_env, require_env
 from lib.utils.private_data import ensure_dir, require_private_path
 
@@ -86,7 +82,6 @@ ROUTE_GLOBS = [
 PRECISE_SUFFIXES = ('.tcx', '.fit')
 # 基準の時間帯にあっても消さない import の source。Swarm はチェックインという出来事の点で、位置の精度の問題ではない
 KEEP_SOURCES = {'swarm'}
-APP_POINTS = BASE_DIR / 'data' / 'dawarich' / 'app_points.csv'
 # Place Details の日次上限 200 のうち、vaio の timeline.py names（最大100）のぶんを残す
 MAX_API_CALLS = 100
 
@@ -289,17 +284,6 @@ def remove_overlaps(client: DawarichClient, dry_run: bool) -> None:
         log.info('消した点: %d 件', client.delete_points(sorted(removed)))
 
 
-def cmd_export_app_points(args) -> int:
-    rows = rails_runner(RAILS_DIR / 'app_points.rb')
-    path = require_private_path(APP_POINTS)
-    ensure_dir(path.parent)
-    before = len(pd.read_csv(path, dtype=str)) if path.exists() else 0
-    merged = app_points.merge(rows, path)
-    merged.to_csv(path, index=False)
-    log.info('アプリの点: Dawarich %d 件 / CSV %d -> %d 件（%s）', len(rows), before, len(merged), path)
-    return 0
-
-
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format='%(message)s', stream=sys.stderr)
     parser = argparse.ArgumentParser(description='Dawarich CLI')
@@ -308,9 +292,6 @@ def main() -> None:
     p_routes = subparsers.add_parser('import-routes', help='未投入の運動の軌跡を上げる')
     p_routes.add_argument('--dry-run', action='store_true', help='上げるファイルだけ出す')
     p_routes.set_defaults(func=cmd_import_routes)
-
-    p_app = subparsers.add_parser('export-app-points', help='アプリの点を private へ写す')
-    p_app.set_defaults(func=cmd_export_app_points)
 
     p_capture = subparsers.add_parser('capture-places', help='UI で直した Place を private へ写す')
     p_capture.set_defaults(func=cmd_capture_places)
