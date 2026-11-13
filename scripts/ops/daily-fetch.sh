@@ -67,6 +67,8 @@ fi
 # 運動の GPS 軌跡（TCX）。exercise.csv の has_gps=True を読むので Google Health の後。
 # 未取得のものを全部取り、Dawarich に未投入のものを上げる（Dawarich が落ちていれば翌日また上げる）
 step "運動の軌跡"     uv run python scripts/exercise_route.py fetch
+# GPSLogger の GPX（Syncthing で vaio に届く）を前日分まで private へ。Dawarich へ上げるより前
+step "GPSLogger"     uv run python scripts/gpslogger.py fetch
 step "Dawarich 軌跡"  uv run python scripts/dawarich.py import-routes
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 # Hevy の export 取得。セッションの有無は Health Connect 経由で exercise.csv に
