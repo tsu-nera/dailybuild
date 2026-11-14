@@ -52,6 +52,7 @@ NUTRITION_CSV = project_root / 'data/wearable/nutrition.csv'
 EXERCISE_CSV = project_root / 'data/googlehealth/exercise.csv'
 CSV_DIR = project_root / 'reports/dashboard'
 TOGGL_FOCUS_CSV = project_root / 'data/toggl/focus_entries.csv'
+METRICS_DAILY_CSV = project_root / 'reports/metrics_daily.csv'  # journal_skeleton.py が日次で全上書き
 SATORU_SESSION_LOG = meditation.SATORU_SESSION_LOG
 CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
 PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
@@ -381,7 +382,7 @@ def asset_tables() -> dict[str, list[dict]]:
 def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
     if not SATORU_SESSION_LOG.exists():
         raise SystemExit(f'{SATORU_SESSION_LOG} が無い（satoru を clone する）')
-    muse = meditation.build_muse(SATORU_SESSION_LOG)
+    muse = meditation.build_muse(SATORU_SESSION_LOG, require_private_path(METRICS_DAILY_CSV))
     return {**meditation.build(require_private_path(TOGGL_FOCUS_CSV), today), 'meditation_muse': muse,
             'meditation_eval': meditation.build_eval(muse)}
 

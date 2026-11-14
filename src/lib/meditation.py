@@ -34,7 +34,7 @@ SATORU_SESSION_LOG = Path.home() / 'repo/satoru/logs/session_log.csv'
 DAILY_COLUMNS = ['date', 'sessions', 'total_min']
 WEEK_COLUMNS = ['week_start', 'week', 'sessions', 'days', 'total_min']
 NOW_COLUMNS = WEEK_COLUMNS + [f'prev_{c}' for c in WEEK_COLUMNS]
-MUSE_COLUMNS = ['start', 'date', 'meditation_type', 'duration_min', 'focus_rating', 'drowsiness_rating',
+MUSE_COLUMNS = ['start', 'date', 'meditation_type', 'duration_min', 'focus_rating', 'drowsiness_rating', 'sleep_hours',
                 'tp_alpha_db_first', 'tp_alpha_db_last', 'tp_alpha_db_change',
                 'tp_delta_db_first', 'tp_delta_db_last', 'tp_delta_db_change', 'artifact_reject_pct',
                 # レポートの要約の数字（回をまたいで並べる用）。HRV・呼吸は SelfLoops を着けた日だけ値がある
@@ -92,13 +92,19 @@ def build(focus_csv: Path, today: dt.date) -> dict[str, list[dict]]:
             'meditation_weeks': weeks, 'meditation_now': now}
 
 
-def build_muse(session_log_csv: Path) -> list[dict]:
-    """satoru の session_log から Muse の回の結果を新しい順に。change は終わり − 入り（dB）。欠測は空"""
+def build_muse(session_log_csv: Path, metrics_daily_csv: Path) -> list[dict]:
+    """satoru の session_log から Muse の回の結果を新しい順に。change は終わり − 入り（dB）。欠測は空
+
+    sleep_hours は metrics_daily の同じ日付の値。metrics_daily の日付は起床日（Fitbit の dateOfSleep）なので、
+    朝の回ならその朝に明けた夜の睡眠になる（夕方の回も同じ夜を指す）
+    """
     df = pd.read_csv(session_log_csv, dtype={'pipeline_version': str})
     df = df[df['pipeline_version'].notna()].copy()
     start = pd.to_datetime(df['timestamp'])
     df['start'] = start.dt.strftime('%Y-%m-%d %H:%M')
     df['date'] = start.dt.date.astype(str)
+    sleep = pd.read_csv(metrics_daily_csv, usecols=['date', 'sleep_hours'], dtype={'date': str})
+    df = df.merge(sleep, on='date', how='left')
     df['tp_alpha_db_change'] = df['tp_alpha_db_last'] - df['tp_alpha_db_first']
     df['tp_delta_db_change'] = df['tp_delta_db_last'] - df['tp_delta_db_first']
     df = df.sort_values('start', ascending=False)[MUSE_COLUMNS].round(2).astype(object)
