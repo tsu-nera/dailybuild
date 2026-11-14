@@ -1,0 +1,863 @@
+{
+  "uid": "early-rising",
+  "title": "早起き",
+  "tags": [
+    "dailybuild",
+    "habits"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schemaVersion": 41,
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "← 週の目標",
+      "type": "link",
+      "url": "/d/goals",
+      "keepTime": false
+    },
+    {
+      "title": "健康",
+      "type": "dashboards",
+      "tags": [
+        "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "習慣",
+      "type": "dashboards",
+      "tags": [
+        "habits"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "今週の合計",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/current.csv",
+          "columns": [
+            {
+              "selector": "total_h",
+              "text": "合計 h",
+              "type": "number"
+            },
+            {
+              "selector": "goal_h",
+              "text": "目安 h",
+              "type": "number"
+            },
+            {
+              "selector": "gap_h",
+              "text": "差 h",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "description": "目安は記録のある夜 × 7h。欠測の夜は足さない。今日の行は途中"
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "1晩の平均 (h)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/current.csv",
+          "columns": [
+            {
+              "selector": "avg_h",
+              "text": "今週",
+              "type": "number"
+            },
+            {
+              "selector": "prev_avg_h",
+              "text": "先週",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "睡眠負債 (h)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/current.csv",
+          "columns": [
+            {
+              "selector": "debt_end_h",
+              "text": "今週末",
+              "type": "number"
+            },
+            {
+              "selector": "prev_debt_end_h",
+              "text": "先週末",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "平日の入床（達成/対象日）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/current.csv",
+          "columns": [
+            {
+              "selector": "bed_hit",
+              "text": "今週 達成",
+              "type": "number"
+            },
+            {
+              "selector": "bed_n",
+              "text": "今週 対象",
+              "type": "number"
+            },
+            {
+              "selector": "prev_bed_hit",
+              "text": "先週 達成",
+              "type": "number"
+            },
+            {
+              "selector": "prev_bed_n",
+              "text": "先週 対象",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "平日の離床（達成/対象日）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/current.csv",
+          "columns": [
+            {
+              "selector": "rise_hit",
+              "text": "今週 達成",
+              "type": "number"
+            },
+            {
+              "selector": "rise_n",
+              "text": "今週 対象",
+              "type": "number"
+            },
+            {
+              "selector": "prev_rise_hit",
+              "text": "先週 達成",
+              "type": "number"
+            },
+            {
+              "selector": "prev_rise_n",
+              "text": "先週 対象",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "目標と更新",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/status.csv",
+          "columns": [
+            {
+              "selector": "bed_target",
+              "text": "入床",
+              "type": "string"
+            },
+            {
+              "selector": "rise_target",
+              "text": "離床",
+              "type": "string"
+            },
+            {
+              "selector": "debt_target_h",
+              "text": "負債 h",
+              "type": "number"
+            },
+            {
+              "selector": "last_hevy_date",
+              "text": "Hevy 最終取り込み",
+              "type": "string"
+            },
+            {
+              "selector": "last_sleep_date",
+              "text": "睡眠の最終",
+              "type": "string"
+            },
+            {
+              "selector": "generated_at",
+              "text": "更新",
+              "type": "string"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "—"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 16
+        }
+      },
+      "description": "config/targets.yaml の値と、データの更新時刻（status.csv）"
+    },
+    {
+      "id": 7,
+      "type": "barchart",
+      "title": "夜ごとの睡眠時間（直近4週・h）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/nights.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "日付",
+              "type": "string"
+            },
+            {
+              "selector": "sleep_h",
+              "text": "睡眠 h",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "min": 0,
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              },
+              {
+                "color": "text",
+                "value": 7
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "xTickLabelRotation": -45,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        },
+        "xField": "日付"
+      },
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "日付",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 28
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "日付",
+                "desc": false
+              }
+            ]
+          }
+        }
+      ],
+      "description": "点線は 7h の固定の参照線（status.csv の sleep_per_night_h と同じ値）。欠測の夜は棒なし"
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "今週の夜（直近7行）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/nights.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "日付",
+              "type": "string"
+            },
+            {
+              "selector": "bed",
+              "text": "入床",
+              "type": "string"
+            },
+            {
+              "selector": "rise",
+              "text": "離床",
+              "type": "string"
+            },
+            {
+              "selector": "sleep_h",
+              "text": "睡眠 h",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "transformations": [
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "日付",
+                "desc": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "limit",
+          "options": {
+            "limitField": 7
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "日付": 0,
+              "入床": 1,
+              "離床": 2,
+              "睡眠 h": 3
+            }
+          }
+        }
+      ],
+      "description": "今日の行は途中。空欄は欠測"
+    },
+    {
+      "id": 9,
+      "type": "barchart",
+      "title": "週ごとの1晩の平均 (h)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/weeks.csv",
+          "columns": [
+            {
+              "selector": "week",
+              "text": "週",
+              "type": "string"
+            },
+            {
+              "selector": "avg_h",
+              "text": "平均 h",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "xTickLabelRotation": -45,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        },
+        "xField": "週"
+      }
+    },
+    {
+      "id": 10,
+      "type": "barchart",
+      "title": "週末の睡眠負債 (h)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/weeks.csv",
+          "columns": [
+            {
+              "selector": "week",
+              "text": "週",
+              "type": "string"
+            },
+            {
+              "selector": "debt_end_h",
+              "text": "負債 h",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "xTickLabelRotation": -45,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        },
+        "xField": "週"
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

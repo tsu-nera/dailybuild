@@ -84,7 +84,13 @@
         "graphMode": "none",
         "textMode": "value_and_name"
       },
-      "description": "目安は記録のある夜 × 7h。欠測の夜は足さない。今日の行は途中"
+      "description": "目安は記録のある夜 × 7h。欠測の夜は足さない。今日の行は途中",
+      "links": [
+        {
+          "title": "早起き",
+          "url": "/d/early-rising"
+        }
+      ]
     },
     {
       "id": 2,
@@ -150,7 +156,13 @@
         "colorMode": "none",
         "graphMode": "none",
         "textMode": "value_and_name"
-      }
+      },
+      "links": [
+        {
+          "title": "早起き",
+          "url": "/d/early-rising"
+        }
+      ]
     },
     {
       "id": 3,
@@ -216,7 +228,13 @@
         "colorMode": "none",
         "graphMode": "none",
         "textMode": "value_and_name"
-      }
+      },
+      "links": [
+        {
+          "title": "早起き",
+          "url": "/d/early-rising"
+        }
+      ]
     },
     {
       "id": 4,
@@ -292,7 +310,13 @@
         "colorMode": "none",
         "graphMode": "none",
         "textMode": "value_and_name"
-      }
+      },
+      "links": [
+        {
+          "title": "早起き",
+          "url": "/d/early-rising"
+        }
+      ]
     },
     {
       "id": 5,
@@ -368,7 +392,13 @@
         "colorMode": "none",
         "graphMode": "none",
         "textMode": "value_and_name"
-      }
+      },
+      "links": [
+        {
+          "title": "早起き",
+          "url": "/d/early-rising"
+        }
+      ]
     },
     {
       "id": 6,
@@ -462,134 +492,18 @@
       "description": "config/targets.yaml の値と、データの更新時刻（status.csv）"
     },
     {
-      "id": 7,
-      "type": "barchart",
-      "title": "夜ごとの睡眠時間（直近4週・h）",
+      "id": 14,
+      "type": "stat",
+      "title": "瞑想（今週）",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
       "gridPos": {
         "x": 0,
-        "y": 4,
-        "w": 16,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/nights.csv",
-          "columns": [
-            {
-              "selector": "date",
-              "text": "日付",
-              "type": "string"
-            },
-            {
-              "selector": "sleep_h",
-              "text": "睡眠 h",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          },
-          "min": 0,
-          "custom": {
-            "thresholdsStyle": {
-              "mode": "dashed"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              },
-              {
-                "color": "text",
-                "value": 7
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "xTickLabelRotation": -45,
-        "showValue": "auto",
-        "tooltip": {
-          "mode": "single"
-        },
-        "xField": "日付"
-      },
-      "transformations": [
-        {
-          "id": "sortBy",
-          "options": {
-            "sort": [
-              {
-                "field": "日付",
-                "desc": true
-              }
-            ]
-          }
-        },
-        {
-          "id": "limit",
-          "options": {
-            "limitField": 28
-          }
-        },
-        {
-          "id": "sortBy",
-          "options": {
-            "sort": [
-              {
-                "field": "日付",
-                "desc": false
-              }
-            ]
-          }
-        }
-      ],
-      "description": "点線は 7h の固定の参照線（status.csv の sleep_per_night_h と同じ値）。欠測の夜は棒なし"
-    },
-    {
-      "id": 8,
-      "type": "table",
-      "title": "今週の夜（直近7行）",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 16,
         "y": 4,
         "w": 8,
-        "h": 8
+        "h": 4
       },
       "targets": [
         {
@@ -602,110 +516,21 @@
           "source": "url",
           "parser": "backend",
           "format": "table",
-          "url": "http://files/nights.csv",
+          "url": "http://files/meditation_now.csv",
           "columns": [
             {
-              "selector": "date",
-              "text": "日付",
-              "type": "string"
-            },
-            {
-              "selector": "bed",
-              "text": "入床",
-              "type": "string"
-            },
-            {
-              "selector": "rise",
-              "text": "離床",
-              "type": "string"
-            },
-            {
-              "selector": "sleep_h",
-              "text": "睡眠 h",
+              "selector": "sessions",
+              "text": "回数",
               "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "minWidth": 60
-          }
-        },
-        "overrides": []
-      },
-      "options": {},
-      "transformations": [
-        {
-          "id": "sortBy",
-          "options": {
-            "sort": [
-              {
-                "field": "日付",
-                "desc": true
-              }
-            ]
-          }
-        },
-        {
-          "id": "limit",
-          "options": {
-            "limitField": 7
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "indexByName": {
-              "日付": 0,
-              "入床": 1,
-              "離床": 2,
-              "睡眠 h": 3
-            }
-          }
-        }
-      ],
-      "description": "今日の行は途中。空欄は欠測"
-    },
-    {
-      "id": 9,
-      "type": "barchart",
-      "title": "週ごとの1晩の平均 (h)",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 12,
-        "w": 12,
-        "h": 7
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/weeks.csv",
-          "columns": [
-            {
-              "selector": "week",
-              "text": "週",
-              "type": "string"
             },
             {
-              "selector": "avg_h",
-              "text": "平均 h",
+              "selector": "days",
+              "text": "日数",
+              "type": "number"
+            },
+            {
+              "selector": "total_min",
+              "text": "合計 分",
               "type": "number"
             }
           ],
@@ -718,92 +543,30 @@
         "defaults": {
           "color": {
             "mode": "fixed",
-            "fixedColor": "blue"
+            "fixedColor": "text"
           },
-          "min": 0
+          "noValue": "—"
         },
         "overrides": []
       },
       "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "xTickLabelRotation": -45,
-        "showValue": "auto",
-        "tooltip": {
-          "mode": "single"
-        },
-        "xField": "週"
-      }
-    },
-    {
-      "id": 10,
-      "type": "barchart",
-      "title": "週末の睡眠負債 (h)",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 12,
-        "w": 12,
-        "h": 7
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/weeks.csv",
-          "columns": [
-            {
-              "selector": "week",
-              "text": "週",
-              "type": "string"
-            },
-            {
-              "selector": "debt_end_h",
-              "text": "負債 h",
-              "type": "number"
-            }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
           ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          },
-          "min": 0
+          "fields": "",
+          "values": false
         },
-        "overrides": []
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
       },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "xTickLabelRotation": -45,
-        "showValue": "auto",
-        "tooltip": {
-          "mode": "single"
-        },
-        "xField": "週"
-      }
+      "links": [
+        {
+          "title": "瞑想",
+          "url": "/d/meditation"
+        }
+      ]
     },
     {
       "id": 11,
@@ -815,7 +578,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 8,
         "w": 24,
         "h": 6
       },
@@ -879,150 +642,13 @@
             }
           }
         }
+      ],
+      "links": [
+        {
+          "title": "筋トレ",
+          "url": "/d/strength"
+        }
       ]
-    },
-    {
-      "id": 12,
-      "type": "barchart",
-      "title": "週ごとのセット数: $muscle",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 8,
-        "y": 19,
-        "w": 16,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/sets.csv",
-          "columns": [
-            {
-              "selector": "muscle",
-              "text": "muscle",
-              "type": "string"
-            },
-            {
-              "selector": "week",
-              "text": "週",
-              "type": "string"
-            },
-            {
-              "selector": "sets",
-              "text": "セット",
-              "type": "number"
-            },
-            {
-              "selector": "target",
-              "text": "目標",
-              "type": "number"
-            },
-            {
-              "selector": "axis_max",
-              "text": "軸",
-              "type": "number"
-            }
-          ],
-          "filterExpression": "muscle == \"${muscle}\"",
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "min": 0,
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          },
-          "custom": {
-            "thresholdsStyle": {
-              "mode": "dashed"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "xTickLabelRotation": -45,
-        "showValue": "auto",
-        "tooltip": {
-          "mode": "single"
-        },
-        "xField": "週"
-      },
-      "transformations": [
-        {
-          "id": "configFromData",
-          "options": {
-            "configRefId": "A",
-            "applyTo": {
-              "id": "byName",
-              "options": "セット"
-            },
-            "mappings": [
-              {
-                "fieldName": "目標",
-                "handlerKey": "threshold1",
-                "reducerId": "lastNotNull"
-              },
-              {
-                "fieldName": "週",
-                "handlerKey": "__ignore"
-              },
-              {
-                "fieldName": "セット",
-                "handlerKey": "__ignore"
-              },
-              {
-                "fieldName": "軸",
-                "handlerKey": "max",
-                "reducerId": "lastNotNull"
-              }
-            ]
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "目標": true,
-              "muscle": true,
-              "軸": true
-            }
-          }
-        }
-      ],
-      "repeat": "muscle",
-      "repeatDirection": "h",
-      "maxPerRow": 3,
-      "description": "点線が exercise_muscles.yaml の週目標（sets.csv の target）"
     },
     {
       "id": 13,
@@ -1034,7 +660,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 27,
+        "y": 14,
         "w": 24,
         "h": 12
       },
@@ -1090,53 +716,7 @@
     }
   ],
   "templating": {
-    "list": [
-      {
-        "name": "muscle",
-        "label": "部位",
-        "type": "query",
-        "datasource": {
-          "type": "yesoreyeram-infinity-datasource",
-          "uid": "dashboard-files"
-        },
-        "hide": 2,
-        "multi": true,
-        "includeAll": true,
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "refresh": 1,
-        "sort": 0,
-        "query": {
-          "queryType": "infinity",
-          "query": "",
-          "infinityQuery": {
-            "refId": "variable",
-            "type": "csv",
-            "source": "url",
-            "parser": "backend",
-            "format": "table",
-            "url": "http://files/sets_now.csv",
-            "url_options": {
-              "method": "GET"
-            },
-            "columns": [
-              {
-                "selector": "muscle",
-                "text": "muscle",
-                "type": "string"
-              }
-            ]
-          }
-        }
-      }
-    ]
+    "list": []
   },
   "annotations": {
     "list": []

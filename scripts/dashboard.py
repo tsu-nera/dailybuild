@@ -11,11 +11,12 @@ Artifact へは agent が添付ファイルとして上げ直す（スクリプ�
 freshness）としても reports/dashboard/ へ全上書きで書く（docs/grafana.md）。欠測は空セル。
 加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
 消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
-お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）を書く。
+お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）、
+瞑想の画面用の meditation_{sessions,daily,weeks,now}.csv（lib/meditation.py）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
-    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets] [--weeks 8]
+    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,meditation] [--weeks 8]
                                       [--out tmp/dashboard/goals.json] [--csv-dir reports/dashboard]
         --only を省くと全グループ。指定したグループの CSV だけ作り直す（台帳を書いた直後・相場を引いた
         直後に Grafana へ反映する用。全体は約10秒）。--out の JSON は goals を作ったときだけ書く
@@ -33,7 +34,7 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import assets, consumables, exercise_source, hevy_csv  # noqa: E402
+from lib import assets, consumables, exercise_source, hevy_csv, meditation  # noqa: E402
 from lib.analytics import activity, body  # noqa: E402
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.analytics import workout  # noqa: E402
@@ -50,6 +51,7 @@ SPO2_CSV = project_root / 'data/wearable/spo2.csv'
 NUTRITION_CSV = project_root / 'data/wearable/nutrition.csv'
 EXERCISE_CSV = project_root / 'data/googlehealth/exercise.csv'
 CSV_DIR = project_root / 'reports/dashboard'
+TOGGL_FOCUS_CSV = project_root / 'data/toggl/focus_entries.csv'
 CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
 PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
 STOCKTAKE_CSV = project_root / 'data/inventory/stocktake.csv'
@@ -97,6 +99,11 @@ COLUMNS = {
     'assets': assets.ASSET_COLUMNS,
     'assets_now': assets.ASSET_COLUMNS,
     'goods': assets.GOODS_COLUMNS,
+    # 瞑想の画面（lib/meditation.py）。meditation_now は今週の1行（先週は prev_ 接頭辞）
+    'meditation_sessions': meditation.SESSION_COLUMNS,
+    'meditation_daily': meditation.DAILY_COLUMNS,
+    'meditation_weeks': meditation.WEEK_COLUMNS,
+    'meditation_now': meditation.NOW_COLUMNS,
 }
 
 
@@ -367,12 +374,17 @@ def asset_tables() -> dict[str, list[dict]]:
     return {'assets': rows, 'assets_now': rows[-1:], 'goods': goods}
 
 
+def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
+    return meditation.build(require_private_path(TOGGL_FOCUS_CSV), today)
+
+
 # 画面ごとの表のまとまり。新しい画面はここに1グループ足す（サブコマンドを増やさない）
 GROUPS = {
     'goals': lambda today, weeks: build_tables(today, weeks),
     'daily': lambda today, weeks: {'daily': build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)},
     'consumables': lambda today, weeks: consumable_tables(today),
     'assets': lambda today, weeks: asset_tables(),
+    'meditation': lambda today, weeks: meditation_tables(today),
 }
 
 

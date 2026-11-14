@@ -1,0 +1,337 @@
+{
+  "uid": "strength",
+  "title": "筋トレ",
+  "tags": [
+    "dailybuild",
+    "habits"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schemaVersion": 41,
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "← 週の目標",
+      "type": "link",
+      "url": "/d/goals",
+      "keepTime": false
+    },
+    {
+      "title": "健康",
+      "type": "dashboards",
+      "tags": [
+        "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "習慣",
+      "type": "dashboards",
+      "tags": [
+        "habits"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 11,
+      "type": "table",
+      "title": "今週の部位別セット数",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/sets_now.csv",
+          "columns": [
+            {
+              "selector": "muscle",
+              "text": "部位",
+              "type": "string"
+            },
+            {
+              "selector": "sets",
+              "text": "実施",
+              "type": "number"
+            },
+            {
+              "selector": "target",
+              "text": "目標",
+              "type": "number"
+            },
+            {
+              "selector": "remaining",
+              "text": "残り",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {},
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "部位": 0,
+              "実施": 1,
+              "目標": 2,
+              "残り": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "barchart",
+      "title": "週ごとのセット数: $muscle",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/sets.csv",
+          "columns": [
+            {
+              "selector": "muscle",
+              "text": "muscle",
+              "type": "string"
+            },
+            {
+              "selector": "week",
+              "text": "週",
+              "type": "string"
+            },
+            {
+              "selector": "sets",
+              "text": "セット",
+              "type": "number"
+            },
+            {
+              "selector": "target",
+              "text": "目標",
+              "type": "number"
+            },
+            {
+              "selector": "axis_max",
+              "text": "軸",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "muscle == \"${muscle}\"",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "xTickLabelRotation": -45,
+        "showValue": "auto",
+        "tooltip": {
+          "mode": "single"
+        },
+        "xField": "週"
+      },
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "configRefId": "A",
+            "applyTo": {
+              "id": "byName",
+              "options": "セット"
+            },
+            "mappings": [
+              {
+                "fieldName": "目標",
+                "handlerKey": "threshold1",
+                "reducerId": "lastNotNull"
+              },
+              {
+                "fieldName": "週",
+                "handlerKey": "__ignore"
+              },
+              {
+                "fieldName": "セット",
+                "handlerKey": "__ignore"
+              },
+              {
+                "fieldName": "軸",
+                "handlerKey": "max",
+                "reducerId": "lastNotNull"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "目標": true,
+              "muscle": true,
+              "軸": true
+            }
+          }
+        }
+      ],
+      "repeat": "muscle",
+      "repeatDirection": "h",
+      "maxPerRow": 3,
+      "description": "点線が exercise_muscles.yaml の週目標（sets.csv の target）"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "muscle",
+        "label": "部位",
+        "type": "query",
+        "datasource": {
+          "type": "yesoreyeram-infinity-datasource",
+          "uid": "dashboard-files"
+        },
+        "hide": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 1,
+        "sort": 0,
+        "query": {
+          "queryType": "infinity",
+          "query": "",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "csv",
+            "source": "url",
+            "parser": "backend",
+            "format": "table",
+            "url": "http://files/sets_now.csv",
+            "url_options": {
+              "method": "GET"
+            },
+            "columns": [
+              {
+                "selector": "muscle",
+                "text": "muscle",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

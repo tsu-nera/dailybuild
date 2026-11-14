@@ -1,0 +1,386 @@
+{
+  "uid": "meditation",
+  "title": "瞑想",
+  "tags": [
+    "dailybuild",
+    "habits"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 41,
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-90d",
+    "to": "now+1d"
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "← 週の目標",
+      "type": "link",
+      "url": "/d/goals",
+      "keepTime": false
+    },
+    {
+      "title": "健康",
+      "type": "dashboards",
+      "tags": [
+        "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "習慣",
+      "type": "dashboards",
+      "tags": [
+        "habits"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "1日ごとの瞑想時間 (分)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/meditation_daily.csv",
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "total_min",
+              "text": "分",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Toggl Focus の「瞑想」（Google Health の MEDITATE / YOGA は toggl push で入る）。記録の無い日・週は0。今日は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "週ごとの合計 (分)",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/meditation_weeks.csv",
+          "columns": [
+            {
+              "selector": "week_start",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "total_min",
+              "text": "合計 分",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "週は月曜始まりで、棒は月曜の位置。Toggl Focus の「瞑想」（Google Health の MEDITATE / YOGA は toggl push で入る）。記録の無い日・週は0。今日は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "週ごとの回数",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/meditation_weeks.csv",
+          "columns": [
+            {
+              "selector": "week_start",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "sessions",
+              "text": "回数",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "pointSize": 4,
+            "showPoints": "always",
+            "spanNulls": false,
+            "barAlignment": 0,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "週は月曜始まりで、棒は月曜の位置。Toggl Focus の「瞑想」（Google Health の MEDITATE / YOGA は toggl push で入る）。記録の無い日・週は0。今日は途中。期間は右上の時間範囲で変える"
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "1回ごとの記録（全期間・新しい順）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/meditation_sessions.csv",
+          "columns": [
+            {
+              "selector": "start",
+              "text": "開始",
+              "type": "string"
+            },
+            {
+              "selector": "duration_min",
+              "text": "分",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}
