@@ -22,7 +22,7 @@ Usage:
     python scripts/toggl.py show --month 8
 
     python scripts/toggl.py push --days 2 --dry-run   # 投入予定を確認（APIを叩かない）
-    python scripts/toggl.py push --days 2             # Google Health睡眠・運動を 2.0 へ投入
+    python scripts/toggl.py push --days 2             # Google Health睡眠・運動と Muse の瞑想（satoru）を 2.0 へ投入
     python scripts/toggl.py push --since 2026-10-27   # 区切り日以降の一括投入
 
     python scripts/toggl.py start 読書                # プロジェクトを指定して計測開始

@@ -129,7 +129,7 @@ def test_focus_row_with_other_project_or_far_start_does_not_match():
 def test_dry_run_lists_pending_and_makes_no_api_call(tmp_path, monkeypatch):
     fake = FakeFocus(monkeypatch, tmp_path, fail_on_call=True)
     intervals = [_interval('100', *SLEEP), _interval('101', '2026-10-29T22:00:00', '2026-10-30T06:00:00')]
-    fake.csv_path.write_text('project_name,start\nSleep,2026-10-28 22:00:00\n')
+    fake.csv_path.write_text('project_name,start,stop\nSleep,2026-10-28 22:00:00,2026-10-29 06:00:00\n')
 
     result, _ = run_push(intervals, fake, dry_run=True)
 

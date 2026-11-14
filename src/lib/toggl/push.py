@@ -9,6 +9,9 @@ Google Health睡眠等をToggl 2.0（Focus）のタイムエントリとして�
 1. 台帳（data/toggl/focus_pushed.csv）に (source, source_id) があれば投入済み
 2. focus_entries.csv に、同じプロジェクト名で start の差が60秒以内のエントリがあれば投入済み
    （2026-10-27 の migrate でコピーされた分や、手で入れた分を二重にしない）
+3. skip_on_overlap の Interval（satoru_meditation）は、同じプロジェクトのエントリと区間が
+   1秒でも重なれば投入しない（同じ回が先に Fitbit の YOGA や手入力で入っていればそちらを残す。
+   端が接するだけなら重ならない扱い）
 
 Track 時代にあった「台帳にあるが CSV に居ないものを手動削除とみなして再投入する」
 経路は持たない（二重投入の事故が2回あった経路で、Focus には fetch 窓の記録も無い）。
@@ -55,6 +58,8 @@ class Interval:
     description: str
     project: str        # プロジェクト名。IDへの解決はpush側で行う
     tags: tuple[str, ...]
+    # True なら同じプロジェクトの既存エントリと区間が重なるだけで投入しない（後発のソース用）
+    skip_on_overlap: bool = False
 
 
 def load_push_config() -> dict:
@@ -97,11 +102,12 @@ def append_ledger(rows: list[dict]) -> None:
 
 
 def load_focus_entries_for_match(csv_path=None) -> pd.DataFrame | None:
-    """照合用に focus_entries.csv の project_name / start を読む。無ければ None"""
+    """照合用に focus_entries.csv の project_name / start / stop を読む。無ければ None"""
     csv_path = csv_path or focus.CSV_FILE
     if not csv_path.exists():
         return None
-    return pd.read_csv(csv_path, usecols=['project_name', 'start'], parse_dates=['start'])
+    return pd.read_csv(csv_path, usecols=['project_name', 'start', 'stop'],
+                       parse_dates=['start', 'stop'])
 
 
 def drop_before_cutover(intervals: list[Interval]) -> tuple[list[Interval], int]:
@@ -111,10 +117,21 @@ def drop_before_cutover(intervals: list[Interval]) -> tuple[list[Interval], int]
     return kept, len(intervals) - len(kept)
 
 
-def _matches_existing(interval: Interval, starts_by_project: dict[str, list[pd.Timestamp]]) -> bool:
-    start = pd.Timestamp(interval.start.astimezone(toggl_store.JST).replace(tzinfo=None))
+def _jst_naive(t: dt.datetime) -> pd.Timestamp:
+    return pd.Timestamp(t.astimezone(toggl_store.JST).replace(tzinfo=None))
+
+
+def _matches_existing(interval: Interval, spans_by_project: dict[str, list[tuple]]) -> bool:
+    start = _jst_naive(interval.start)
     return any(abs((start - s).total_seconds()) <= MATCH_TOLERANCE_SEC
-               for s in starts_by_project.get(interval.project, ()))
+               for s, _ in spans_by_project.get(interval.project, ()))
+
+
+def _overlaps_existing(interval: Interval, spans_by_project: dict[str, list[tuple]]) -> bool:
+    """同じプロジェクトのエントリと区間が重なるか。端が接するだけは重ならない。stop 不明の行は見ない"""
+    start, stop = _jst_naive(interval.start), _jst_naive(interval.stop)
+    return any(pd.notna(e) and start < e and s < stop
+               for s, e in spans_by_project.get(interval.project, ()))
 
 
 def select_pending(
@@ -125,21 +142,24 @@ def select_pending(
     """投入対象の Interval と skip 件数を返す
 
     台帳にある、または focus_entries.csv に同じプロジェクト・60秒以内の start が
-    あるものは skip。focus_df が None（CSV 無し）のときは台帳だけで判定する。
+    あるものは skip。skip_on_overlap の Interval は同じプロジェクトのエントリと区間が
+    重なるだけでも skip。focus_df が None（CSV 無し）のときは台帳だけで判定する。
     """
     ledger_keys = set(zip(ledger_df['source'], ledger_df['source_id'].astype(str))) \
         if not ledger_df.empty else set()
 
-    starts_by_project: dict[str, list[pd.Timestamp]] = {}
+    spans_by_project: dict[str, list[tuple]] = {}
     if focus_df is not None and not focus_df.empty:
-        for name, start in zip(focus_df['project_name'], focus_df['start']):
-            starts_by_project.setdefault(name, []).append(start)
+        stops = focus_df['stop'] if 'stop' in focus_df else [pd.NaT] * len(focus_df)
+        for name, start, stop in zip(focus_df['project_name'], focus_df['start'], stops):
+            spans_by_project.setdefault(name, []).append((start, stop))
 
     pending = []
     skipped = 0
     for interval in intervals:
         if (interval.source, interval.source_id) in ledger_keys \
-                or _matches_existing(interval, starts_by_project):
+                or _matches_existing(interval, spans_by_project) \
+                or (interval.skip_on_overlap and _overlaps_existing(interval, spans_by_project)):
             skipped += 1
         else:
             pending.append(interval)
