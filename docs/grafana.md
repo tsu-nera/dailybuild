@@ -9,17 +9,17 @@ Claude のセッション無しにスマホから見る。claude.ai の Dashboar
 ジャンルごとのフォルダに分ける。JSON は `scripts/ops/grafana/dashboards/<ジャンル>/<uid>.json` に置き、ディレクトリ名がそのまま
 Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`）。フォルダはファイルの置き場所で決まるので、画面の UI では移さない。
 各画面はタグ `dailybuild` とジャンルのタグ（`health` / `habits` / `money` / `home`）を持ち、上部の「健康 ▾ 習慣 ▾ お金 ▾ 暮らし ▾」のドロップダウン
-（ジャンルのタグで引くリンク）で行き来する。リンクは `keepTime: false`（画面ごとに既定の期間が 6時間〜20年と違い、引き継ぐと週の目標の6時間で Mind 等の時系列が空になる）。画面を足すときはジャンルのディレクトリに置き、タグとリンクを既存の画面と揃える。
+（ジャンルのタグで引くリンク）で行き来する。リンクは `keepTime: false`（画面ごとに既定の期間が 6時間〜20年と違い、引き継ぐと目標の6時間で Mind 等の時系列が空になる）。画面を足すときはジャンルのディレクトリに置き、タグとリンクを既存の画面と揃える。
 ジャンルを足すときは全画面の `links` に1つ足す（ドロップダウンは画面ごとに持つ）。
 
 `habits` は習慣ごとの画面（瞑想・筋トレ・早起きなど）を置く場所で、`health` は体の状態（Body / Sleep / Mind）を見る場所。
-2026-11-14 に週の目標を `health` から移した（uid は変えていないので `/d/goals` のリンクはそのまま）。
+2026-11-14 に週の目標を `health` から移し、同じ日に「目標」へ改めた（月次の目標も置く場所にするため）。uid は `goals` のままなので `/d/goals` のリンクは変わらない。
 `goals` は毎日見る一覧で、習慣ごとの推移は個別の画面（weekly review で対話しながら見る）に置く。一覧と個別の画面は同じ CSV を読み、
-一覧には今週の値だけを置く。個別の画面は `links` の先頭に「← 週の目標」を持つ。習慣を足すときは個別の画面を作り、一覧に今週の値のパネルを1つ足してそこからリンクする。
+一覧には今週の値だけを置く。個別の画面は `links` の先頭に「← 目標」を持つ。習慣を足すときは個別の画面を作り、一覧に今週の値のパネルを1つ足してそこからリンクする。
 
 | uid | フォルダ | 画面 | 中身 | 既定の期間 |
 |---|---|---|---|---|
-| `goals` | habits | 週の目標 | 毎日見る一覧。各習慣の今週の達成（stat・表）とデータ鮮度。パネルから各習慣の画面へ飛ぶ | 週単位の表 |
+| `goals` | habits | 目標 | 毎日見る一覧。各習慣の今週の達成（stat・表）とデータ鮮度。パネルから各習慣の画面へ飛ぶ | 週単位の表 |
 | `early-rising` | habits | 早起き | 今週の睡眠・入床/離床の達成・負債、夜ごと・週ごとの推移 | 週単位の表 |
 | `strength` | habits | 筋トレ | 今週の部位別セット数、部位ごとの週ごとのセット数 | 週単位の表 |
 | `meditation` | habits | 瞑想 | 1日ごとの時間、週ごとの合計・回数（棒は月曜の位置）、1回ごとの記録（Toggl Focus の「瞑想」、`lib/meditation.py`） | 90日 |
@@ -53,7 +53,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 
 | CSV | 作り手 | 用途 |
 |---|---|---|
-| `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` | `dashboard.py` | 習慣の画面（週の目標・早起き・筋トレ） |
+| `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` | `dashboard.py` | 習慣の画面（目標・早起き・筋トレ） |
 | `assets` `assets_now` `goods` | `dashboard.py` | お金の画面。MF の資産推移＋持ち物の中古相場（`data/inventory/market.csv`）。相場の無い物・相場の履歴が始まる前は空セル |
 | `meditation_sessions` `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
 | `daily` | `dashboard.py` | Body / Sleep / Mind 画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |

@@ -1,5 +1,5 @@
 """
-瞑想の回ごと・日ごと・週ごとの表（Grafana の meditation 画面と週の目標の一覧）
+瞑想の回ごと・日ごと・週ごとの表（Grafana の meditation 画面と目標の一覧）
 
 記録元は Toggl Focus（data/toggl/focus_entries.csv）の「瞑想」プロジェクト1本。機器で測った回
 （Google Health の MEDITATE / YOGA）は toggl push が同じプロジェクトへ入れるので、手で入れた回と合わせて

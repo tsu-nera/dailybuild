@@ -120,7 +120,7 @@ step "中古相場"      uv run python scripts/homebox.py market --all
 # 前日までの値で埋まる。考察・Action Plan は従来どおりレビュー（gtd の /reviewing-health）が対話後に追記し、
 # ここが書くのは skeleton マーカーの内側だけ
 step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
-# 週の目標ダッシュボード（Grafana が読む reports/dashboard/*.csv と claude.ai 用 JSON）。判定は dashboard.py だけが持つ
+# ダッシュボード（Grafana が読む reports/dashboard/*.csv と claude.ai 用 JSON）。判定は dashboard.py だけが持つ
 step "ダッシュボード" uv run python scripts/dashboard.py build
 # 行動イベントの正規化ストリーム（reports/events.jsonl）。取得の後でないと当日分が欠ける。
 # 期待するソースが 0 件なら失敗扱いになり、ここで fetch の沈黙故障が表に出る

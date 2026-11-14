@@ -1,4 +1,4 @@
-# 週の目標ダッシュボード（docs/grafana.md）。起動は vaio で:
+# Grafana（docs/grafana.md）。起動は vaio で:
 #   cd ~/repo/dailybuild/scripts/ops/grafana && docker compose up -d
 services:
   grafana:
