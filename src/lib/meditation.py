@@ -36,7 +36,10 @@ WEEK_COLUMNS = ['week_start', 'week', 'sessions', 'days', 'total_min']
 NOW_COLUMNS = WEEK_COLUMNS + [f'prev_{c}' for c in WEEK_COLUMNS]
 MUSE_COLUMNS = ['start', 'date', 'meditation_type', 'duration_min', 'focus_rating', 'drowsiness_rating',
                 'tp_alpha_db_first', 'tp_alpha_db_last', 'tp_alpha_db_change',
-                'tp_delta_db_first', 'tp_delta_db_last', 'tp_delta_db_change', 'artifact_reject_pct']
+                'tp_delta_db_first', 'tp_delta_db_last', 'tp_delta_db_change', 'artifact_reject_pct',
+                # レポートの要約の数字（回をまたいで並べる用）。HRV・呼吸は SelfLoops を着けた日だけ値がある
+                'alpha_osc_db', 'iaf_mean', 'fm_theta_rel_mean', 'theta_alpha_mean',
+                'hrv_mean', 'breathing_rate_bpm', 'rsa_amplitude_ms']
 EVAL_COLUMNS = ['meditation_type', 'label', 'n', 'target', 'n_rated', 'n_dropped', 'focus_median',
                 'drowsiness_median', 'tp_alpha_db_change_median', 'tp_delta_db_change_median']
 EVAL_TYPES = {'samatha': ('サマタ', 20), 'control': ('対照', 6)}
