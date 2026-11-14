@@ -344,8 +344,9 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "minWidth": 60
-          }
+            "minWidth": 55
+          },
+          "decimals": 2
         },
         "overrides": [
           {
@@ -357,6 +358,18 @@
               {
                 "id": "custom.minWidth",
                 "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(分|集中|眠気|除外 %|RMSSD ms|RSA ms)$"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
               }
             ]
           }
@@ -399,6 +412,56 @@
               "type": "number"
             },
             {
+              "selector": "artifact_reject_pct",
+              "text": "除外 %",
+              "type": "number"
+            },
+            {
+              "selector": "alpha_osc_db",
+              "text": "前頭 α dB",
+              "type": "number"
+            },
+            {
+              "selector": "iaf_mean",
+              "text": "IAF Hz",
+              "type": "number"
+            },
+            {
+              "selector": "fm_theta_rel_mean",
+              "text": "Fmθ dB",
+              "type": "number"
+            },
+            {
+              "selector": "theta_alpha_mean",
+              "text": "θ/α",
+              "type": "number"
+            },
+            {
+              "selector": "tp_alpha_db_change",
+              "text": "TP α Δ",
+              "type": "number"
+            },
+            {
+              "selector": "tp_delta_db_change",
+              "text": "TP δ Δ",
+              "type": "number"
+            },
+            {
+              "selector": "hrv_mean",
+              "text": "RMSSD ms",
+              "type": "number"
+            },
+            {
+              "selector": "breathing_rate_bpm",
+              "text": "呼吸 bpm",
+              "type": "number"
+            },
+            {
+              "selector": "rsa_amplitude_ms",
+              "text": "RSA ms",
+              "type": "number"
+            },
+            {
               "selector": "tp_alpha_db_first",
               "text": "TP α 入り",
               "type": "number"
@@ -409,11 +472,6 @@
               "type": "number"
             },
             {
-              "selector": "tp_alpha_db_change",
-              "text": "TP α Δ",
-              "type": "number"
-            },
-            {
               "selector": "tp_delta_db_first",
               "text": "TP δ 入り",
               "type": "number"
@@ -421,16 +479,6 @@
             {
               "selector": "tp_delta_db_last",
               "text": "TP δ 終わり",
-              "type": "number"
-            },
-            {
-              "selector": "tp_delta_db_change",
-              "text": "TP δ Δ",
-              "type": "number"
-            },
-            {
-              "selector": "artifact_reject_pct",
-              "text": "除外 %",
               "type": "number"
             }
           ],
@@ -449,23 +497,30 @@
           }
         }
       ],
-      "title": "Muse の回の結果（新しい順。pipeline_version のある行だけ）",
+      "title": "Muse の回の結果（新しい順。レポートの要約の数字。RMSSD・呼吸・RSA は SelfLoops の日だけ）",
       "transformations": [
         {
           "id": "organize",
           "options": {
             "indexByName": {
-              "TP α Δ": 7,
-              "TP α 入り": 5,
-              "TP α 終わり": 6,
-              "TP δ Δ": 10,
-              "TP δ 入り": 8,
-              "TP δ 終わり": 9,
+              "Fmθ dB": 8,
+              "IAF Hz": 7,
+              "RMSSD ms": 12,
+              "RSA ms": 14,
+              "TP α Δ": 10,
+              "TP α 入り": 15,
+              "TP α 終わり": 16,
+              "TP δ Δ": 11,
+              "TP δ 入り": 17,
+              "TP δ 終わり": 18,
+              "θ/α": 9,
               "分": 2,
+              "前頭 α dB": 6,
+              "呼吸 bpm": 13,
               "眠気": 4,
               "種類": 1,
               "開始": 0,
-              "除外 %": 11,
+              "除外 %": 5,
               "集中": 3
             }
           }
