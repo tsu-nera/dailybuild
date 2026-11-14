@@ -5,5 +5,5 @@ providers:
     allowUiUpdates: true
     options:
       path: /var/lib/grafana-dashboards
-      # dashboards/<ジャンル>/ のディレクトリ名がそのまま Grafana のフォルダになる（health / money / home）
+      # dashboards/<ジャンル>/ のディレクトリ名がそのまま Grafana のフォルダになる（health / habits / money / home）
       foldersFromFilesStructure: true

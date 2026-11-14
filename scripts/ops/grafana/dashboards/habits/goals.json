@@ -3,7 +3,7 @@
   "title": "週の目標",
   "tags": [
     "dailybuild",
-    "health"
+    "habits"
   ],
   "timezone": "Asia/Tokyo",
   "schemaVersion": 41,
@@ -1147,6 +1147,16 @@
       "type": "dashboards",
       "tags": [
         "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "習慣",
+      "type": "dashboards",
+      "tags": [
+        "habits"
       ],
       "asDropdown": true,
       "includeVars": false,

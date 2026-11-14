@@ -25,6 +25,16 @@
       "keepTime": false
     },
     {
+      "title": "習慣",
+      "type": "dashboards",
+      "tags": [
+        "habits"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
       "title": "お金",
       "type": "dashboards",
       "tags": [
