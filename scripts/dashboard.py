@@ -85,6 +85,8 @@ COLUMNS = {
     'current': _WEEK_COLS + [f'prev_{c}' for c in _WEEK_COLS] + ['gap_h'],
     'sets_now': _SET_COLS,
     'freshness': ['name', 'last', 'behind', 'tolerance'],
+    # 目標の一覧（1行1目標）。period は週・月を同じ表に並べるための列。link は行から飛ぶ画面の uid
+    'goals_list': ['period', 'habit', 'metric', 'unit', 'target', 'this', 'prev', 'link'],
     # Body / Sleep / Mind 画面。metrics_daily.csv に無い計算（FFMI・ステージ・ベースライン帯・運動）を持つ。
     # bed_h / wake_h は時計の時刻を数値にしたもの（入床は 12時より前なら +24。01:30 → 25.5）
     'daily': ['date',
@@ -382,9 +384,50 @@ def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
             'meditation_muse': meditation.build_muse(SATORU_SESSION_LOG)}
 
 
+WEEKDAYS = 5
+
+
+def goal_list(tables: dict[str, list[dict]], med_now: list[dict]) -> list[dict]:
+    """目標の画面の表。目標と今週・先週の実績を1行に並べる（達成の判定や色はつけない）
+
+    スマホ幅で4列（項目・目標・今週・先週）に収めるため、metric に習慣名と単位を含める"""
+    status = tables['status'][0]
+    cur = tables['current'][0] if tables['current'] else {}
+    this_week = status['this_week']
+    prev_week = cur.get('prev_week')
+    rows = [
+        ('早起き', f"入床 {status['bed_target']}まで (平日)", '日', WEEKDAYS, 'bed_hit', 'early-rising'),
+        ('早起き', f"離床 {status['rise_target']}まで (平日)", '日', WEEKDAYS, 'rise_hit', 'early-rising'),
+        ('睡眠', '睡眠 1晩の平均 (h)', 'h', status['sleep_per_night_h'], 'avg_h', 'early-rising'),
+        ('睡眠', '睡眠負債 週末 (h)', 'h', status['debt_target_h'], 'debt_end_h', 'early-rising'),
+    ]
+    out = [{'period': '週', 'habit': h, 'metric': m, 'unit': u, 'target': t,
+            'this': cur.get(k), 'prev': cur.get(f'prev_{k}'), 'link': link}
+           for h, m, u, t, k, link in rows]
+    sets = {(r['week'], r['muscle']): r for r in tables['sets']}
+    for r in tables['sets_now']:
+        prev = sets.get((prev_week, r['muscle']), {})
+        out.append({'period': '週', 'habit': '筋トレ', 'metric': f"筋トレ {r['muscle']} (セット)", 'unit': 'セット',
+                    'target': r['target'], 'this': r['sets'], 'prev': prev.get('sets'), 'link': 'strength'})
+    med = med_now[0] if med_now else {}
+    for metric, unit, k in (('瞑想 回数', '回', 'sessions'), ('瞑想 合計 (分)', '分', 'total_min')):
+        # 瞑想の目標値はまだ無い（空セル）
+        out.append({'period': '週', 'habit': '瞑想', 'metric': metric, 'unit': unit, 'target': None,
+                    'this': med.get(k) if med.get('week') == this_week else None, 'prev': med.get(f'prev_{k}'),
+                    'link': 'meditation'})
+    return out
+
+
+def goal_tables(today: dt.date, weeks: int) -> dict[str, list[dict]]:
+    tables = build_tables(today, weeks)
+    med_now = meditation.build(require_private_path(TOGGL_FOCUS_CSV), today)['meditation_now']
+    tables['goals_list'] = goal_list(tables, med_now)
+    return tables
+
+
 # 画面ごとの表のまとまり。新しい画面はここに1グループ足す（サブコマンドを増やさない）
 GROUPS = {
-    'goals': lambda today, weeks: build_tables(today, weeks),
+    'goals': lambda today, weeks: goal_tables(today, weeks),
     'daily': lambda today, weeks: {'daily': build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)},
     'consumables': lambda today, weeks: consumable_tables(today),
     'assets': lambda today, weeks: asset_tables(),

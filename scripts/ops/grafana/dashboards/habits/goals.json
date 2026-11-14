@@ -16,571 +16,18 @@
   "panels": [
     {
       "id": 1,
-      "type": "stat",
-      "title": "今週の合計",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/current.csv",
-          "columns": [
-            {
-              "selector": "total_h",
-              "text": "合計 h",
-              "type": "number"
-            },
-            {
-              "selector": "goal_h",
-              "text": "目安 h",
-              "type": "number"
-            },
-            {
-              "selector": "gap_h",
-              "text": "差 h",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "noValue": "—"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "description": "目安は記録のある夜 × 7h。欠測の夜は足さない。今日の行は途中",
-      "links": [
-        {
-          "title": "早起き",
-          "url": "/d/early-rising"
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "type": "stat",
-      "title": "1晩の平均 (h)",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 4,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/current.csv",
-          "columns": [
-            {
-              "selector": "avg_h",
-              "text": "今週",
-              "type": "number"
-            },
-            {
-              "selector": "prev_avg_h",
-              "text": "先週",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "noValue": "—"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "links": [
-        {
-          "title": "早起き",
-          "url": "/d/early-rising"
-        }
-      ]
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "睡眠負債 (h)",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 8,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/current.csv",
-          "columns": [
-            {
-              "selector": "debt_end_h",
-              "text": "今週末",
-              "type": "number"
-            },
-            {
-              "selector": "prev_debt_end_h",
-              "text": "先週末",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "noValue": "—"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "links": [
-        {
-          "title": "早起き",
-          "url": "/d/early-rising"
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "type": "stat",
-      "title": "平日の入床（達成/対象日）",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/current.csv",
-          "columns": [
-            {
-              "selector": "bed_hit",
-              "text": "今週 達成",
-              "type": "number"
-            },
-            {
-              "selector": "bed_n",
-              "text": "今週 対象",
-              "type": "number"
-            },
-            {
-              "selector": "prev_bed_hit",
-              "text": "先週 達成",
-              "type": "number"
-            },
-            {
-              "selector": "prev_bed_n",
-              "text": "先週 対象",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "noValue": "—"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "links": [
-        {
-          "title": "早起き",
-          "url": "/d/early-rising"
-        }
-      ]
-    },
-    {
-      "id": 5,
-      "type": "stat",
-      "title": "平日の離床（達成/対象日）",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/current.csv",
-          "columns": [
-            {
-              "selector": "rise_hit",
-              "text": "今週 達成",
-              "type": "number"
-            },
-            {
-              "selector": "rise_n",
-              "text": "今週 対象",
-              "type": "number"
-            },
-            {
-              "selector": "prev_rise_hit",
-              "text": "先週 達成",
-              "type": "number"
-            },
-            {
-              "selector": "prev_rise_n",
-              "text": "先週 対象",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "noValue": "—"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "links": [
-        {
-          "title": "早起き",
-          "url": "/d/early-rising"
-        }
-      ]
-    },
-    {
-      "id": 6,
-      "type": "stat",
-      "title": "目標と更新",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 20,
-        "y": 0,
-        "w": 4,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/status.csv",
-          "columns": [
-            {
-              "selector": "bed_target",
-              "text": "入床",
-              "type": "string"
-            },
-            {
-              "selector": "rise_target",
-              "text": "離床",
-              "type": "string"
-            },
-            {
-              "selector": "debt_target_h",
-              "text": "負債 h",
-              "type": "number"
-            },
-            {
-              "selector": "last_hevy_date",
-              "text": "Hevy 最終取り込み",
-              "type": "string"
-            },
-            {
-              "selector": "last_sleep_date",
-              "text": "睡眠の最終",
-              "type": "string"
-            },
-            {
-              "selector": "generated_at",
-              "text": "更新",
-              "type": "string"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "noValue": "—"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "/.*/",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value_and_name",
-        "text": {
-          "titleSize": 11,
-          "valueSize": 16
-        }
-      },
-      "description": "config/targets.yaml の値と、データの更新時刻（status.csv）"
-    },
-    {
-      "id": 14,
-      "type": "stat",
-      "title": "瞑想（今週）",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 4,
-        "w": 8,
-        "h": 4
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/meditation_now.csv",
-          "columns": [
-            {
-              "selector": "sessions",
-              "text": "回数",
-              "type": "number"
-            },
-            {
-              "selector": "days",
-              "text": "日数",
-              "type": "number"
-            },
-            {
-              "selector": "total_min",
-              "text": "合計 分",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          },
-          "noValue": "—"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "none",
-        "graphMode": "none",
-        "textMode": "value_and_name"
-      },
-      "links": [
-        {
-          "title": "瞑想",
-          "url": "/d/meditation"
-        }
-      ]
-    },
-    {
-      "id": 11,
       "type": "table",
-      "title": "今週の部位別セット数",
+      "title": "目標",
+      "description": "1行1目標。今週は途中（今日の分を含む）。目標値が空の行は目標を決めていない。行の「項目」を押すとその習慣の画面へ",
       "datasource": {
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 0,
         "w": 24,
-        "h": 6
+        "h": 11
       },
       "targets": [
         {
@@ -593,17 +40,12 @@
           "source": "url",
           "parser": "backend",
           "format": "table",
-          "url": "http://files/sets_now.csv",
+          "url": "http://files/goals_list.csv",
           "columns": [
             {
-              "selector": "muscle",
-              "text": "部位",
+              "selector": "metric",
+              "text": "項目",
               "type": "string"
-            },
-            {
-              "selector": "sets",
-              "text": "実施",
-              "type": "number"
             },
             {
               "selector": "target",
@@ -611,9 +53,34 @@
               "type": "number"
             },
             {
-              "selector": "remaining",
-              "text": "残り",
+              "selector": "this",
+              "text": "今週",
               "type": "number"
+            },
+            {
+              "selector": "prev",
+              "text": "先週",
+              "type": "number"
+            },
+            {
+              "selector": "period",
+              "text": "期間",
+              "type": "string"
+            },
+            {
+              "selector": "habit",
+              "text": "習慣",
+              "type": "string"
+            },
+            {
+              "selector": "unit",
+              "text": "単位",
+              "type": "string"
+            },
+            {
+              "selector": "link",
+              "text": "link",
+              "type": "string"
             }
           ],
           "url_options": {
@@ -621,98 +88,245 @@
           }
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "minWidth": 60
-          }
-        },
-        "overrides": []
-      },
-      "options": {},
       "transformations": [
         {
           "id": "organize",
           "options": {
             "indexByName": {
-              "部位": 0,
-              "実施": 1,
-              "目標": 2,
-              "残り": 3
+              "項目": 0,
+              "目標": 1,
+              "今週": 2,
+              "先週": 3,
+              "期間": 4,
+              "習慣": 5,
+              "単位": 6,
+              "link": 7
             }
-          }
-        }
-      ],
-      "links": [
-        {
-          "title": "筋トレ",
-          "url": "/d/strength"
-        }
-      ]
-    },
-    {
-      "id": 13,
-      "type": "table",
-      "title": "データ鮮度",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 14,
-        "w": 24,
-        "h": 12
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/freshness.csv",
-          "columns": [
-            {
-              "selector": "name",
-              "text": "ソース",
-              "type": "string"
-            },
-            {
-              "selector": "last",
-              "text": "最終日",
-              "type": "string"
-            },
-            {
-              "selector": "behind",
-              "text": "遅れ（日）",
-              "type": "number"
-            },
-            {
-              "selector": "tolerance",
-              "text": "許容（日）",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
           }
         }
       ],
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "minWidth": 60
-          }
+            "minWidth": 50,
+            "align": "auto"
+          },
+          "noValue": ""
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "link"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "期間"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "習慣"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "単位"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "目標"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 56
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "今週"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 56
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "先週"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 56
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "項目"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "習慣の画面",
+                    "url": "/d/${__data.fields.link}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
-      "options": {},
-      "description": "遅れ・許容は collect_pipeline() の値。判定は付けない"
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "データ鮮度",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 11,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 3,
+          "type": "row",
+          "title": "データ鮮度",
+          "collapsed": true,
+          "gridPos": {
+            "x": 0,
+            "y": 13,
+            "w": 24,
+            "h": 12
+          },
+          "panels": [
+            {
+              "id": 3,
+              "type": "row",
+              "title": "データ鮮度",
+              "collapsed": true,
+              "gridPos": {
+                "x": 0,
+                "y": 13,
+                "w": 24,
+                "h": 12
+              },
+              "panels": [
+                {
+                  "id": 3,
+                  "type": "table",
+                  "title": "データ鮮度",
+                  "datasource": {
+                    "type": "yesoreyeram-infinity-datasource",
+                    "uid": "dashboard-files"
+                  },
+                  "gridPos": {
+                    "x": 0,
+                    "y": 13,
+                    "w": 24,
+                    "h": 12
+                  },
+                  "targets": [
+                    {
+                      "refId": "A",
+                      "datasource": {
+                        "type": "yesoreyeram-infinity-datasource",
+                        "uid": "dashboard-files"
+                      },
+                      "type": "csv",
+                      "source": "url",
+                      "parser": "backend",
+                      "format": "table",
+                      "url": "http://files/freshness.csv",
+                      "columns": [
+                        {
+                          "selector": "name",
+                          "text": "ソース",
+                          "type": "string"
+                        },
+                        {
+                          "selector": "last",
+                          "text": "最終日",
+                          "type": "string"
+                        },
+                        {
+                          "selector": "behind",
+                          "text": "遅れ（日）",
+                          "type": "number"
+                        },
+                        {
+                          "selector": "tolerance",
+                          "text": "許容（日）",
+                          "type": "number"
+                        }
+                      ],
+                      "url_options": {
+                        "method": "GET"
+                      }
+                    }
+                  ],
+                  "fieldConfig": {
+                    "defaults": {
+                      "custom": {
+                        "minWidth": 60
+                      }
+                    },
+                    "overrides": []
+                  },
+                  "options": {},
+                  "description": "遅れ・許容は collect_pipeline() の値。判定は付けない"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "templating": {
