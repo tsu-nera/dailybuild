@@ -55,7 +55,8 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 |---|---|---|
 | `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` | `dashboard.py` | 習慣の画面（目標・早起き・筋トレ） |
 | `assets` `assets_now` `goods` | `dashboard.py` | お金の画面。MF の資産推移＋持ち物の中古相場（`data/inventory/market.csv`）。相場の無い物・相場の履歴が始まる前は空セル |
-| `meditation_sessions` `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
+| `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
+| `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
 | `daily` | `dashboard.py` | Body / Sleep / Mind 画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
 

@@ -25,7 +25,6 @@ import pandas as pd
 
 PROJECT = '瞑想'
 
-SESSION_COLUMNS = ['start', 'date', 'week', 'duration_min']
 DAILY_COLUMNS = ['date', 'sessions', 'total_min']
 WEEK_COLUMNS = ['week_start', 'week', 'sessions', 'days', 'total_min']
 NOW_COLUMNS = WEEK_COLUMNS + [f'prev_{c}' for c in WEEK_COLUMNS]
@@ -76,7 +75,7 @@ def build(focus_csv: Path, today: dt.date) -> dict[str, list[dict]]:
         row.update({f'prev_{k}': v for k, v in prev.items()})
         now.append(row)
 
-    return {'meditation_sessions': sessions[::-1], 'meditation_daily': daily,
+    return {'meditation_daily': daily,
             'meditation_weeks': weeks, 'meditation_now': now}
 
 

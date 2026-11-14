@@ -12,7 +12,7 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
 消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
 お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）、
-瞑想の画面用の meditation_{sessions,daily,weeks,now,muse}.csv（lib/meditation.py。muse は satoru の session_log）を書く。
+瞑想の画面用の meditation_{daily,weeks,now,muse}.csv（lib/meditation.py。muse は satoru の session_log）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
@@ -101,7 +101,6 @@ COLUMNS = {
     'assets_now': assets.ASSET_COLUMNS,
     'goods': assets.GOODS_COLUMNS,
     # 瞑想の画面（lib/meditation.py）。meditation_now は今週の1行（先週は prev_ 接頭辞）
-    'meditation_sessions': meditation.SESSION_COLUMNS,
     'meditation_daily': meditation.DAILY_COLUMNS,
     'meditation_weeks': meditation.WEEK_COLUMNS,
     'meditation_now': meditation.NOW_COLUMNS,
