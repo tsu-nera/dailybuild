@@ -25,6 +25,9 @@ import pandas as pd
 
 PROJECT = '瞑想'
 
+# satoru（PUBLIC）。vaio で pull して読む。dashboard（meditation_muse）と toggl push（satoru_meditation）が読む
+SATORU_SESSION_LOG = Path.home() / 'repo/satoru/logs/session_log.csv'
+
 DAILY_COLUMNS = ['date', 'sessions', 'total_min']
 WEEK_COLUMNS = ['week_start', 'week', 'sessions', 'days', 'total_min']
 NOW_COLUMNS = WEEK_COLUMNS + [f'prev_{c}' for c in WEEK_COLUMNS]

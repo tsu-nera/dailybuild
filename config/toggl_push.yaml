@@ -39,3 +39,11 @@ sources:
         # Charge 6 のエクササイズ一覧に瞑想は無い。本体で計測するときは
         # YOGA を代用に使うので、瞑想として扱う（ヨガ自体はやらない）
         exercise_types: [MEDITATE, YOGA]
+
+  satoru_meditation:
+    enabled: true
+    # Muse で測った瞑想の回（~/repo/satoru/logs/session_log.csv）。同じ回が Fitbit の YOGA や
+    # 手入力で既に「瞑想」にあれば、区間が重なるだけで投入しない（そちらを残す）
+    project: 瞑想
+    description: "瞑想"
+    tags: [auto]

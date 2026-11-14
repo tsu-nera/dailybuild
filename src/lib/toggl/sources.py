@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from lib import exercise_source
+from lib import exercise_source, meditation
 from lib.toggl.push import Interval
 
 BASE_DIR = Path(__file__).resolve().parents[3]
@@ -123,7 +123,54 @@ def googlehealth_exercise_intervals(
     ]
 
 
+def satoru_meditation_intervals(
+    since: dt.date, until: dt.date, config: dict, tz: ZoneInfo,
+) -> list[Interval]:
+    """satoru の logs/session_log.csv（Muse で測った瞑想の回）から [since, until] のInterval列を作る
+
+    timestamp は開始時刻（JST の naive）、終わりは timestamp + duration_min 分。
+    source_id は timestamp の文字列（session_log の upsert キーで再計算しても変わらない）。
+    pipeline_version では絞らない（時間は解析の定義と無関係）。duration_min が空の行は飛ばす。
+    Muse の行は session-review の後に届くので常に後発。同じ回が Fitbit の YOGA や手入力で
+    既に「瞑想」にあればそちらを残すため skip_on_overlap を立てる。
+    """
+    source_config = config.get('sources', {}).get('satoru_meditation', {})
+    if not source_config.get('enabled', False):
+        return []
+
+    if not meditation.SATORU_SESSION_LOG.exists():
+        raise FileNotFoundError(
+            f"{meditation.SATORU_SESSION_LOG} が存在しない。satoru を clone / pull してから実行すること"
+        )
+
+    df = pd.read_csv(meditation.SATORU_SESSION_LOG, usecols=['timestamp', 'duration_min'],
+                     dtype={'timestamp': str})
+    df = df[df['duration_min'].notna()]
+
+    description = source_config.get('description', '')
+    project = source_config.get('project', '')
+    tags = tuple(source_config.get('tags', []))
+
+    intervals = []
+    for timestamp, duration_min in zip(df['timestamp'], df['duration_min']):
+        start = dt.datetime.fromisoformat(timestamp).replace(tzinfo=tz)
+        if not since <= start.date() <= until:
+            continue
+        intervals.append(Interval(
+            source='satoru_meditation',
+            source_id=timestamp,
+            start=start,
+            stop=start + dt.timedelta(minutes=float(duration_min)),
+            description=description,
+            project=project,
+            tags=tags,
+            skip_on_overlap=True,
+        ))
+    return intervals
+
+
 SOURCES = {
     'googlehealth_sleep': googlehealth_sleep_intervals,
     'googlehealth_exercise': googlehealth_exercise_intervals,
+    'satoru_meditation': satoru_meditation_intervals,
 }

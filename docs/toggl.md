@@ -39,7 +39,8 @@ ID 体系が別なので混ぜない。2.0 のプロジェクトは archived の
 `fetch-focus` で入る（`focus.build_dataframe` は duration が無い/負の行を除外する）。
 
 `scripts/toggl.py push` は Google Health 睡眠（昼寝含む）と Google Health の運動セッション
-（サイクリング・筋トレ・瞑想）を 2.0 のタイムエントリとして書き込む。書き込みも
+（サイクリング・筋トレ・瞑想）、Muse で測った瞑想の回（satoru の `logs/session_log.csv`）を
+2.0 のタイムエントリとして書き込む。書き込みも
 30req/h と仮定して `--max-writes`（既定10）で抑え、超過分は捨てずに次回へ繰り越す。
 402 はクォータ超過として止まる。
 
@@ -48,6 +49,10 @@ ID 体系が別なので混ぜない。2.0 のプロジェクトは archived の
 1. `data/toggl/focus_pushed.csv`（列は `pushed.csv` と同じ）に `(source, source_id)` があれば投入済み
 2. `focus_entries.csv` に、**同じプロジェクト名で start の差が60秒以内**のエントリがあれば投入済み。
    2026-10-27 の migrate でコピーされた auto エントリや、手で入れたものを二重にしないため
+3. Muse の回（`satoru_meditation`）だけは、「瞑想」の既存エントリと**区間が1秒でも重なれば**投入しない
+   （端が接するだけは重ならない扱い）。Muse の行は session-review の後に届く後発なので、
+   同じ回が Fitbit の YOGA や手入力で先に入っていればそちらを残す。start が60秒以上ずれる
+   ので2では拾えない
 
 push が作ったエントリはその場で `focus_entries.csv` にも書く（次の fetch を待たずに2を効かせる）。
 Track 時代にあった「台帳にあるが CSV に居ないものを手動削除とみなして再投入する」経路
