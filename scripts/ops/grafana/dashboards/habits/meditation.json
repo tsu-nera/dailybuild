@@ -144,11 +144,11 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
-      "description": "週は月曜始まりで、棒は月曜の位置。Toggl Focus の「瞑想」（Google Health の MEDITATE / YOGA は toggl push で入る）。記録の無い日・週は0。今日は途中。期間は右上の時間範囲で変える",
+      "description": "週は月曜始まりで、棒は月曜の位置。Toggl Focus の「瞑想」が1本でもある日を数える（短い回も1日）。今週は途中。期間は右上の時間範囲で変える",
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "barAlignment": 0,
+            "barAlignment": 1,
             "drawStyle": "bars",
             "fillOpacity": 80,
             "lineWidth": 1,
@@ -163,6 +163,9 @@
               "mode": "off"
             }
           },
+          "decimals": 0,
+          "max": 7,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -177,95 +180,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 24,
         "x": 0,
-        "y": 8
-      },
-      "id": 2,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": false
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "columns": [
-            {
-              "selector": "week_start",
-              "text": "date",
-              "timestampFormat": "2006-01-02",
-              "type": "timestamp"
-            },
-            {
-              "selector": "total_min",
-              "text": "合計 分",
-              "type": "number"
-            }
-          ],
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "format": "table",
-          "parser": "backend",
-          "refId": "A",
-          "source": "url",
-          "type": "csv",
-          "url": "http://files/meditation_weeks.csv",
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "title": "週ごとの合計 (分)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "description": "週は月曜始まりで、棒は月曜の位置。Toggl Focus の「瞑想」（Google Health の MEDITATE / YOGA は toggl push で入る）。記録の無い日・週は0。今日は途中。期間は右上の時間範囲で変える",
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 80,
-            "lineWidth": 1,
-            "pointSize": 4,
-            "showPoints": "always",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
         "y": 8
       },
       "id": 3,
@@ -290,8 +206,8 @@
               "type": "timestamp"
             },
             {
-              "selector": "sessions",
-              "text": "回数",
+              "selector": "days",
+              "text": "日数",
               "type": "number"
             }
           ],
@@ -310,7 +226,7 @@
           }
         }
       ],
-      "title": "週ごとの回数",
+      "title": "週ごとの実施日数",
       "type": "timeseries"
     },
     {
