@@ -11,12 +11,12 @@ Artifact へは agent が添付ファイルとして上げ直す（スクリプ�
 freshness）としても reports/dashboard/ へ全上書きで書く（docs/grafana.md）。欠測は空セル。
 加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
 消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
-お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）、
+お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）と balances_daily.csv / balances_now.csv（lib/balances.py）、
 瞑想の画面用の meditation_{daily,weeks,now,muse,eval}.csv（lib/meditation.py。muse・eval は satoru の session_log）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
-    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,meditation] [--weeks 8]
+    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,balances,meditation] [--weeks 8]
                                       [--out tmp/dashboard/goals.json] [--csv-dir reports/dashboard]
         --only を省くと全グループ。指定したグループの CSV だけ作り直す（台帳を書いた直後・相場を引いた
         直後に Grafana へ反映する用。全体は約10秒）。--out の JSON は goals を作ったときだけ書く
@@ -34,7 +34,7 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import assets, consumables, exercise_source, hevy_csv, meditation  # noqa: E402
+from lib import assets, balances, consumables, exercise_source, hevy_csv, meditation  # noqa: E402
 from lib.analytics import activity, body  # noqa: E402
 from lib.analytics import sleep as sleep_lib  # noqa: E402
 from lib.analytics import workout  # noqa: E402
@@ -58,6 +58,7 @@ CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
 PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
 STOCKTAKE_CSV = project_root / 'data/inventory/stocktake.csv'
 MF_ASSETS_CSV = project_root / 'data/mf/資産推移.csv'
+MF_BALANCES_CSV = project_root / 'data/mf/balances.csv'
 ITEMS_CSV = project_root / 'data/inventory/items.csv'
 MARKET_CSV = project_root / 'data/inventory/market.csv'
 PURCHASE_CSVS = {'amazon': project_root / 'data/purchases/amazon.csv',
@@ -103,6 +104,9 @@ COLUMNS = {
     'assets': assets.ASSET_COLUMNS,
     'assets_now': assets.ASSET_COLUMNS,
     'goods': assets.GOODS_COLUMNS,
+    # 口座別残高（lib/balances.py）。日次の合計と、口座ごとの最新
+    'balances_daily': balances.DAILY_COLUMNS,
+    'balances_now': balances.LATEST_COLUMNS,
     # 瞑想の画面（lib/meditation.py）。meditation_now は今週の1行（先週は prev_ 接頭辞）
     'meditation_daily': meditation.DAILY_COLUMNS,
     'meditation_weeks': meditation.WEEK_COLUMNS,
@@ -379,6 +383,11 @@ def asset_tables() -> dict[str, list[dict]]:
     return {'assets': rows, 'assets_now': rows[-1:], 'goods': goods}
 
 
+def balance_tables(today: dt.date) -> dict[str, list[dict]]:
+    days, now = balances.build(require_private_path(MF_BALANCES_CSV), today)
+    return {'balances_daily': days, 'balances_now': now}
+
+
 def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
     if not SATORU_SESSION_LOG.exists():
         raise SystemExit(f'{SATORU_SESSION_LOG} が無い（satoru を clone する）')
@@ -434,6 +443,7 @@ GROUPS = {
     'daily': lambda today, weeks: {'daily': build_daily(today - dt.timedelta(days=DAILY_DAYS - 1), today)},
     'consumables': lambda today, weeks: consumable_tables(today),
     'assets': lambda today, weeks: asset_tables(),
+    'balances': lambda today, weeks: balance_tables(today),
     'meditation': lambda today, weeks: meditation_tables(today),
 }
 

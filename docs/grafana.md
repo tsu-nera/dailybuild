@@ -27,7 +27,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `meditation` | habits | 瞑想 | 1日ごとの時間、週ごとの合計・回数（棒は月曜の位置）、1回ごとの記録（Toggl Focus の「瞑想」、`lib/meditation.py`） | 90日 |
 | `body` | health | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・タンパク質 | 90日 |
 | `sleep` | health | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
-| `assets` | money | 資産（B/S） | 今日時点の資産の内訳・資産の推移（積み上げ）・持ち物の中古相場と買値の差（`lib/assets.py`） | 12年 |
+| `assets` | money | 資産（B/S） | 今日時点の資産の内訳・資産の推移（積み上げ）・持ち物の中古相場と買値の差（`lib/assets.py`）。下段に口座別残高の種類別の積み上げ・負債（カード利用残高）・純資産・口座ごとの最新残高（`lib/balances.py`。時系列はパネル単位で90日） | 12年 |
 | `consumables` | home | 消耗品 | 一覧。手放していない品目の分類・次に買う頃・尽きる頃・月額・最終購入。分類は見出しで絞り込める。品名をクリックすると詳細へ（台帳は docs/inventory.md） | 表のみ |
 | `consumable-detail` | home | 消耗品の詳細 | 1品目の次に買う頃などの数字・1単位あたりの値段（店ごと）・購入履歴・台帳の欄。`?var-item=<key>` で開く（品目を指定しないと最初の品目） | 20年 |
 | `mind` | health | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
@@ -57,6 +57,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 |---|---|---|
 | `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` `goals_list` | `dashboard.py` | 習慣の画面（目標・早起き・筋トレ）。`goals_list` は目標の一覧で、瞑想の今週も含む |
 | `assets` `assets_now` `goods` | `dashboard.py` | お金の画面。MF の資産推移＋持ち物の中古相場（`data/inventory/market.csv`）。相場の無い物・相場の履歴が始まる前は空セル |
+| `balances_daily` `balances_now` | `dashboard.py` | お金の画面の口座別残高。`data/mf/balances.csv`（変わった行だけ）を日次に戻した種類別の合計・負債・純資産・欠測の口座数と、口座ごとの最新（gone は出さない）。負債のページの最初の行より前は負債・純資産が空。`balances.csv` が無いうちは見出しだけ（docs/moneyforward.md） |
 | `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
 | `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果（主観・前夜の睡眠時間（`metrics_daily` の `sleep_hours` を日付で）・TP の入り→終わり・レポートの要約の数字＝前頭 α・IAF・Fmθ・θ/α・RMSSD・呼吸数・RSA振幅・除外率）。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
 | `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・対照）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |

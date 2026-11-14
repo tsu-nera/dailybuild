@@ -55,7 +55,7 @@
       "keepTime": false
     }
   ],
-  "description": "金融資産は MoneyForward ME の資産推移をそのまま出す（補正しない）。9口座の連携が切れていて構造的に過少、暗号資産は2023-04から手入力の固定値に近い（reports/money/history.md）。持ち物は「相場検索」を付けた物の中古相場（メルカリ SOLD 中央値）だけで、相場の無い物は合計に入れない。負債は未入力（0ではない）。",
+  "description": "金融資産は MoneyForward ME の資産推移をそのまま出す（補正しない）。9口座の連携が切れていて構造的に過少、暗号資産は2023-04から手入力の固定値に近い（reports/money/history.md）。持ち物は「相場検索」を付けた物の中古相場（メルカリ SOLD 中央値）だけで、相場の無い物は合計に入れない。負債・口座別の残高は 2026-11-14 から毎日取って積んだもの（下段。MF 側に履歴が無い）。",
   "panels": [
     {
       "id": 1,
@@ -173,7 +173,7 @@
         "textMode": "value_and_name",
         "orientation": "vertical"
       },
-      "description": "金融資産は MoneyForward ME の資産推移をそのまま出す（補正しない）。9口座の連携が切れていて構造的に過少、暗号資産は2023-04から手入力の固定値に近い（reports/money/history.md）。持ち物は「相場検索」を付けた物の中古相場（メルカリ SOLD 中央値）だけで、相場の無い物は合計に入れない。負債は未入力（0ではない）。"
+      "description": "金融資産は MoneyForward ME の資産推移をそのまま出す（補正しない）。9口座の連携が切れていて構造的に過少、暗号資産は2023-04から手入力の固定値に近い（reports/money/history.md）。持ち物は「相場検索」を付けた物の中古相場（メルカリ SOLD 中央値）だけで、相場の無い物は合計に入れない。負債はこの数字に入らない（負債は下段のカード利用残高）。"
     },
     {
       "id": 2,
@@ -378,6 +378,387 @@
       "options": {
         "showHeader": true
       }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "口座別残高の合計（種類別の積み上げ）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 27,
+        "w": 24,
+        "h": 9
+      },
+      "timeFrom": "90d",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/balances_daily.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "cash",
+              "text": "預金・現金",
+              "type": "number"
+            },
+            {
+              "selector": "funds",
+              "text": "投資信託",
+              "type": "number"
+            },
+            {
+              "selector": "crypto",
+              "text": "暗号資産",
+              "type": "number"
+            },
+            {
+              "selector": "points",
+              "text": "ポイント",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyJPY",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 40,
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "MF の /bs/portfolio を毎日取って口座ごとに積んだ値の合計（data/mf/balances.csv、2026-11-14 から）。資産推移（上）と同じ口座の現在値で、欠測（–円）の口座は合計に入れない。"
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "負債（カード利用残高）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 9
+      },
+      "timeFrom": "90d",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/balances_daily.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "liabilities",
+              "text": "負債",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyJPY",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "MF の /bs/liability の「ご利用残高」の合計。次回の請求額ではない。"
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "純資産（資産 − 負債）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 9
+      },
+      "timeFrom": "90d",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/balances_daily.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "date",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "net_worth",
+              "text": "純資産",
+              "type": "number"
+            },
+            {
+              "selector": "assets_total",
+              "text": "資産",
+              "type": "number"
+            },
+            {
+              "selector": "missing_count",
+              "text": "欠測の口座数",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyJPY",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "auto",
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "欠測の口座数"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "口座別残高の資産合計 − カード利用残高。欠測の口座は合計に入れないので、欠測の口座数が0でない日は過少。"
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "口座ごとの最新残高",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 45,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/balances_now.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "kind",
+              "text": "種類",
+              "type": "string"
+            },
+            {
+              "selector": "institution",
+              "text": "保有金融機関",
+              "type": "string"
+            },
+            {
+              "selector": "name",
+              "text": "名称",
+              "type": "string"
+            },
+            {
+              "selector": "value",
+              "text": "残高",
+              "type": "number"
+            },
+            {
+              "selector": "unrealized_gain",
+              "text": "評価損益",
+              "type": "number"
+            },
+            {
+              "selector": "quantity",
+              "text": "数量",
+              "type": "number"
+            },
+            {
+              "selector": "category",
+              "text": "区分",
+              "type": "string"
+            },
+            {
+              "selector": "expires",
+              "text": "有効期限",
+              "type": "string"
+            },
+            {
+              "selector": "updated",
+              "text": "最後に変わった日",
+              "type": "string"
+            },
+            {
+              "selector": "status",
+              "text": "状態",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "filterable": true
+          },
+          "noValue": ""
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "残高|評価損益"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyJPY"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      },
+      "description": "消えた口座（gone）は出さない。状態 missing は金額が –円 で取れなかった口座。"
     }
   ]
 }
