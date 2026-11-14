@@ -15,11 +15,13 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 `habits` は習慣ごとの画面（瞑想・筋トレ・早起きなど）を置く場所で、`health` は体の状態（Body / Sleep / Mind）を見る場所。
 2026-11-14 に週の目標を `health` から移し、同じ日に「目標」へ改めた（月次の目標も置く場所にするため）。uid は `goals` のままなので `/d/goals` のリンクは変わらない。
 `goals` は毎日見る一覧で、習慣ごとの推移は個別の画面（weekly review で対話しながら見る）に置く。一覧と個別の画面は同じ CSV を読み、
-一覧には今週の値だけを置く。個別の画面は `links` の先頭に「← 目標」を持つ。習慣を足すときは個別の画面を作り、一覧に今週の値のパネルを1つ足してそこからリンクする。
+一覧は1行1目標の表1枚（`goals_list.csv`。項目・目標・今週・先週）で、行の項目を押すとその習慣の画面へ飛ぶ。stat を並べると値の数で
+文字の大きさが決まり、目標と実績が別のパネルに離れて読めなかった（2026-11-14）。個別の画面は `links` の先頭に「← 目標」を持つ。
+習慣を足すときは個別の画面を作り、`dashboard.py` の `goal_list()` に行を足す（`link` 列に画面の uid）。月次の目標は `period` を `月` にした行で足す。
 
 | uid | フォルダ | 画面 | 中身 | 既定の期間 |
 |---|---|---|---|---|
-| `goals` | habits | 目標 | 毎日見る一覧。各習慣の今週の達成（stat・表）とデータ鮮度。パネルから各習慣の画面へ飛ぶ | 週単位の表 |
+| `goals` | habits | 目標 | 毎日見る一覧。1行1目標の表（目標・今週・先週）と、折りたたんだデータ鮮度 | 週単位の表 |
 | `early-rising` | habits | 早起き | 今週の睡眠・入床/離床の達成・負債、夜ごと・週ごとの推移 | 週単位の表 |
 | `strength` | habits | 筋トレ | 今週の部位別セット数、部位ごとの週ごとのセット数 | 週単位の表 |
 | `meditation` | habits | 瞑想 | 1日ごとの時間、週ごとの合計・回数（棒は月曜の位置）、1回ごとの記録（Toggl Focus の「瞑想」、`lib/meditation.py`） | 90日 |
@@ -53,7 +55,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 
 | CSV | 作り手 | 用途 |
 |---|---|---|
-| `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` | `dashboard.py` | 習慣の画面（目標・早起き・筋トレ） |
+| `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` `goals_list` | `dashboard.py` | 習慣の画面（目標・早起き・筋トレ）。`goals_list` は目標の一覧で、瞑想の今週も含む |
 | `assets` `assets_now` `goods` | `dashboard.py` | お金の画面。MF の資産推移＋持ち物の中古相場（`data/inventory/market.csv`）。相場の無い物・相場の履歴が始まる前は空セル |
 | `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
 | `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
@@ -121,7 +123,8 @@ curl -s -u admin:$GF_SECURITY_ADMIN_PASSWORD http://<host>:3000/api/dashboards/u
 4. query には `url_options: {method: GET}` を必ず入れる。無いと画面側の Infinity が
    `Cannot read properties of undefined (reading 'method')` で落ち、全パネルが空になる。
    `/api/ds/query` に直接投げると通るので API だけの確認では見つからない（2026-11-07）。
-   確認は画面で開くか、ブラウザのコンソールを見る
+   確認は `scripts/ops/grafana/shot.py <uid>...`（headless Chromium。パネルごとのテキストとエラーを stdout に出し、
+   スマホ幅・PC 幅の画像を `tmp/grafana/` に書く。値はテキストで見て、画像は見た目を変えたときだけ開く）
 5. `filterExpression` は `selector` ではなく列の `text` 名で評価する。絞る列も `columns` に入れる。空欄は `== ""` で引ける（`== null` は全行落ちる）
 6. 時系列パネルは `date` 列を `type: timestamp`・`timestampFormat: 2006-01-02` で読み、ダッシュボードの timezone を `utc` にする
 7. 一覧→詳細は、一覧の表の列に data link（`/d/<詳細の uid>?var-item=${__data.fields.key}`）を付け、詳細は変数で絞る。key 列は override の `custom.hidden` で隠す。変数の表示名と値を分けるには Infinity の列の `text` を `__text` / `__value` にする（`consumables` → `consumable-detail`）
