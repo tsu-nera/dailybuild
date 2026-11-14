@@ -120,6 +120,8 @@ step "中古相場"      uv run python scripts/homebox.py market --all
 # 前日までの値で埋まる。考察・Action Plan は従来どおりレビュー（gtd の /reviewing-health）が対話後に追記し、
 # ここが書くのは skeleton マーカーの内側だけ
 step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
+# satoru（瞑想の Muse の回の結果。session_log.csv を読むだけのデータソース）。session-review が push した分を拾う
+step "satoru"        git -C "$HOME/repo/satoru" pull --ff-only -q
 # ダッシュボード（Grafana が読む reports/dashboard/*.csv と claude.ai 用 JSON）。判定は dashboard.py だけが持つ
 step "ダッシュボード" uv run python scripts/dashboard.py build
 # 行動イベントの正規化ストリーム（reports/events.jsonl）。取得の後でないと当日分が欠ける。
