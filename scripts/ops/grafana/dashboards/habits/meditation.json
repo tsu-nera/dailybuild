@@ -234,6 +234,113 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
+      "description": "目安（サマタ20回・対照6回）に届くまでは見るだけ。Δ は TP の終わり−入り（dB）の中央値で、除外率30%以上の回は使わない",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 8,
+      "options": {},
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "label",
+              "text": "種類",
+              "type": "string"
+            },
+            {
+              "selector": "n",
+              "text": "回数",
+              "type": "number"
+            },
+            {
+              "selector": "target",
+              "text": "目安",
+              "type": "number"
+            },
+            {
+              "selector": "n_rated",
+              "text": "主観あり",
+              "type": "number"
+            },
+            {
+              "selector": "n_dropped",
+              "text": "除外率30%以上",
+              "type": "number"
+            },
+            {
+              "selector": "focus_median",
+              "text": "集中（中央値）",
+              "type": "number"
+            },
+            {
+              "selector": "drowsiness_median",
+              "text": "眠気（中央値）",
+              "type": "number"
+            },
+            {
+              "selector": "tp_alpha_db_change_median",
+              "text": "TP α Δ（中央値）",
+              "type": "number"
+            },
+            {
+              "selector": "tp_delta_db_change_median",
+              "text": "TP δ Δ（中央値）",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_eval.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "サマタ評価の比較（種類ごと）",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "indexByName": {
+              "TP α Δ（中央値）": 7,
+              "TP δ Δ（中央値）": 8,
+              "主観あり": 3,
+              "回数": 1,
+              "目安": 2,
+              "眠気（中央値）": 6,
+              "種類": 0,
+              "除外率30%以上": 4,
+              "集中（中央値）": 5
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -259,7 +366,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 21
       },
       "id": 5,
       "options": {},
@@ -388,7 +495,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 31
       },
       "id": 6,
       "options": {},
@@ -451,7 +558,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 31
       },
       "id": 7,
       "options": {},

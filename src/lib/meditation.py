@@ -17,8 +17,7 @@ Muse で測った回の結果（meditation_muse）は satoru の logs/session_lo
 dailybuild からは書かない）。satoru の session-review が push し、vaio で pull したものを読む。
 pipeline_version が空の行（2026-05 以前・旧定義）は横に比べられないので入れない。
 
-サマタ評価（satoru の memory samatha-evaluation-plan）の比較用に、種類ごとのまとめ（meditation_eval）と
-主観×TP の変化の散布図用（meditation_xy）を作る。除外率が ARTIFACT_MAX_PCT 以上の回は変化の値を使わない
+サマタ評価（satoru の memory samatha-evaluation-plan）の比較用に、種類ごとのまとめ（meditation_eval）を作る。除外率が ARTIFACT_MAX_PCT 以上の回は変化の値を使わない
 （回数には数え、まとめの n_dropped に出す）。目安の回数（サマタ20・対照6）は satoru の scripts/eval_progress.py と同じ。
 """
 
@@ -40,7 +39,6 @@ MUSE_COLUMNS = ['start', 'date', 'meditation_type', 'duration_min', 'focus_ratin
                 'tp_delta_db_first', 'tp_delta_db_last', 'tp_delta_db_change', 'artifact_reject_pct']
 EVAL_COLUMNS = ['meditation_type', 'label', 'n', 'target', 'n_rated', 'n_dropped', 'focus_median',
                 'drowsiness_median', 'tp_alpha_db_change_median', 'tp_delta_db_change_median']
-XY_COLUMNS = ['focus_rating', 'alpha_samatha', 'delta_samatha', 'alpha_control', 'delta_control']
 EVAL_TYPES = {'samatha': ('サマタ', 20), 'control': ('対照', 6)}
 ARTIFACT_MAX_PCT = 30.0
 
@@ -129,16 +127,3 @@ def build_eval(muse: list[dict]) -> list[dict]:
                      'tp_delta_db_change_median': _median([r['tp_delta_db_change'] for r in usable])})
     return rows
 
-
-def build_xy(muse: list[dict]) -> list[dict]:
-    """集中の安定（x）と TP の変化（y）。種類ごとに別の列に入れる（Grafana で種類を絞らない）"""
-    rows = []
-    for r in muse:
-        if r['meditation_type'] not in EVAL_TYPES or r['focus_rating'] is None or not _usable(r):
-            continue
-        row = {c: None for c in XY_COLUMNS}
-        row['focus_rating'] = r['focus_rating']
-        row[f'alpha_{r["meditation_type"]}'] = r['tp_alpha_db_change']
-        row[f'delta_{r["meditation_type"]}'] = r['tp_delta_db_change']
-        rows.append(row)
-    return rows
