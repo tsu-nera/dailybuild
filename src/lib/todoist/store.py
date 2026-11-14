@@ -8,6 +8,10 @@ data/todoist/completed.csv（dailybuild-private への symlink）に、1行=1完
 取得した窓の中も置換ではなく upsert にする。Todoist 側で履歴が見えなくなる
 （プラン・アカウントの都合）ことがあり、API に無いことは「消えた」の根拠にならない。
 
+繰り返しタスクの完了は data/todoist/recurring_completed.csv に別に積む（活動ログ由来。
+Free は約1週間しか遡れないので毎日取り、同じキーで upsert する）。単発の完了は
+completed.csv と二重にならないよう、こちらには入れない。
+
 ID は英数字の文字列（例 6hp3rC3Vx6wCWcF7）。読み書きはすべて dtype=str で行い、
 先頭が数字の ID を数値に化けさせない。
 """
@@ -24,6 +28,8 @@ from lib.utils.private_data import ensure_dir, require_private_path
 BASE_DIR = Path(__file__).resolve().parents[3]
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
 CSV_FILE = require_private_path(BASE_DIR / 'data' / 'todoist' / 'completed.csv')
+RECURRING_CSV_FILE = require_private_path(
+    BASE_DIR / 'data' / 'todoist' / 'recurring_completed.csv')
 PROJECTS_CACHE_FILE = require_private_path(BASE_DIR / 'data' / 'todoist' / 'projects.json')
 
 TIMEZONE = 'Asia/Tokyo'
@@ -35,6 +41,11 @@ CSV_COLUMNS = [
 ]
 
 KEY_COLUMNS = ['task_id', 'completed_at']
+
+RECURRING_COLUMNS = [
+    'completed_at', 'task_id', 'content', 'project_id', 'project_name',
+    'section_id', 'labels', 'due_date', 'was_overdue',
+]
 
 READ_CSV_KWARGS = {'dtype': str, 'keep_default_na': False}
 
@@ -144,3 +155,43 @@ def update_project_cache(fetched: dict[str, str],
         'projects': projects,
     }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     return projects
+
+
+def build_recurring_dataframe(events: list[dict],
+                              projects: dict[str, str]) -> pd.DataFrame:
+    """活動ログの完了イベントのうち繰り返しタスクだけを CSV 用 DataFrame にする
+
+    due_date は完了した回の期日（completed_due_date_local の暦日）。
+    """
+    rows = []
+    for event in events:
+        extra = event.get('extra_data') or {}
+        if event.get('event_type') != 'completed' or not extra.get('is_recurring'):
+            continue
+        project_id = _str(event.get('parent_project_id'))
+        rows.append({
+            'completed_at': to_local_iso(event.get('event_date')),
+            'task_id': _str(event.get('object_id')),
+            'content': _str(extra.get('content')),
+            'project_id': project_id,
+            'project_name': projects.get(project_id, ''),
+            'section_id': _str(extra.get('section_id')),
+            'labels': '|'.join(extra.get('labels') or []),
+            'due_date': _str(extra.get('completed_due_date_local'))[:10],
+            'was_overdue': _str(extra.get('was_overdue')),
+        })
+    return pd.DataFrame(rows, columns=RECURRING_COLUMNS, dtype=str)
+
+
+def save_recurring_merged(df_new: pd.DataFrame,
+                          csv_path: Path | None = None) -> pd.DataFrame:
+    """recurring_completed.csv へ (task_id, completed_at) で upsert して保存する"""
+    csv_path = csv_path or RECURRING_CSV_FILE
+    ensure_dir(csv_path.parent)
+    df_merged = csv_utils.merge_csv_by_columns(
+        df_new, csv_path, key_columns=KEY_COLUMNS, sort_by=['completed_at', 'task_id'],
+        read_csv_kwargs=READ_CSV_KWARGS,
+    )
+    df_merged = df_merged.reindex(columns=RECURRING_COLUMNS)
+    df_merged.to_csv(csv_path, index=False)
+    return df_merged

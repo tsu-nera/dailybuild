@@ -14,9 +14,9 @@ Usage:
 残すのは完了（何を・いつ・どのプロジェクト）と延期の回数（postponed_count）だけで、
 編集・並べ替えなどの操作ログは取らない。
 
-繰り返しタスクの完了は取れない。by_completion_date には出ず、完了しても次の期日へ
-移るだけに見える（推測）。必要になったら activities API（event_type=completed）で
-別に取る。
+繰り返しタスクの完了は by_completion_date に出ないので、活動ログ（/activities の
+item:completed）から data/todoist/recurring_completed.csv に別に積む。Free は約1週間
+しか遡れないため、--update / --start-date に関わらず見える分を毎回取り直す。
 """
 
 import argparse
@@ -77,11 +77,19 @@ def run_fetch(args, out: IO[str]) -> None:
     df_new = store.build_dataframe(items, projects)
     if df_new.empty:
         print(f"期間 {start}〜{end} の完了タスクは0件", file=out)
-        return
+    else:
+        df_merged = store.save_merged(df_new)
+        print(f"取得件数: {len(df_new)}件", file=out)
+        print(f"保存完了: {store.CSV_FILE} (総行数 {len(df_merged)}行)", file=out)
 
-    df_merged = store.save_merged(df_new)
-    print(f"取得件数: {len(df_new)}件", file=out)
-    print(f"保存完了: {store.CSV_FILE} (総行数 {len(df_merged)}行)", file=out)
+    events = todoist_client.fetch_completed_activities(api_token)
+    df_recurring = store.build_recurring_dataframe(events, projects)
+    if df_recurring.empty:
+        print("繰り返しタスクの完了は0件（活動ログの見える範囲）", file=out)
+        return
+    df_merged = store.save_recurring_merged(df_recurring)
+    print(f"繰り返しの完了: {len(df_recurring)}件", file=out)
+    print(f"保存完了: {store.RECURRING_CSV_FILE} (総行数 {len(df_merged)}行)", file=out)
 
 
 def cmd_fetch(args) -> None:

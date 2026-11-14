@@ -2,6 +2,7 @@
 
 API token による Bearer 認証。完了済みタスクは
 GET /tasks/completed/by_completion_date から取り、next_cursor でページングする。
+繰り返しタスクの完了はそこに出ないので、GET /activities（item:completed）から別に取る。
 
 1回の since〜until の幅には上限がある（ドキュメント上は約3か月）。
 長い期間は WINDOW_DAYS ずつの窓に分けて取る。
@@ -101,3 +102,15 @@ def fetch_projects(api_token: str) -> dict[str, str]:
     """project_id → プロジェクト名（archived は含まない）"""
     projects = _paginate(api_token, '/projects', {}, 'results')
     return {str(p['id']): p.get('name') or '' for p in projects}
+
+
+def fetch_completed_activities(api_token: str) -> list[dict]:
+    """活動ログの完了イベント（item:completed）を見える範囲すべて取得する
+
+    Free プランで見えるのは直近約1週間。date_from で1週間より前を指定すると 403 に
+    なるので期間は指定せず、見える分を毎日取り直す（保存側で重複を除く）。
+    """
+    events = _paginate(api_token, '/activities',
+                       {'object_event_types': '["item:completed"]'}, 'results')
+    logger.info('Todoist 完了イベント（活動ログ）: %d件', len(events))
+    return events

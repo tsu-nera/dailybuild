@@ -136,3 +136,61 @@ def test_split_windows_covers_range_without_gaps():
     assert windows[-1][1] == dt.date(2026, 3, 15)
     for (_, prev_end), (next_start, _) in zip(windows, windows[1:]):
         assert next_start == prev_end + dt.timedelta(days=1)
+
+
+# --- 繰り返しタスクの完了（活動ログ） ---
+
+def _event(task_id, event_date, is_recurring=True, content='足湯',
+           project_id='6hx2x94rMQ4G6Mxm'):
+    return {
+        'event_type': 'completed', 'object_type': 'item', 'object_id': task_id,
+        'event_date': event_date, 'parent_project_id': project_id,
+        'id': 2169570244017813807582717701484836896,
+        'extra_data': {
+            'content': content, 'is_recurring': is_recurring,
+            'section_id': '6hxMMr6pfP7vX6qF', 'labels': ['自宅'],
+            'completed_due_date_local': '2026-11-14T23:59:59', 'was_overdue': False,
+        },
+    }
+
+
+def _ingest_recurring(events, csv_path):
+    df_new = store.build_recurring_dataframe(events, {'6hx2x94rMQ4G6Mxm': '習慣'})
+    return store.save_recurring_merged(df_new, csv_path=csv_path)
+
+
+def test_recurring_keeps_only_recurring_completions(tmp_path):
+    csv = tmp_path / 'recurring_completed.csv'
+    _ingest_recurring([
+        _event('6hx2x9Fr3245F8GF', '2026-11-14T12:00:00.123456Z'),
+        _event('6hxfGhHVJVXmrrpQ', '2026-11-14T12:05:00Z', is_recurring=False),
+    ], csv)
+
+    df = pd.read_csv(csv, **store.READ_CSV_KWARGS)
+    assert df['task_id'].tolist() == ['6hx2x9Fr3245F8GF']
+    assert df.loc[0, 'project_name'] == '習慣'
+    assert df.loc[0, 'due_date'] == '2026-11-14'
+    assert df.loc[0, 'completed_at'] == '2026-11-14T21:00:00+09:00'
+
+
+def test_recurring_daily_refetch_overlap_does_not_add_rows(tmp_path):
+    """活動ログは毎日1週間分を取り直すので、重なった分が二重に入らない"""
+    csv = tmp_path / 'recurring_completed.csv'
+    day1 = [_event('6hx2x9Fr3245F8GF', '2026-11-13T12:00:00.5Z')]
+    day2 = day1 + [_event('6hx2x9Fr3245F8GF', '2026-11-14T12:00:00Z')]
+
+    _ingest_recurring(day1, csv)
+    _ingest_recurring(day2, csv)
+
+    df = pd.read_csv(csv, **store.READ_CSV_KWARGS)
+    assert len(df) == 2
+
+
+def test_recurring_empty_refetch_keeps_rows_older_than_a_week(tmp_path):
+    """1週間を過ぎて活動ログから消えた完了も CSV からは消さない"""
+    csv = tmp_path / 'recurring_completed.csv'
+    _ingest_recurring([_event('6hx2x9Fr3245F8GF', '2026-11-01T12:00:00Z')], csv)
+    _ingest_recurring([], csv)
+
+    df = pd.read_csv(csv, **store.READ_CSV_KWARGS)
+    assert len(df) == 1
