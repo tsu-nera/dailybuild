@@ -3,7 +3,9 @@ MoneyForward ME 家計簿データ取得クライアント
 
 MF ME に公式 API は無い。ブラウザのログインセッション（Cookie）で
 `/cf/csv` と `/bs/history/csv` を叩くと収入・支出詳細と資産推移の CSV が
-そのまま落ちてくるため、画面のスクレイピングはせずこの2本だけを使う。
+そのまま落ちてくるため、明細と資産推移は画面のスクレイピングをせずこの2本を使う。
+口座別の残高とカード利用残高だけは CSV が無いので、`/bs/portfolio` と `/bs/liability` の
+HTML を返す（読むのは lib/mf/balances.py）。
 
 Cookie は Playwright の storage_state として config/mf_state.json に持つ。
 初回とセッション切れのときだけ headful ブラウザで手動ログイン（2FA 含む）
@@ -33,6 +35,9 @@ CSV_URL = 'https://moneyforward.com/cf/csv'
 # 資産推移（バランスシート）の CSV。当月は日次、前月以前は月末1点だけが返る
 ASSETS_CSV_URL = 'https://moneyforward.com/bs/history/csv'
 ACCOUNTS_URL = 'https://moneyforward.com/accounts'
+# 口座別の残高（資産）と、カードの利用残高（負債）。どちらも現在値だけで CSV は無い
+PORTFOLIO_URL = 'https://moneyforward.com/bs/portfolio'
+LIABILITY_URL = 'https://moneyforward.com/bs/liability'
 # 画面の「金融機関からのデータ一括更新」ボタンが叩く Rails UJS のエンドポイント
 REFRESH_URL = 'https://moneyforward.com/faggregation_queue2'
 LOGIN_HOST = 'id.moneyforward.com'
@@ -192,6 +197,22 @@ class MoneyForwardSession:
             )
 
         return text
+
+    def fetch_page_html(self, url: str) -> str:
+        """画面を開いて HTML を返す（GET のみ。表の読み取りは呼び出し側）"""
+        page = self._context.new_page()
+        try:
+            response = page.goto(url)
+            if LOGIN_HOST in page.url:
+                raise NotLoggedInError(
+                    f"{url} を開けません (url={page.url})\n"
+                    f"  セッション切れの可能性があります: uv run scripts/mf.py fetch --login"
+                )
+            if response is None or response.status != 200:
+                raise RuntimeError(f"{url} を開けません (status={response.status if response else None})")
+            return page.content()
+        finally:
+            page.close()
 
     def fetch_month_csv(self, year: int, month: int) -> str:
         """指定月の収入・支出詳細 CSV を文字列で返す"""

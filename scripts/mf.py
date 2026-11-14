@@ -4,6 +4,7 @@
 MoneyForward ME CLI（fetch / show）
 
 保存済みのブラウザセッションで月次 CSV を取得して年ごとの CSV に蓄積する fetch と、
+（fetch は同じセッションで資産推移と、口座別の残高・カード利用残高 data/mf/balances.csv も取る）
 data/mf/収入・支出詳細_YYYY.csv（dailybuild-private への symlink）を読んで
 markdown サマリを出す show をまとめたスクリプト。
 
@@ -51,18 +52,21 @@ import argparse
 import datetime as dt
 import io
 from typing import IO
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yaml
 
 from lib.mf import client as mf_client
-from lib.mf import render, store
+from lib.mf import balances, render, store
 from lib.mf.client import MoneyForwardSession, NotLoggedInError
 from lib.utils.report_args import filter_dataframe_by_period, parse_period_args
 
 BASE_DIR = Path(__file__).parent.parent
 STATE_FILE = BASE_DIR / 'config' / 'mf_state.json'
 SHOW_CONFIG_FILE = BASE_DIR / 'config' / 'mf_show.yaml'
+# balances.csv の日付。vaio の時計が何であっても日本の暦日で積む
+JST = ZoneInfo('Asia/Tokyo')
 
 # 連携が生きている状態。これ以外は明細が欠けている可能性がある
 HEALTHY_STATUS = '正常'
@@ -129,6 +133,32 @@ def warn_unhealthy_accounts(accounts: list[tuple[str, str, str]], out: IO[str]) 
     print("  → MF の画面で再認証が必要（一括更新では直らない）", file=out)
 
 
+def fetch_balance_pages(session: MoneyForwardSession, out: IO[str]) -> dict[str, str | None]:
+    """残高の2ページの HTML。失敗したページは None（明細・資産推移の取得は止めない）"""
+    pages = {}
+    for url in (mf_client.PORTFOLIO_URL, mf_client.LIABILITY_URL):
+        try:
+            pages[url] = session.fetch_page_html(url)
+        except Exception as e:  # noqa: BLE001 — 残高は付帯の取得。失敗は警告にして続ける
+            print(f"⚠️ 残高のページを開けない: {e}", file=out)
+            pages[url] = None
+    return pages
+
+
+def save_balance_pages(pages: dict[str, str | None], out: IO[str]) -> None:
+    """読めたページの種類だけ balances.csv に変わった行を足す。失敗は警告にして続ける"""
+    try:
+        rows, kinds, warnings = balances.parse_pages(
+            pages[mf_client.PORTFOLIO_URL], pages[mf_client.LIABILITY_URL])
+        for w in warnings:
+            print(f"⚠️ 残高: {w}", file=out)
+        print(f"  残高: {len(rows)}件", file=out)
+        if kinds:
+            store.save_balances(rows, kinds, dt.datetime.now(JST).date(), out)
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️ 残高を保存できない: {e}", file=out)
+
+
 def run_fetch(args, out: IO[str]) -> None:
     """fetch サブコマンドの処理本体。進捗はすべて out に出す"""
     if args.login:
@@ -148,6 +178,7 @@ def run_fetch(args, out: IO[str]) -> None:
             frames.append(df_month)
 
         assets_text = session.fetch_assets_csv()
+        balance_pages = fetch_balance_pages(session, out)
         accounts = session.account_status()
 
         if args.refresh:
@@ -158,6 +189,7 @@ def run_fetch(args, out: IO[str]) -> None:
     df_assets = pd.read_csv(io.StringIO(assets_text), dtype=str)
     print(f"  資産推移: {len(df_assets)}件", file=out)
     store.save_assets(df_assets, out)
+    save_balance_pages(balance_pages, out)
 
     df_new = pd.concat(frames, ignore_index=True)
 

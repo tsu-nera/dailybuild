@@ -213,7 +213,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 | `scripts/toggl.py` の push / start / stop を変更するとき | [docs/toggl.md](docs/toggl.md) — 冪等性判定の条件を外すと Toggl に二重投入する |
 | `fetch_googlehealth.py` の caffeine / nutrition / heart_rate / spo2 / weight / body_fat / exercise / activity / intraday を変更するとき | [docs/googlehealth.md](docs/googlehealth.md) — spo2 の日付は「夜が始まった暦日」。安静時心拍は2系統届く。exercise は platform 重複あり。intraday の steps は4系統同居で素の合算は3.6倍。activity の Fitbit→Google 段差は caloriesOut だけ（steps/distance/*ActiveMinutesは折れ目なし） |
 | `src/lib/exercise_source.py` / 運動系レポート（body / mind）を変更するとき | `data/googlehealth/exercise.csv` が正本。`data/wearable/activity_logs.csv`（Fitbit Web API 廃止で更新停止）はアーカイブとして凍結し統合しない（id空間・distance単位・activeZoneMinutes構造が別物）。platform 重複解決（優先度・閾値）は `exercise_source.py` のモジュール定数を push とレポートで共有する |
-| `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る |
+| `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る。口座別残高（balances.csv）は変わった行だけで、取れなかったページの口座を gone にしない |
 | `scripts/tepco.py` を変更するとき | [docs/tepco.md](docs/tepco.md) — 欠測コマは0でなく行を作らない。30分値は約2年で消える。既定 headless では動かない |
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |

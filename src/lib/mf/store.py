@@ -1,16 +1,18 @@
 """
-MoneyForward ME 収入・支出詳細 CSV の読み書き
+MoneyForward ME の CSV の読み書き
 
-data/mf/収入・支出詳細_YYYY.csv（dailybuild-private への symlink）を対象に、
+data/mf/（dailybuild-private への symlink）の収入・支出詳細_YYYY.csv・資産推移.csv・balances.csv を対象に、
 fetch 側のマージ保存と show 側の読み込みをまとめる。
 """
 
+import datetime as dt
 from pathlib import Path
 
 import pandas as pd
 
+from lib.mf.balances import STATUS_GONE, STATUS_MISSING, STATUS_OK
 from lib.utils import csv_utils
-from lib.utils.private_data import require_private_path
+from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 # dailybuild-private への symlink。未設定なら空データで成功しないよう落とす
@@ -105,3 +107,82 @@ def load_assets() -> pd.DataFrame:
 def asset_columns(df: pd.DataFrame) -> list[str]:
     """残高の列（合計を含む）。日付と派生列を除いたもの"""
     return [c for c in df.columns if c not in (COL_ASSET_DATE, 'date', 'bucket')]
+
+
+# 口座別残高（/bs/portfolio・/bs/liability）。キーごとに前回から変わった行だけを積む（docs/moneyforward.md）
+BALANCES_CSV = DATA_DIR / 'balances.csv'
+BALANCE_KEY = ['kind', 'institution', 'name', 'seq']
+# 前回と比べる欄。どれかが変われば1行書く
+BALANCE_STATE = ['status', 'value', 'quantity', 'unrealized_gain', 'category', 'expires']
+BALANCE_COLUMNS = ['date', *BALANCE_KEY, *BALANCE_STATE]
+
+
+def _cell(value) -> str:
+    if value is None:
+        return ''
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _balance_row(day: str, b) -> dict:
+    return {'date': day, 'kind': b.kind, 'institution': b.institution, 'name': b.name, 'seq': str(b.seq),
+            'status': STATUS_MISSING if b.value is None else STATUS_OK, 'value': _cell(b.value),
+            'quantity': _cell(b.quantity), 'unrealized_gain': _cell(b.unrealized_gain),
+            'category': b.category, 'expires': b.expires}
+
+
+def merge_balances(existing: list[dict], new: list, fetched_kinds: set[str], day: dt.date) -> list[dict]:
+    """既存の行に今日の取得分を足した全行を返す。
+
+    - fetched_kinds は取得・parse が成功して行が1件以上あったページの種類。それ以外の種類には触らない
+      （今日の行を消さない・消えたキーも判定しない）
+    - 同じ日の取り直しは、その種類の今日の行を消してから今日より前の最新状態と比べ直す
+    - 前回と同じ状態なら書かない。missing が続く間も書かない
+    - 前回まであったキーが今回のページに無ければ gone を1行。gone の後に現れたら通常の行を書く
+    """
+    today = day.isoformat()
+    kept = [r for r in existing if not (r['date'] == today and r['kind'] in fetched_kinds)]
+    last: dict[tuple, dict] = {}
+    for r in sorted(kept, key=lambda r: r['date']):
+        if r['date'] < today:
+            last[tuple(r[k] for k in BALANCE_KEY)] = r
+
+    written, seen = [], set()
+    for b in new:
+        if b.kind not in fetched_kinds:
+            continue
+        row = _balance_row(today, b)
+        key = tuple(row[k] for k in BALANCE_KEY)
+        seen.add(key)
+        prev = last.get(key)
+        if prev is not None and (all(prev[c] == row[c] for c in BALANCE_STATE)
+                                 or prev['status'] == row['status'] == STATUS_MISSING):
+            continue
+        written.append(row)
+    for key, prev in last.items():
+        if key[0] in fetched_kinds and key not in seen and prev['status'] != STATUS_GONE:
+            written.append({'date': today, **dict(zip(BALANCE_KEY, key)), 'status': STATUS_GONE,
+                            **{c: '' for c in BALANCE_STATE if c != 'status'}})
+
+    rows = kept + written
+    rows.sort(key=lambda r: (r['date'], r['kind'], r['institution'], r['name'], int(r['seq'])))
+    return rows
+
+
+def load_balances(path: Path | None = None) -> list[dict]:
+    """balances.csv の全行（文字列のまま）。まだ無ければ空"""
+    path = path or BALANCES_CSV
+    if not path.exists():
+        return []
+    df = pd.read_csv(path, dtype=str, keep_default_na=False, encoding=OUTPUT_ENCODING)
+    return df.reindex(columns=BALANCE_COLUMNS, fill_value='').to_dict('records')
+
+
+def save_balances(new: list, fetched_kinds: set[str], day: dt.date, out) -> None:
+    """口座別残高を変わった行だけ足して保存する（merge_balances）"""
+    rows = merge_balances(load_balances(), new, fetched_kinds, day)
+    ensure_dir(BALANCES_CSV.parent)
+    pd.DataFrame(rows, columns=BALANCE_COLUMNS).to_csv(BALANCES_CSV, index=False, encoding=OUTPUT_ENCODING)
+    changed = sum(r['date'] == day.isoformat() for r in rows)
+    print(f"保存完了: {BALANCES_CSV} (今日の変化 {changed}行 / 総行数 {len(rows)}行)", file=out)
