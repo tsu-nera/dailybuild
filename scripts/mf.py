@@ -36,6 +36,9 @@ Usage:
     python scripts/mf.py contracts                  # 定期契約の台帳（月割り・更新予定・照合）
     python scripts/mf.py contracts --within 90      # 更新が近い契約を90日以内で見る
 
+    python scripts/mf.py insurance                  # 保険の一覧（証券番号・次回更新/満期・未記入）
+    python scripts/mf.py insurance --deduction      # 控除のある保険だけ（確定申告で控除証明書を集める）
+
 show は既定では MF に一切アクセスしないので、セッション切れの影響を受けない。
 """
 
@@ -440,6 +443,19 @@ def cmd_contracts(args) -> None:
     print(contracts_view.render_unlisted(ledger, entries, today))
 
 
+def cmd_insurance(args) -> None:
+    """台帳の保険の一覧。MF の明細は読まない（認証なしで動く）"""
+    from lib.mf import contracts, contracts_view
+
+    try:
+        ledger = contracts.load_contracts()
+    except (FileNotFoundError, contracts.ContractError) as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(contracts_view.render_insurance(ledger, dt.date.today(), args.deduction))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='MoneyForward ME CLI（fetch / show）')
     subparsers = parser.add_subparsers(dest='command', required=True)
@@ -513,6 +529,12 @@ def build_parser() -> argparse.ArgumentParser:
                                   help='更新が近い契約とみなす日数（デフォルト: 45。'
                                        '周期12ヶ月以上の契約が対象）')
     contracts_parser.set_defaults(func=cmd_contracts)
+
+    insurance_parser = subparsers.add_parser(
+        'insurance', help='定期契約の台帳から保険の一覧（証券番号・次回更新/満期・控除・未記入）を表示')
+    insurance_parser.add_argument('--deduction', action='store_true',
+                                  help='控除（生命保険料・地震保険料）のある契約だけを出す')
+    insurance_parser.set_defaults(func=cmd_insurance)
 
     return parser
 

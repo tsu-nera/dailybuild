@@ -10,6 +10,8 @@
 従量（billing: metered。光熱・通話料など使った分を相手が周期的に請求する契約）は
 金額を台帳に書かず、MF の直近の実績から出す。手書きの1回分は代表値にならず、すぐ古くなるため。
 固定費の月割りとは足さず、別に合計する。
+
+保険も台帳が正本で、中身は契約の insurance キーに持つ（型と検証は lib.mf.insurance）。
 """
 
 import calendar
@@ -20,6 +22,10 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
+from lib.mf.insurance import (  # noqa: F401  台帳の利用側は contracts から引く
+    DEDUCTIONS, INSURANCE_KEYS, INSURANCE_REQUIRED_FOR_CLAIM, Insurance, missing_fields,
+    parse_insurance,
+)
 from lib.mf.store import COL_AMOUNT, COL_CATEGORY, COL_NAME, COL_SUBCATEGORY
 from lib.utils.private_data import require_private_path
 
@@ -35,7 +41,8 @@ BILLINGS = ('fixed', 'metered')
 
 # amount は固定のときだけ必須、mf_match は従量のときだけ必須（_required_keys）
 REQUIRED_KEYS = ('name', 'amount', 'cycle_months', 'anchor', 'kind')
-OPTIONAL_KEYS = ('billing', 'currency', 'payment', 'mf_match', 'cancel_url', 'ended')
+OPTIONAL_KEYS = ('billing', 'currency', 'payment', 'mf_match', 'cancel_url', 'ended',
+                 'insurance')
 
 # 照合の許容日数。期待日 ±N 日に明細があれば請求ありとみなす
 TOLERANCE_DAYS = 10
@@ -70,6 +77,7 @@ class Contract:
     mf_match: str | tuple[str, ...] | None = None
     cancel_url: str | None = None
     ended: dt.date | None = None
+    insurance: Insurance | None = None
 
     @property
     def patterns(self) -> tuple[str, ...]:
@@ -213,6 +221,13 @@ def _parse_contract(index: int, raw) -> Contract:
         raise ContractError(
             f"{label}: mf_match は空でない文字列か、そのリスト: {mf_match!r}")
 
+    insurance = None
+    if 'insurance' in raw:
+        try:
+            insurance = parse_insurance(raw['insurance'])
+        except ValueError as e:
+            raise ContractError(f"{label}: {e}") from None
+
     ended = raw.get('ended')
     return Contract(
         name=name,
@@ -226,6 +241,7 @@ def _parse_contract(index: int, raw) -> Contract:
         mf_match=mf_match,
         cancel_url=raw.get('cancel_url'),
         ended=None if ended is None else _to_date(ended, label, 'ended'),
+        insurance=insurance,
     )
 
 
@@ -264,6 +280,19 @@ def monthly_totals(contracts: list[Contract]) -> dict[tuple[str, str], float]:
         key = (c.currency, c.kind)
         totals[key] = totals.get(key, 0.0) + monthly_amount(c)
     return totals
+
+
+def insurance_contracts(contracts: list[Contract],
+                        deduction_only: bool = False) -> list[Contract]:
+    """insurance 付きの解約していない契約。deduction_only なら控除のあるものだけ"""
+    return [c for c in active_contracts(contracts)
+            if c.insurance is not None
+            and (not deduction_only or c.insurance.deduction is not None)]
+
+
+def missing_insurance_fields(c: Contract) -> list[str]:
+    """事故・請求のときに要る欄のうち欠けているもの（INSURANCE_REQUIRED_FOR_CLAIM の順）"""
+    return missing_fields(c.insurance or Insurance())
 
 
 @dataclass(frozen=True)

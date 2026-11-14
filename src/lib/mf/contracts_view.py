@@ -11,8 +11,9 @@ from lib.mf import render
 from lib.mf.contracts import (
     KIND_LABEL, KINDS, METERED_MONTHS, SPLIT_LABELS, SPLIT_VARIABLE, UNLISTED_MONTHS, Contract,
     active_contracts, classify_expenses, find_charges_after_end, find_missing_charges,
-    find_unlisted_recurring, is_metered, metered_actual, metered_totals,
-    monthly_amount, monthly_totals, next_renewal, upcoming_renewals,
+    find_unlisted_recurring, insurance_contracts, is_metered, metered_actual,
+    metered_totals, missing_insurance_fields, monthly_amount, monthly_totals,
+    next_renewal, upcoming_renewals,
 )
 from lib.mf.store import COL_AMOUNT
 
@@ -59,8 +60,8 @@ def format_cycle(months: int) -> str:
     return f"{months}ヶ月"
 
 
-def _table(columns: list[str], rows: list[list]) -> str:
-    return pd.DataFrame(rows, columns=columns).to_markdown(index=False)
+def _table(columns: list[str], rows: list[list], **kwargs) -> str:
+    return pd.DataFrame(rows, columns=columns).to_markdown(index=False, **kwargs)
 
 
 def _amount_cells(c: Contract, entries: pd.DataFrame, today: dt.date) -> list[str]:
@@ -167,3 +168,45 @@ def render_unlisted(contracts: list[Contract], entries: pd.DataFrame,
     rows = [[render.truncate(name), n, render.format_yen(amount), last.isoformat()]
             for name, n, amount, last in items]
     return f"{head}\n\n" + _table(['内容', '出現月数', '直近の金額', '最終請求'], rows)
+
+
+# ---- 保険 ----
+
+DEDUCTION_LABEL = {'life': '生命保険料', 'earthquake': '地震保険料'}
+
+
+def _insurance_next(c: Contract, today: dt.date) -> tuple[dt.date, str]:
+    """次回の日付と表示。満期（term_end）があればそちら、無ければ次回更新"""
+    if c.insurance.term_end is not None:
+        return c.insurance.term_end, f"満期 {c.insurance.term_end.isoformat()}"
+    nxt = next_renewal(c, today)
+    return nxt, f"更新 {nxt.isoformat()}"
+
+
+def render_insurance(contracts: list[Contract], today: dt.date,
+                     deduction_only: bool = False) -> str:
+    """保険の一覧と、事故・請求に要る欄の未記入。MF の明細は使わない"""
+    head = '# 保険（控除あり）' if deduction_only else '# 保険'
+    items = insurance_contracts(contracts, deduction_only)
+    if not items:
+        what = '控除のある保険' if deduction_only else '保険（insurance 付きの契約）'
+        return f"{head}\n\n台帳に{what}がない"
+
+    items = sorted(items, key=lambda c: (_insurance_next(c, today)[0], c.name))
+    rows = []
+    for c in items:
+        ins = c.insurance
+        yearly = ('-' if is_metered(c)
+                  else format_amount(c.amount * 12 / c.cycle_months, c.currency))
+        rows.append([render.truncate(c.name), ins.insurer or '-', ins.policy_no or '-',
+                     yearly, _insurance_next(c, today)[1],
+                     DEDUCTION_LABEL.get(ins.deduction, '-')])
+    # 証券番号が全行数字だけだと tabulate が数として読み、先頭の0を落とす
+    blocks = [head, _table(['名前', '保険会社', '証券番号', '年額', '次回', '控除'], rows,
+                           disable_numparse=True)]
+
+    missing = [(c, m) for c in items if (m := missing_insurance_fields(c))]
+    if missing:
+        blocks.append('## 未記入\n\n'
+                      + '\n'.join(f"- {c.name}: {', '.join(m)}" for c, m in missing))
+    return '\n\n'.join(blocks)

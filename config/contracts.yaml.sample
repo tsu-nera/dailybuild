@@ -36,8 +36,27 @@
 #   cancel_url          解約・管理画面の URL
 #   ended               解約日（YYYY-MM-DD）。あれば一覧・月割りの対象外。
 #                       照合では解約後の請求を警告する
+#   insurance           保険の中身（下の表。中のキーはすべて任意）。保険は台帳が正本。
+#                       一覧: uv run scripts/mf.py insurance [--deduction]
 #
-# 未知のキーは typo を防ぐためエラーになる。
+#   insurance の中      内容
+#   insurer             保険会社・共済の名前
+#   product             商品名・プラン
+#   policy_no           証券番号・加入者番号。必ず引用符で囲む（policy_no: 0123 は
+#                       8進数として 83 に読まれ先頭0が落ちるので、数はエラーにしてある）
+#   insured             被保険者。本人なら書かない
+#   coverage            補償の要点（文字列のリスト）。細部は書き写さず docs の画像を正本にする
+#   term_end            保険期間の終わり（YYYY-MM-DD）。自動更新なら書かない。
+#                       あれば一覧の次回欄は満期、無ければ anchor からの次回更新
+#   contact             事故・請求の連絡先（電話・URL の文字列のリスト）
+#   mypage              契約者ページの URL
+#   deduction           控除の種類 life（生命保険料）/ earthquake（地震保険料）。無ければ書かない
+#   docs                証書・控除証明書の置き場所。紙はスマホで撮った画像を dailybuild-private の
+#                       data/insurance/<契約名>/ に置き、紙の保管場所も書く
+#
+#   insurer・policy_no・contact のどれかが無い契約は、一覧で「未記入」として出る。
+#
+# 未知のキーは typo を防ぐためエラーになる（insurance の中も同じ）。
 
 - name: 動画配信（サンプル）
   amount: 990
@@ -79,6 +98,27 @@
   kind: business
   payment: サンプルカードB
   mf_match: SAMPLE CLOUD
+
+- name: 生命共済（サンプル）
+  amount: 2000
+  cycle_months: 1
+  anchor: 2025-04-27
+  kind: living
+  payment: サンプル口座
+  mf_match: サンプル共済
+  insurance:
+    insurer: サンプル共済会
+    product: 総合保障タイプ（サンプル）
+    policy_no: "0012345678"   # 引用符で囲む（先頭0を落とさない）
+    coverage:
+      - 入院 日額5,000円（サンプル）
+      - 死亡 400万円（サンプル）
+    contact:
+      - 0120-000-000
+      - https://example.com/claim
+    mypage: https://example.com/mypage
+    deduction: life
+    docs: data/insurance/生命共済（サンプル）/。紙の証書は書類箱（サンプル）
 
 - name: 解約済みの会員（サンプル）
   amount: 500
