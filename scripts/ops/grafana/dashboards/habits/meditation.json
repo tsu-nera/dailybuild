@@ -599,6 +599,558 @@
       ],
       "title": "TP の入り→終わりの変化（dB）",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "目を閉じて座っているとき、高いほど雑念が少ない傾向。全帯域が一緒に上下する日はゲイン（装着）の差を疑う",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "dB"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 39
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "alpha_osc_db",
+              "text": "前頭 α",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "前頭 α（dB、1/f を除いた α の山の高さ）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "個人の α の山の位置。日による揺れを見る。10-28 以降は前頭のみの値で、それより前とは比べない",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "hertz"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 39
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "iaf_mean",
+              "text": "IAF",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "IAF（Hz、α のピーク周波数）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "集中に伴って上がるとされる前頭の θ。全帯域に対する相対値なのでゲインの影響は小さい",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "dB"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 46
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "fm_theta_rel_mean",
+              "text": "Fmθ",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Fmθ（前頭 θ、全帯域に対する相対 dB）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "セッションが長いほど上がる（後半に θ・δ が増える）。長さの違う回を並べるときは長さの差を先に疑う",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 46
+      },
+      "id": 23,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "theta_alpha_mean",
+              "text": "θ/α 比",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "θ/α 比",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "心拍の揺れの大きさ。高いほど副交感神経が働いている目安。SelfLoops を着けた日だけ点が出る",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 53
+      },
+      "id": 24,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "hrv_mean",
+              "text": "RMSSD",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "RMSSD（ms、SelfLoops）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "心電図から推定した呼吸の速さ。意図して遅くしている（4 bpm 前後）。SelfLoops を着けた日だけ",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 53
+      },
+      "id": 25,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "breathing_rate_bpm",
+              "text": "呼吸数",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "呼吸数（bpm、SelfLoops）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "呼吸1回ごとの心拍の揺れ幅。呼吸の速さが違っても同じ意味で比べられる副交感神経の目安。SelfLoops を着けた日だけ",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 53
+      },
+      "id": 26,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "rsa_amplitude_ms",
+              "text": "RSA振幅",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "RSA振幅（ms、SelfLoops）",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "30% を超えた回は、脳波の数字を割り引いて読む",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "points",
+            "pointSize": 8,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 60
+      },
+      "id": 27,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "start",
+              "text": "start",
+              "timestampFormat": "2006-01-02 15:04",
+              "type": "timestamp"
+            },
+            {
+              "selector": "artifact_reject_pct",
+              "text": "除外率",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "source": "url",
+          "type": "csv",
+          "url": "http://files/meditation_muse.csv",
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "除外率（%、脳波のうち雑音で捨てた割合）",
+      "type": "timeseries"
     }
   ],
   "refresh": "",
