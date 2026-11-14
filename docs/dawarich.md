@@ -10,19 +10,19 @@ DB は data/ から作り直せる前提で扱う。
 
 | 入るもの | 正本（private の data/） | Dawarich へ |
 |---|---|---|
-| スマホの点（GPSLogger の GPX、1日1ファイル） | `data/gpslogger/*.gpx`（`gpslogger.py fetch`、前日分まで） | `import-routes`（日次） |
-| Fitbit の GPS 付き運動 | `data/googlehealth/tcx/`（[googlehealth.md](googlehealth.md)） | `import-routes`（日次） |
-| サイコンのライド | `data/xoss/fit/`（[xoss.md](xoss.md)） | `import-routes`（日次） |
+| スマホの点（GPSLogger の GPX、1日1ファイル） | `data/gpslogger/*.gpx`（`gpslogger.py fetch`、前日分まで） | `import-routes`（週次） |
+| Fitbit の GPS 付き運動 | `data/googlehealth/tcx/`（[googlehealth.md](googlehealth.md)） | `import-routes`（週次） |
+| サイコンのライド | `data/xoss/fit/`（[xoss.md](xoss.md)） | `import-routes`（週次） |
 | Google Timeline の書き出し | Drive（[timeline.md](timeline.md)） | 手動で `POST /api/v1/imports` |
 | Swarm のチェックイン | `data/swarm/`（#92） | 手動 |
-| UI で直した Place（改名・merge・アーカイブ） | `data/dawarich/places.csv`（`capture-places`、日次） | `name-places` が当て直す |
+| UI で直した Place（改名・merge・アーカイブ） | `data/dawarich/places.csv`（`capture-places`、週次） | `name-places` が当て直す |
 | 旅行（Trip） | `data/dawarich/trips.yaml`（agent が1件ずつ追記） | rails runner |
 | 公式アプリの点（2026-11-12〜13 だけ。アプリは止めた） | `data/dawarich/app_points.csv`（以後は増えない） | mouse にあるのは 11-13 朝に vaio の DB を写した時点まで |
 
 ## 配置
 
 ```
-bv5200（GPSLogger、60秒ごと）→ Syncthing（送信のみ）→ vaio ~/gpslogger/ → 日次で data/ → mouse の Dawarich
+bv5200（GPSLogger、60秒ごと）→ Syncthing（送信のみ）→ vaio ~/gpslogger/ → 日次で data/ → 週次で mouse の Dawarich
 ```
 
 - **Dawarich は mouse で動かす。** 試用では vaio で動かしていたが、常駐させるほど使わないので 2026-11-13 に mouse へ移し、vaio からは volume・image ごと消した。
@@ -31,7 +31,7 @@ bv5200（GPSLogger、60秒ごと）→ Syncthing（送信のみ）→ vaio ~/gps
   公開ポートは DNAT なので mouse 本体の `ss` には接続が出ない。ログで見る
 - 記録係は GPSLogger。公式アプリは記録しない（止めてある）。サーバーが寝ている間の点を後で送る保証が無く、
   初日に12時間分が端末に溜まった。GPSLogger 組み込みの Dawarich 送信も失敗時に再送しないので使わない
-- mouse がスリープ中は日次の「Dawarich 軌跡」「Dawarich 場所」が失敗する。翌日の日次で追いつく
+- 「Dawarich 軌跡」「Dawarich 場所」は週次（`weekly-fetch.sh`）で、先に `wake-mouse` で起こす。起きなければスキップして次回に追いつく
 
 ## 落とし穴
 

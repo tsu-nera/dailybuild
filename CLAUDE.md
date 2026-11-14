@@ -108,6 +108,17 @@ commit・push し、終了コードは `daily-fetch.sh` のものを返す。reb
 ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/daily-routine.sh --days 2"'
 ```
 
+週次も同じ2層で、入口 `scripts/ops/weekly-routine.sh`・中身 `scripts/ops/weekly-fetch.sh`
+（共通処理は `scripts/ops/lib/routine.sh`。lock は日次と共有）。起動は gtd の
+`/reviewing-health weekly` が `daily-routine.sh` の後に ssh で呼ぶだけで、timer は無い
+（Dawarich の動く mouse のように寝る機械が起きている保証が無いため）。週次へ置いてよいのは
+**遅れても次回に追いつき、データが消えないもの**だけ。取得元の保持期間が短いもの（Toggl、Tuya の7日など）や
+review の判断材料になるものは日次に残す。
+
+```bash
+ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/weekly-routine.sh"'
+```
+
 個別スクリプトの使い方は、各スクリプトの module docstring（`Usage:`）を正本とする。
 ここにはコマンドを列挙しない（一覧を二重に持つと片方が古くなる）。スクリプトや
 サブコマンドを足したときは docstring に書く。日次に入っているかは `daily-fetch.sh` を見る。

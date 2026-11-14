@@ -159,6 +159,7 @@ def fetch_env(tmp_path):
     repo = tmp_path / 'repo'
     (repo / 'scripts' / 'ops').mkdir(parents=True)
     shutil.copy(DAILY_FETCH, repo / 'scripts' / 'ops' / 'daily-fetch.sh')
+    shutil.copytree(DAILY_FETCH.parent / 'lib', repo / 'scripts' / 'ops' / 'lib')
     private = tmp_path / 'private'
     for d in ('data', 'reports', 'config'):
         (private / d).mkdir(parents=True)
