@@ -153,7 +153,7 @@ def _header(rows: list[list[tuple[bool, str]]]) -> tuple[list[str], list[list[st
 
 
 def parse_number(text: str) -> int | float | None:
-    """`1,234円` `-1,426円` `44ポイント` `36.19%` → 数。`–円`・空は None（0にしない）。
+    """`1,234円` `-2,000円` `44ポイント` `36.19%` → 数。`–円`・空は None（0にしない）。
 
     単位を落としたあとに数として読めない文字列は ParseError（黙って欠測にすると形の変化に気づけない）
     """

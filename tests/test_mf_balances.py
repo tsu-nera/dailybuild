@@ -62,10 +62,10 @@ def test_表の中のモーダルの見出しで種類が変わらない():
 def test_列は見出しの文字列で引く():
     head = ('<tr><th>銘柄名</th><th>保有金融機関</th><th>評価額</th><th>評価損益</th><th>保有数</th>'
             '<th>平均取得単価</th></tr>')
-    body = ('<tr><td>ファンドA</td><td>証券A</td><td>830,737円</td>'
-            '<td><span class="minus-color">-1,426円\n</span></td><td>262,327</td><td>1</td></tr>')
+    body = ('<tr><td>ファンドA</td><td>証券A</td><td>500,000円</td>'
+            '<td><span class="minus-color">-2,000円\n</span></td><td>300,000</td><td>1</td></tr>')
     [row] = parse_portfolio(_page(_section('投資信託', head, body))).rows
-    assert (row.institution, row.value, row.unrealized_gain, row.quantity) == ('証券A', 830737, -1426, 262327)
+    assert (row.institution, row.value, row.unrealized_gain, row.quantity) == ('証券A', 500000, -2000, 300000)
 
 
 def test_金額の_ダッシュ円_は0でなく欠測():
