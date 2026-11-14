@@ -533,68 +533,6 @@
       "description": "exercise.csv の筋トレセッション。部位別セット数は下の表（Hevy export）。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
     },
     {
-      "id": 6,
-      "type": "table",
-      "title": "今週の部位別セット数",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 16,
-        "w": 12,
-        "h": 6
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/sets_now.csv",
-          "columns": [
-            {
-              "selector": "muscle",
-              "text": "部位",
-              "type": "string"
-            },
-            {
-              "selector": "sets",
-              "text": "今週",
-              "type": "number"
-            },
-            {
-              "selector": "target",
-              "text": "目標",
-              "type": "number"
-            },
-            {
-              "selector": "remaining",
-              "text": "残り",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true
-      },
-      "description": "週ごとの推移は「週の目標」画面。Hevy の export が未反映の日は少なく出る"
-    },
-    {
       "id": 7,
       "type": "timeseries",
       "title": "タンパク質 (g/日)",
@@ -603,9 +541,9 @@
         "uid": "dashboard-files"
       },
       "gridPos": {
-        "x": 12,
+        "x": 0,
         "y": 16,
-        "w": 12,
+        "w": 24,
         "h": 6
       },
       "targets": [
