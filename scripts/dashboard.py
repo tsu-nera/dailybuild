@@ -12,7 +12,7 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
 消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
 お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）、
-瞑想の画面用の meditation_{daily,weeks,now,muse}.csv（lib/meditation.py。muse は satoru の session_log）を書く。
+瞑想の画面用の meditation_{daily,weeks,now,muse,eval,xy}.csv（lib/meditation.py。muse・eval・xy は satoru の session_log）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
@@ -107,6 +107,8 @@ COLUMNS = {
     'meditation_weeks': meditation.WEEK_COLUMNS,
     'meditation_now': meditation.NOW_COLUMNS,
     'meditation_muse': meditation.MUSE_COLUMNS,
+    'meditation_eval': meditation.EVAL_COLUMNS,
+    'meditation_xy': meditation.XY_COLUMNS,
 }
 
 
@@ -380,8 +382,9 @@ def asset_tables() -> dict[str, list[dict]]:
 def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
     if not SATORU_SESSION_LOG.exists():
         raise SystemExit(f'{SATORU_SESSION_LOG} が無い（satoru を clone する）')
-    return {**meditation.build(require_private_path(TOGGL_FOCUS_CSV), today),
-            'meditation_muse': meditation.build_muse(SATORU_SESSION_LOG)}
+    muse = meditation.build_muse(SATORU_SESSION_LOG)
+    return {**meditation.build(require_private_path(TOGGL_FOCUS_CSV), today), 'meditation_muse': muse,
+            'meditation_eval': meditation.build_eval(muse), 'meditation_xy': meditation.build_xy(muse)}
 
 
 WEEKDAYS = 5

@@ -16,6 +16,10 @@ meditation_now（今週・先週）は週単位の一覧（goals）用。
 Muse で測った回の結果（meditation_muse）は satoru の logs/session_log.csv を読む（データソースとしての satoru。
 dailybuild からは書かない）。satoru の session-review が push し、vaio で pull したものを読む。
 pipeline_version が空の行（2026-05 以前・旧定義）は横に比べられないので入れない。
+
+サマタ評価（satoru の memory samatha-evaluation-plan）の比較用に、種類ごとのまとめ（meditation_eval）と
+主観×TP の変化の散布図用（meditation_xy）を作る。除外率が ARTIFACT_MAX_PCT 以上の回は変化の値を使わない
+（回数には数え、まとめの n_dropped に出す）。目安の回数（サマタ20・対照6）は satoru の scripts/eval_progress.py と同じ。
 """
 
 import datetime as dt
@@ -34,6 +38,11 @@ NOW_COLUMNS = WEEK_COLUMNS + [f'prev_{c}' for c in WEEK_COLUMNS]
 MUSE_COLUMNS = ['start', 'date', 'meditation_type', 'duration_min', 'focus_rating', 'drowsiness_rating',
                 'tp_alpha_db_first', 'tp_alpha_db_last', 'tp_alpha_db_change',
                 'tp_delta_db_first', 'tp_delta_db_last', 'tp_delta_db_change', 'artifact_reject_pct']
+EVAL_COLUMNS = ['meditation_type', 'label', 'n', 'target', 'n_rated', 'n_dropped', 'focus_median',
+                'drowsiness_median', 'tp_alpha_db_change_median', 'tp_delta_db_change_median']
+XY_COLUMNS = ['focus_rating', 'alpha_samatha', 'delta_samatha', 'alpha_control', 'delta_control']
+EVAL_TYPES = {'samatha': ('サマタ', 20), 'control': ('対照', 6)}
+ARTIFACT_MAX_PCT = 30.0
 
 
 def _week_label(d: dt.date) -> str:
@@ -93,3 +102,43 @@ def build_muse(session_log_csv: Path) -> list[dict]:
     df['tp_delta_db_change'] = df['tp_delta_db_last'] - df['tp_delta_db_first']
     df = df.sort_values('start', ascending=False)[MUSE_COLUMNS].round(2).astype(object)
     return df.where(df.notna(), None).to_dict('records')
+
+
+def _usable(row: dict) -> bool:
+    pct = row['artifact_reject_pct']
+    return pct is not None and pct < ARTIFACT_MAX_PCT
+
+
+def _median(values: list) -> float | None:
+    values = [v for v in values if v is not None]
+    return round(float(pd.Series(values).median()), 2) if values else None
+
+
+def build_eval(muse: list[dict]) -> list[dict]:
+    """種類ごとの回数・主観と TP の変化の中央値。変化は除外率が ARTIFACT_MAX_PCT 未満の回だけ"""
+    rows = []
+    for kind, (label, target) in EVAL_TYPES.items():
+        typed = [r for r in muse if r['meditation_type'] == kind]
+        usable = [r for r in typed if _usable(r)]
+        rows.append({'meditation_type': kind, 'label': label, 'n': len(typed), 'target': target,
+                     'n_rated': sum(r['focus_rating'] is not None for r in typed),
+                     'n_dropped': len(typed) - len(usable),
+                     'focus_median': _median([r['focus_rating'] for r in typed]),
+                     'drowsiness_median': _median([r['drowsiness_rating'] for r in typed]),
+                     'tp_alpha_db_change_median': _median([r['tp_alpha_db_change'] for r in usable]),
+                     'tp_delta_db_change_median': _median([r['tp_delta_db_change'] for r in usable])})
+    return rows
+
+
+def build_xy(muse: list[dict]) -> list[dict]:
+    """集中の安定（x）と TP の変化（y）。種類ごとに別の列に入れる（Grafana で種類を絞らない）"""
+    rows = []
+    for r in muse:
+        if r['meditation_type'] not in EVAL_TYPES or r['focus_rating'] is None or not _usable(r):
+            continue
+        row = {c: None for c in XY_COLUMNS}
+        row['focus_rating'] = r['focus_rating']
+        row[f'alpha_{r["meditation_type"]}'] = r['tp_alpha_db_change']
+        row[f'delta_{r["meditation_type"]}'] = r['tp_delta_db_change']
+        rows.append(row)
+    return rows
