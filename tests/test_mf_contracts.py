@@ -464,3 +464,114 @@ def test_render_split_rows_sum_and_delta_on_variable():
     assert rows['2026-08'][:3] == ['¥50,000', '¥12,000', '¥62,000']
     # 増減は変動だけで見る（家賃の計上ズレに引きずられない）
     assert rows['2026-09'][3:] == ['+¥3,000', '+25.0%']
+
+
+# ---- 保険（insurance キー） ----
+
+INSURED = """
+- name: 共済
+  amount: 2000
+  cycle_months: 1
+  anchor: 2026-01-27
+  kind: living
+  insurance:
+"""
+
+
+def _load_insurance(tmp_path, body):
+    """body は insurance の中身（4スペース字下げの YAML 行）"""
+    (c,) = ct.load_contracts(_write(tmp_path, INSURED + body))
+    return c
+
+
+def test_insurance_parsed_and_policy_no_keeps_leading_zero(tmp_path):
+    c = _load_insurance(tmp_path, """\
+    insurer: 共済会
+    product: 総合
+    policy_no: "0012345"
+    insured: 家族
+    coverage: [入院, 死亡]
+    term_end: 2027-03-31
+    contact: [0120-000-000, https://example.com]
+    mypage: https://example.com/my
+    deduction: life
+    docs: data/insurance/共済/
+""")
+    ins = c.insurance
+    assert ins.policy_no == '0012345'
+    assert ins.coverage == ('入院', '死亡')
+    assert ins.contact == ('0120-000-000', 'https://example.com')
+    assert ins.term_end == D(2027, 3, 31)
+    assert ins.deduction == 'life'
+    assert ct.missing_insurance_fields(c) == []
+
+
+def test_contract_without_insurance_has_none(tmp_path):
+    (c,) = ct.load_contracts(_write(tmp_path, INSURED.replace('  insurance:\n', '')))
+    assert c.insurance is None
+
+
+@pytest.mark.parametrize('body, message', [
+    # 0123 は YAML 1.1 で8進の 83。黙って str() すると '83' になり控除証明書を取り寄せられない
+    ('    policy_no: 0123\n', '引用符'),
+    ('    policy_no: 12345\n', '引用符'),
+    ('    insurer_typo: x\n', '未知のキー'),
+    ('    deduction: medical\n', 'deduction'),
+    ('    term_end: 2027-03-31 10:00:00\n', 'term_end'),
+    ('    term_end: someday\n', 'term_end'),
+    ('    contact: 0120-000-000\n', 'contact'),
+    ('    coverage: []\n', 'coverage'),
+    ('    insurer: ""\n', 'insurer'),
+])
+def test_insurance_invalid(tmp_path, body, message):
+    with pytest.raises(ct.ContractError, match=message) as e:
+        _load_insurance(tmp_path, body)
+    assert r'contracts[0] (共済)' in str(e.value)
+
+
+@pytest.mark.parametrize('value', ['', ' x', ' [x]'])
+def test_insurance_must_be_mapping(tmp_path, value):
+    text = INSURED.replace('  insurance:\n', f'  insurance:{value}\n')
+    with pytest.raises(ct.ContractError, match=r'contracts\[0\] \(共済\).*insurance'):
+        ct.load_contracts(_write(tmp_path, text))
+
+
+def test_missing_insurance_fields_in_claim_order():
+    c = _c(insurance=ct.Insurance(product='p', coverage=('入院',)))
+    assert ct.missing_insurance_fields(c) == ['insurer', 'policy_no', 'contact']
+    c = _c(insurance=ct.Insurance(insurer='i', contact=('tel',)))
+    assert ct.missing_insurance_fields(c) == ['policy_no']
+
+
+def test_insurance_contracts_skip_ended_and_filter_deduction():
+    life = _c('生命', insurance=ct.Insurance(deduction='life'))
+    fire = _c('火災', insurance=ct.Insurance())
+    ended = _c('解約', insurance=ct.Insurance(deduction='life'), ended=D(2026, 1, 1))
+    plain = _c('動画')
+    cs = [life, fire, ended, plain]
+    assert ct.insurance_contracts(cs) == [life, fire]
+    assert ct.insurance_contracts(cs, deduction_only=True) == [life]
+
+
+def test_render_insurance_orders_by_next_and_lists_missing():
+    term = _c('満期あり', amount=24000, cycle=24, anchor=D(2025, 1, 1),
+              insurance=ct.Insurance(insurer='A', policy_no='001', contact=('tel',),
+                                     term_end=D(2026, 10, 20)))
+    monthly = _c('月払い', amount=2000, cycle=1, anchor=D(2026, 1, 27),
+                 insurance=ct.Insurance(insurer='B', deduction='life'))
+    out = cv.render_insurance([monthly, term], TODAY)
+    assert out.index('満期あり') < out.index('月払い')
+    assert '満期 2026-10-20' in out
+    assert '更新 2026-10-27' in out
+    assert '¥12,000' in out and '¥24,000' in out     # 年額換算
+    assert '- 月払い: policy_no, contact' in out
+    assert '満期あり:' not in out
+    assert '控除のある保険がない' in cv.render_insurance([term], TODAY, deduction_only=True)
+
+
+def test_render_insurance_keeps_leading_zero_of_policy_no():
+    # 全行が数字だけだと表の整形が数として読み 00123 → 123 にする
+    cs = [_c('a', insurance=ct.Insurance(policy_no='00123')),
+          _c('b', insurance=ct.Insurance(policy_no='0456'))]
+    out = cv.render_insurance(cs, TODAY)
+    assert '00123' in out and '0456' in out
