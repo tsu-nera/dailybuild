@@ -364,7 +364,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "^(分|集中|眠気|除外 %|RMSSD ms|RSA ms)$"
+              "options": "^(分|集中|眠気|睡眠 h|除外 %|RMSSD ms|RSA ms)$"
             },
             "properties": [
               {
@@ -409,6 +409,11 @@
             {
               "selector": "drowsiness_rating",
               "text": "眠気",
+              "type": "number"
+            },
+            {
+              "selector": "sleep_hours",
+              "text": "睡眠 h",
               "type": "number"
             },
             {
@@ -497,30 +502,31 @@
           }
         }
       ],
-      "title": "Muse の回の結果（新しい順。レポートの要約の数字。RMSSD・呼吸・RSA は SelfLoops の日だけ）",
+      "title": "Muse の回の結果（新しい順。レポートの要約の数字。睡眠は前夜。RMSSD・呼吸・RSA は SelfLoops の日だけ）",
       "transformations": [
         {
           "id": "organize",
           "options": {
             "indexByName": {
-              "Fmθ dB": 8,
-              "IAF Hz": 7,
-              "RMSSD ms": 12,
-              "RSA ms": 14,
-              "TP α Δ": 10,
-              "TP α 入り": 15,
-              "TP α 終わり": 16,
-              "TP δ Δ": 11,
-              "TP δ 入り": 17,
-              "TP δ 終わり": 18,
-              "θ/α": 9,
+              "Fmθ dB": 9,
+              "IAF Hz": 8,
+              "RMSSD ms": 13,
+              "RSA ms": 15,
+              "TP α Δ": 11,
+              "TP α 入り": 16,
+              "TP α 終わり": 17,
+              "TP δ Δ": 12,
+              "TP δ 入り": 18,
+              "TP δ 終わり": 19,
+              "θ/α": 10,
               "分": 2,
-              "前頭 α dB": 6,
-              "呼吸 bpm": 13,
+              "前頭 α dB": 7,
+              "呼吸 bpm": 14,
               "眠気": 4,
+              "睡眠 h": 5,
               "種類": 1,
               "開始": 0,
-              "除外 %": 5,
+              "除外 %": 6,
               "集中": 3
             }
           }
