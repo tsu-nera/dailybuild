@@ -12,7 +12,8 @@
 #   scripts/ops/daily-fetch.sh --days 7
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+# shellcheck source=lib/routine.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/routine.sh"
 
 DAYS=2
 DAYS_EXPLICIT=0
@@ -23,32 +24,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# data/ reports/ は dailybuild-private への symlink。未設定のまま走らせると
-# 各スクリプトが public 側にディレクトリを作り、既存データを見失う。
-for d in data reports config/private; do
-  if [ ! -L "$d" ] || [ ! -d "$d" ]; then
-    echo "エラー: $d が dailybuild-private にマウントされていません" >&2
-    echo "  ./scripts/setup_private_links.sh を実行してください" >&2
-    exit 1
-  fi
-done
-
-LOG_DIR="logs/daily-routine"
-mkdir -p "$LOG_DIR"
-exec > >(tee -a "$LOG_DIR/$(date +%Y-%m-%d).log") 2>&1
-
-FAILED=()
-
-# 失敗しても後続を続ける。ステップ名を控えて最後に報告する
-step() {
-  local name="$1"; shift
-  echo ""
-  echo ">>> $name"
-  if ! "$@"; then
-    echo "!!! $name に失敗（後続は続行する）"
-    FAILED+=("$name")
-  fi
-}
+# マウント検査・ログの tee・step()（失敗しても続行し、所要秒数を出す）は lib/routine.sh
+routine_fetch_init daily
 
 echo "=== Daily Routine (--days $DAYS) ==="
 echo "Started at $(date)"
@@ -65,12 +42,10 @@ else
   step "Google Health" uv run python scripts/fetch_googlehealth.py --non-interactive
 fi
 # 運動の GPS 軌跡（TCX）。exercise.csv の has_gps=True を読むので Google Health の後。
-# 未取得のものを全部取り、Dawarich に未投入のものを上げる（Dawarich が落ちていれば翌日また上げる）
 step "運動の軌跡"     uv run python scripts/exercise_route.py fetch
-# GPSLogger の GPX（Syncthing で vaio に届く）を前日分まで private へ。Dawarich へ上げるより前
+# GPSLogger の GPX（Syncthing で vaio に届く）を前日分まで private へ
 step "GPSLogger"     uv run python scripts/gpslogger.py fetch
-step "Dawarich 軌跡"  uv run python scripts/dawarich.py import-routes
-step "Dawarich 場所"  uv run python scripts/dawarich.py capture-places
+# Dawarich（import-routes / capture-places）は mouse が寝ていると timeout まで待つので weekly-fetch.sh へ移した
 step "HealthPlanet"  uv run python scripts/fetch_healthplanet.py
 # Hevy の export 取得。セッションの有無は Health Connect 経由で exercise.csv に
 # 入るが、部位別セット数の内訳は export にしか無い（Hevy に API は無い）
@@ -130,12 +105,4 @@ step "行動イベント"   uv run python scripts/events.py build
 # 観察日記（reports/observation/）。events.jsonl を読むのでその後。遅れて届く同期を拾うため3日ぶん書き直す
 step "観察日記"       uv run python scripts/observation.py build --days 3
 
-echo ""
-echo "Finished at $(date)"
-
-if [ ${#FAILED[@]} -gt 0 ]; then
-  echo "=== 失敗した取得: ${FAILED[*]} ==="
-  exit 1
-fi
-
-echo "=== Daily Routine Complete ==="
+routine_fetch_finish "Daily Routine"

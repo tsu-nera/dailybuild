@@ -7,7 +7,7 @@ Dawarich の DB は派生物で、正本は private の data/ にある（TCX・
 Dawarich をやめても data/ だけで作り直せることを保つ。
 
 import-routes: 位置のファイル（ROUTE_GLOBS）のうち Dawarich に未投入のものを HTTP API で上げる。
-  どのホストからでも流せる（日次は vaio）。宛先は .env の DAWARICH_URL / DAWARICH_API_KEY で、
+  どのホストからでも流せる（週次の weekly-fetch.sh で vaio から）。宛先は .env の DAWARICH_URL / DAWARICH_API_KEY で、
   未設定なら warning だけで 0 終了する。二重投入の判定は import 名（＝ファイル名）。
   GPSLogger の GPX は飛んだ network / fused の点を除いて（lib.gpslogger.drop_jumps）同じファイル名で上げる。
   data/ の GPX は生のまま残す。
@@ -16,9 +16,9 @@ import-routes: 位置のファイル（ROUTE_GLOBS）のうち Dawarich に未�
   混ざって線が崩れるため。消える点の正本は data/ と Drive にあるので、Dawarich を作り直せば戻る。
   GPX は1日分を覆うので基準にしない（基準にすると1日中の他の点が消える）。
 capture-places: Place の名前・merge・アーカイブは本人が Dawarich の UI で直す。その判断を外部 ID ごとに
-  PLACE_LEDGER へ写す（日次、vaio）。merge で消えた外部 ID は、前回写した Visit の今の Place から統合先を推定する
+  PLACE_LEDGER へ写す（週次の weekly-fetch.sh、vaio）。merge で消えた外部 ID は、前回写した Visit の今の Place から統合先を推定する
   （lib.dawarich.place_ledger）。.env の DAWARICH_SSH_HOST（Dawarich が動くホスト）へ ssh して rails runner を流し、
-  未設定なら warning だけで 0 終了する。ホストが寝ていれば失敗し、翌日の写しで追いつく。
+  未設定なら warning だけで 0 終了する。ホストが寝ていれば失敗し、次回の写しで追いつく。
 name-places: Dawarich の DB は取り込み直すたびに作り直されるので、手で直さずにこれを流し直す。
   Dawarich が動いているホストの dailybuild で実行する（docker compose で app コンテナに入る）。
   先に開始時刻が同じ Visit を1件に減らす（rails/dedupe_visits.rb）。残っていると UI の Place の merge が
@@ -238,7 +238,7 @@ def cmd_import_routes(args) -> int:
             continue
         try:
             result = upload_route(client, p)
-        except Exception as exc:  # 1件の失敗で残りを止めない。翌日また上げる
+        except Exception as exc:  # 1件の失敗で残りを止めない。次回また上げる
             log.error('%s: %r', p.name, exc)
             failed += 1
             continue

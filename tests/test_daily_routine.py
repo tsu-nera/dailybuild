@@ -1,4 +1,4 @@
-"""daily-routine.sh の失敗モードを守るテスト（ADR-002）。
+"""daily-routine.sh / weekly-routine.sh の失敗モードを守るテスト（ADR-002）。
 
 守るのは「取得したデータを失わない・他の書き手を上書きしない」の2点。
 実 private や vaio には触れず、bare repo を remote にした一時 clone で回す。
@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parent.parent / 'scripts' / 'ops' / 'daily-routine.sh'
+OPS = Path(__file__).resolve().parent.parent / 'scripts' / 'ops'
+SCRIPT = OPS / 'daily-routine.sh'
+WEEKLY = OPS / 'weekly-routine.sh'
 
 pytestmark = pytest.mark.skipif(shutil.which('flock') is None, reason='flock が無い')
 
@@ -42,12 +44,16 @@ def env(tmp_path):
     return remote, private, marker, tmp_path
 
 
-def run(private, tmp_path, marker, body):
+def run(private, tmp_path, marker, body, script=SCRIPT, fetch_var='DAILYBUILD_FETCH'):
     stub = tmp_path / 'stub.sh'
     stub.write_text(f'#!/bin/bash\ntouch {marker}\ncd {private}\n{body}\n')
     stub.chmod(0o755)
-    e = {**os.environ, 'DAILYBUILD_PRIVATE': str(private), 'DAILYBUILD_FETCH': str(stub)}
-    return subprocess.run(['bash', str(SCRIPT)], env=e, capture_output=True, text=True)
+    e = {**os.environ, 'DAILYBUILD_PRIVATE': str(private), fetch_var: str(stub)}
+    return subprocess.run(['bash', str(script)], env=e, capture_output=True, text=True)
+
+
+def run_weekly(private, tmp_path, marker, body):
+    return run(private, tmp_path, marker, body, script=WEEKLY, fetch_var='DAILYBUILD_WEEKLY_FETCH')
 
 
 def test_routine失敗でもcommitとpushを行い終了コードを保つ(env):
@@ -56,7 +62,9 @@ def test_routine失敗でもcommitとpushを行い終了コードを保つ(env):
             'echo fetched > data.csv\necho "=== 失敗した取得: toggl mf ==="\nexit 1')
     assert r.returncode == 1
     assert git(remote, 'show', 'main:data.csv') == 'fetched'
-    assert '(failed: toggl mf)' in git(remote, 'log', '-1', '--format=%s', 'main')
+    subject = git(remote, 'log', '-1', '--format=%s', 'main')
+    assert subject.startswith('data: daily routine ')
+    assert '(failed: toggl mf)' in subject
 
 
 def test_差分が無ければcommitしない(env):
@@ -108,3 +116,23 @@ def test_衝突が残ったままの次回も取得してローカルにcommit�
     gitdir = private / '.git'
     assert not (gitdir / 'rebase-merge').exists()
     assert not (gitdir / 'rebase-apply').exists()
+
+
+def test_weeklyはlabelをweeklyにしてcommitする(env):
+    remote, private, marker, tmp = env
+    r = run_weekly(private, tmp, marker,
+                   'echo weekly > data.csv\necho "=== 失敗した取得: Dawarich 軌跡 ==="\nexit 1')
+    assert r.returncode == 1
+    assert git(remote, 'show', 'main:data.csv') == 'weekly'
+    subject = git(remote, 'log', '-1', '--format=%s', 'main')
+    assert subject.startswith('data: weekly routine ')
+    assert subject.endswith('(failed: Dawarich 軌跡)')
+
+
+def test_weeklyは日次とlockを共有する(env):
+    remote, private, marker, tmp = env
+    with open(private / '.git' / 'dailybuild-routine.lock', 'w') as f:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        r = run_weekly(private, tmp, marker, 'echo x > data.csv')
+    assert r.returncode == 75
+    assert not marker.exists()
