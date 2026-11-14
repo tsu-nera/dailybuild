@@ -12,6 +12,10 @@ Track（time_entries.csv）は deprecated なので読まない。推移は Focu
 
 日ごと・週ごとの表は Grafana の時間範囲で期間を選ぶ（date / week_start を timestamp で読む）。
 meditation_now（今週・先週）は週単位の一覧（goals）用。
+
+Muse で測った回の結果（meditation_muse）は satoru の logs/session_log.csv を読む（データソースとしての satoru。
+dailybuild からは書かない）。satoru の session-review が push し、vaio で pull したものを読む。
+pipeline_version が空の行（2026-05 以前・旧定義）は横に比べられないので入れない。
 """
 
 import datetime as dt
@@ -25,6 +29,9 @@ SESSION_COLUMNS = ['start', 'date', 'week', 'duration_min']
 DAILY_COLUMNS = ['date', 'sessions', 'total_min']
 WEEK_COLUMNS = ['week_start', 'week', 'sessions', 'days', 'total_min']
 NOW_COLUMNS = WEEK_COLUMNS + [f'prev_{c}' for c in WEEK_COLUMNS]
+MUSE_COLUMNS = ['start', 'date', 'meditation_type', 'duration_min', 'focus_rating', 'drowsiness_rating',
+                'tp_alpha_db_first', 'tp_alpha_db_last', 'tp_alpha_db_change',
+                'tp_delta_db_first', 'tp_delta_db_last', 'tp_delta_db_change', 'artifact_reject_pct']
 
 
 def _week_label(d: dt.date) -> str:
@@ -71,3 +78,16 @@ def build(focus_csv: Path, today: dt.date) -> dict[str, list[dict]]:
 
     return {'meditation_sessions': sessions[::-1], 'meditation_daily': daily,
             'meditation_weeks': weeks, 'meditation_now': now}
+
+
+def build_muse(session_log_csv: Path) -> list[dict]:
+    """satoru の session_log から Muse の回の結果を新しい順に。change は終わり − 入り（dB）。欠測は空"""
+    df = pd.read_csv(session_log_csv, dtype={'pipeline_version': str})
+    df = df[df['pipeline_version'].notna()].copy()
+    start = pd.to_datetime(df['timestamp'])
+    df['start'] = start.dt.strftime('%Y-%m-%d %H:%M')
+    df['date'] = start.dt.date.astype(str)
+    df['tp_alpha_db_change'] = df['tp_alpha_db_last'] - df['tp_alpha_db_first']
+    df['tp_delta_db_change'] = df['tp_delta_db_last'] - df['tp_delta_db_first']
+    df = df.sort_values('start', ascending=False)[MUSE_COLUMNS].round(2).astype(object)
+    return df.where(df.notna(), None).to_dict('records')

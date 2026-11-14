@@ -12,7 +12,7 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 加えて Body / Sleep / Mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
 消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
 お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）、
-瞑想の画面用の meditation_{sessions,daily,weeks,now}.csv（lib/meditation.py）を書く。
+瞑想の画面用の meditation_{sessions,daily,weeks,now,muse}.csv（lib/meditation.py。muse は satoru の session_log）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
@@ -52,6 +52,7 @@ NUTRITION_CSV = project_root / 'data/wearable/nutrition.csv'
 EXERCISE_CSV = project_root / 'data/googlehealth/exercise.csv'
 CSV_DIR = project_root / 'reports/dashboard'
 TOGGL_FOCUS_CSV = project_root / 'data/toggl/focus_entries.csv'
+SATORU_SESSION_LOG = Path.home() / 'repo/satoru/logs/session_log.csv'  # satoru（PUBLIC）。vaio で pull して読む
 CONSUMABLES_CSV = project_root / 'data/inventory/consumables.csv'
 PURCHASE_RULES_CSV = project_root / 'data/inventory/purchase_rules.csv'
 STOCKTAKE_CSV = project_root / 'data/inventory/stocktake.csv'
@@ -104,6 +105,7 @@ COLUMNS = {
     'meditation_daily': meditation.DAILY_COLUMNS,
     'meditation_weeks': meditation.WEEK_COLUMNS,
     'meditation_now': meditation.NOW_COLUMNS,
+    'meditation_muse': meditation.MUSE_COLUMNS,
 }
 
 
@@ -375,7 +377,10 @@ def asset_tables() -> dict[str, list[dict]]:
 
 
 def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
-    return meditation.build(require_private_path(TOGGL_FOCUS_CSV), today)
+    if not SATORU_SESSION_LOG.exists():
+        raise SystemExit(f'{SATORU_SESSION_LOG} が無い（satoru を clone する）')
+    return {**meditation.build(require_private_path(TOGGL_FOCUS_CSV), today),
+            'meditation_muse': meditation.build_muse(SATORU_SESSION_LOG)}
 
 
 # 画面ごとの表のまとまり。新しい画面はここに1グループ足す（サブコマンドを増やさない）
