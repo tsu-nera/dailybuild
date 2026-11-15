@@ -299,8 +299,9 @@ def weeks_since(first_date, today):
 
 def weekly_training_stats(df, week_labels):
     """
-    週ごとの時間・ボリューム・レップ・セット（頻度は weekly_muscle_sets() の training_days）
+    週ごとのワークアウト数・時間・ボリューム・レップ・セット（頻度は weekly_muscle_sets() の training_days）
 
+    - workouts: ワークアウトの数（Hevy の「トレーニング」。同じ日に2回なら2）
     - minutes: ワークアウトの開始〜終了の合計（同じワークアウトの行は1回だけ数える）
     - volume_kg: 重量 × 回数の合計。**重量のあるセットだけ**（自重は回数を重量の代わりに
       足すと壊れるので含めない）
@@ -319,9 +320,9 @@ def weekly_training_stats(df, week_labels):
     Returns
     -------
     DataFrame
-        index=week_labels、columns=['minutes', 'volume_kg', 'reps', 'sets']
+        index=week_labels、columns=['workouts', 'minutes', 'volume_kg', 'reps', 'sets']
     """
-    cols = ['minutes', 'volume_kg', 'reps', 'sets']
+    cols = ['workouts', 'minutes', 'volume_kg', 'reps', 'sets']
     df = add_week_label(df)
     df = df[df['week_label'].isin(week_labels)].copy()
     if df.empty:
@@ -333,6 +334,7 @@ def weekly_training_stats(df, week_labels):
 
     by_week = df.groupby('week_label')
     out = pd.DataFrame({
+        'workouts': workouts.groupby('week_label').size(),
         'minutes': workouts.groupby('week_label')['minutes'].sum().round(),
         'volume_kg': by_week['volume'].sum().round(),
         'reps': by_week['reps'].sum(),
