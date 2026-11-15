@@ -113,6 +113,8 @@ COLUMNS = {
     # 筋トレの画面（lib/analytics/workout.py）。Hevy の記録が始まった週から今週まで、記録の無い週は 0
     'strength_weeks': ['week', 'week_start', 'days', 'minutes', 'volume_kg', 'reps', 'sets'],
     'strength_sets': ['week', 'week_start', 'muscle', 'sets', 'target'],
+    # 部位の一覧（Hevy の6部位の並び）。画面の部位の変数が読む。目標の無い部位は target が空
+    'strength_muscles': ['muscle', 'target'],
 }
 
 
@@ -325,10 +327,11 @@ def strength_tables(today: dt.date, workouts_csv: Path = WORKOUTS_CSV) -> dict[s
         start = dt.date.fromisocalendar(int(wk[:4]), int(wk[-2:]), 1).isoformat()
         weeks.append({'week': wk, 'week_start': start, 'days': int(table.loc[wk, 'training_days']),
                       **{k: int(v) for k, v in stats.loc[wk].items()}})
-        for p in workout.weekly_set_progress(table, wk, targets):
-            sets.append({'week': wk, 'week_start': start, 'muscle': p['label'],
-                         'sets': p['actual'], 'target': p['target']})
-    return {'strength_weeks': weeks, 'strength_sets': sets}
+        for code, label in workout.MUSCLE_LABELS.items():
+            n = int(table.loc[wk, code]) if code in table.columns else 0
+            sets.append({'week': wk, 'week_start': start, 'muscle': label, 'sets': n, 'target': targets.get(code)})
+    muscles = [{'muscle': label, 'target': targets.get(code)} for code, label in workout.MUSCLE_LABELS.items()]
+    return {'strength_weeks': weeks, 'strength_sets': sets, 'strength_muscles': muscles}
 
 
 WEEKDAYS = 5

@@ -1,4 +1,5 @@
 # 種目名 → 主に効かせる部位（primary 1つだけ）
+# muscle は back / chest / core / shoulders / arms / legs のどれか（Hevy の6部位。表示名は workout.MUSCLE_LABELS）
 #
 # secondary（ベンチプレスの三頭・前肩）は数えない。狙いが大胸筋に絞られていること、
 # 種目が8個しかないことから単純な形で始める。0.5 で数える方式は後から足せる。

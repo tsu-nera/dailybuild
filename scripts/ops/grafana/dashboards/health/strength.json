@@ -376,7 +376,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
-      "description": "点線が exercise_muscles.yaml の週目標（strength_sets.csv の target）。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
+      "description": "Hevy の6部位。種目と部位の対応は config/exercise_muscles.yaml（1種目1部位、補助で使う部位は数えない）。点線は同じ yaml の週目標で、目標の無い部位には出ない。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
       "gridPos": {
         "x": 0,
         "y": 14,
@@ -540,7 +540,7 @@
             "source": "url",
             "parser": "backend",
             "format": "table",
-            "url": "http://files/sets_now.csv",
+            "url": "http://files/strength_muscles.csv",
             "url_options": {
               "method": "GET"
             },

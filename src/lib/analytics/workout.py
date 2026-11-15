@@ -14,13 +14,14 @@ import yaml
 
 EXERCISE_MUSCLES_YAML = Path(__file__).resolve().parents[3] / 'config' / 'exercise_muscles.yaml'
 
-# 部位コード → 表示名。yaml に無い値が来たらコードのままフォールバックする
+# 部位コード → 表示名。Hevy アプリの6部位と同じ並び。yaml に無い値が来たらコードのままフォールバックする
 MUSCLE_LABELS = {
-    'chest': '胸',
     'back': '背中',
+    'chest': '胸',
+    'core': '体幹',
     'shoulders': '肩',
-    'legs': '脚',
     'arms': '腕',
+    'legs': '脚',
 }
 
 
