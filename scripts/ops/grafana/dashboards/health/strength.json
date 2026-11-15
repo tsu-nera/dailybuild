@@ -1,0 +1,559 @@
+{
+  "uid": "strength",
+  "title": "筋トレ",
+  "tags": [
+    "dailybuild",
+    "health"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schemaVersion": 41,
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-1y",
+    "to": "now+1d"
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "健康",
+      "type": "dashboards",
+      "tags": [
+        "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "習慣",
+      "type": "dashboards",
+      "tags": [
+        "habits"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "頻度（日/週）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "Hevy に記録のある日を数える。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/strength_weeks.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "week_start",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "days",
+              "text": "日数",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 1,
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "max": 7
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "時間（分/週）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "Hevy のワークアウトの開始〜終了の合計。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/strength_weeks.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "week_start",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "minutes",
+              "text": "分",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 1,
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "ボリューム（kg/週）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "重量 × 回数の合計。重量のあるセットだけで、自重は含まない。器具が変わると段差が出る（2026-08 まではチョコザップのマシン、以降は自宅のダンベル）。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/strength_weeks.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "week_start",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "volume_kg",
+              "text": "kg",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 1,
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "レップ（回/週）",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "回数の合計（自重を含む）。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/strength_weeks.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "week_start",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "reps",
+              "text": "回",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "unit": "none",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 1,
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "部位別セット数: $muscle",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "点線が exercise_muscles.yaml の週目標（strength_sets.csv の target）。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 8,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/strength_sets.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "week_start",
+              "text": "date",
+              "type": "timestamp",
+              "timestampFormat": "2006-01-02"
+            },
+            {
+              "selector": "muscle",
+              "text": "muscle",
+              "type": "string"
+            },
+            {
+              "selector": "sets",
+              "text": "セット",
+              "type": "number"
+            },
+            {
+              "selector": "target",
+              "text": "目標",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "muscle == \"${muscle}\""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 1,
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "transformations": [
+        {
+          "id": "configFromData",
+          "options": {
+            "configRefId": "A",
+            "applyTo": {
+              "id": "byName",
+              "options": "セット"
+            },
+            "mappings": [
+              {
+                "fieldName": "目標",
+                "handlerKey": "threshold1",
+                "reducerId": "lastNotNull"
+              },
+              {
+                "fieldName": "セット",
+                "handlerKey": "__ignore"
+              },
+              {
+                "fieldName": "date",
+                "handlerKey": "__ignore"
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "目標": true,
+              "muscle": true
+            }
+          }
+        }
+      ],
+      "repeat": "muscle",
+      "repeatDirection": "h",
+      "maxPerRow": 3
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "muscle",
+        "label": "部位",
+        "type": "query",
+        "datasource": {
+          "type": "yesoreyeram-infinity-datasource",
+          "uid": "dashboard-files"
+        },
+        "hide": 2,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 1,
+        "sort": 0,
+        "query": {
+          "queryType": "infinity",
+          "query": "",
+          "infinityQuery": {
+            "refId": "variable",
+            "type": "csv",
+            "source": "url",
+            "parser": "backend",
+            "format": "table",
+            "url": "http://files/sets_now.csv",
+            "url_options": {
+              "method": "GET"
+            },
+            "columns": [
+              {
+                "selector": "muscle",
+                "text": "muscle",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

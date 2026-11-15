@@ -259,7 +259,7 @@
       "gridPos": {
         "x": 0,
         "y": 8,
-        "w": 8,
+        "w": 12,
         "h": 8
       },
       "targets": [
@@ -345,9 +345,9 @@
         "uid": "dashboard-files"
       },
       "gridPos": {
-        "x": 8,
+        "x": 12,
         "y": 8,
-        "w": 8,
+        "w": 12,
         "h": 8
       },
       "targets": [
@@ -444,93 +444,6 @@
         }
       },
       "description": "exercise.csv（platform 重複解決済み）。セッションの無い日は空白。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "筋トレ（分/日）",
-      "datasource": {
-        "type": "yesoreyeram-infinity-datasource",
-        "uid": "dashboard-files"
-      },
-      "gridPos": {
-        "x": 16,
-        "y": 8,
-        "w": 8,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "yesoreyeram-infinity-datasource",
-            "uid": "dashboard-files"
-          },
-          "type": "csv",
-          "source": "url",
-          "parser": "backend",
-          "format": "table",
-          "url": "http://files/daily.csv",
-          "columns": [
-            {
-              "selector": "date",
-              "text": "date",
-              "type": "timestamp",
-              "timestampFormat": "2006-01-02"
-            },
-            {
-              "selector": "strength_min",
-              "text": "筋トレ 分",
-              "type": "number"
-            }
-          ],
-          "url_options": {
-            "method": "GET"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "drawStyle": "bars",
-            "lineWidth": 1,
-            "fillOpacity": 80,
-            "pointSize": 4,
-            "showPoints": "always",
-            "spanNulls": false,
-            "barAlignment": 0,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      },
-      "description": "exercise.csv の筋トレセッション。部位別セット数は下の表（Hevy export）。欠測は空白（0にしない）。今日の行は途中。期間は右上の時間範囲で変える"
     },
     {
       "id": 7,

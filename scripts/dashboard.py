@@ -16,7 +16,7 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
-    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,balances,meditation] [--weeks 8]
+    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,balances,meditation,strength] [--weeks 8]
                                       [--out tmp/dashboard/goals.json] [--csv-dir reports/dashboard]
         --only を省くと全グループ。指定したグループの CSV だけ作り直す（台帳を書いた直後・相場を引いた
         直後に Grafana へ反映する用。全体は約10秒）。--out の JSON は goals を作ったときだけ書く
@@ -90,7 +90,7 @@ COLUMNS = {
     # bed_h / wake_h は時計の時刻を数値にしたもの（入床は 12時より前なら +24。01:30 → 25.5）
     'daily': ['date',
               'weight', 'body_fat_rate', 'body_water_rate', 'muscle_kg', 'lbm_kg', 'ffmi',
-              'cycling_min', 'cycling_hr', 'strength_min', 'protein_g',
+              'cycling_min', 'cycling_hr', 'protein_g',
               'deep_min', 'light_min', 'rem_min', 'bed_h', 'wake_h', 'debt_h',
               'hrv', 'hrv_base', 'hrv_lo', 'hrv_hi', 'rhr', 'rhr_base', 'rhr_lo', 'rhr_hi',
               'spo2_avg', 'spo2_min'],
@@ -110,6 +110,9 @@ COLUMNS = {
     'meditation_now': meditation.NOW_COLUMNS,
     'meditation_muse': meditation.MUSE_COLUMNS,
     'meditation_eval': meditation.EVAL_COLUMNS,
+    # 筋トレの画面（lib/analytics/workout.py）。Hevy の記録が始まった週から今週まで、記録の無い週は 0
+    'strength_weeks': ['week', 'week_start', 'days', 'minutes', 'volume_kg', 'reps', 'sets'],
+    'strength_sets': ['week', 'week_start', 'muscle', 'sets', 'target'],
 }
 
 
@@ -228,7 +231,6 @@ def build_daily(lo: dt.date, hi: dt.date, *, sleep_csv: Path = SLEEP_CSV,
     nut = _by_date(nutrition_csv)
     sessions = exercise_source.load_sessions(lo, hi, csv_path=exercise_csv)
     cycling = _sport_by_day(sessions, activity.calc_cycling_stats_for_period)
-    strength = _sport_by_day(sessions, activity.calc_strength_stats_for_period)
     vitals = {r['date']: {c['label']: c for c in r['vitals']}
               for r in collect_daily_detail(hi, days=(hi - lo).days + 1)}
 
@@ -247,8 +249,6 @@ def build_daily(lo: dt.date, hi: dt.date, *, sleep_csv: Path = SLEEP_CSV,
             row['cycling_min'] = cycling[day]['duration']
             hr = cycling[day]['avg_hr']
             row['cycling_hr'] = None if hr is None else round(hr)
-        if day in strength:
-            row['strength_min'] = strength[day]['duration']
         if day in main.index:
             r = main.loc[day]
             for col, src in (('deep_min', 'deepMinutes'), ('light_min', 'lightMinutes'), ('rem_min', 'remMinutes')):
@@ -314,6 +314,23 @@ def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
             'meditation_eval': meditation.build_eval(muse)}
 
 
+def strength_tables(today: dt.date, workouts_csv: Path = WORKOUTS_CSV) -> dict[str, list[dict]]:
+    df = hevy_csv.parse_hevy_csv(require_private_path(workouts_csv))
+    labels = workout.weeks_since(df['start_dt'].min(), today)
+    table, _ = workout.weekly_muscle_sets(df, workout.load_muscle_mapping(), labels)
+    stats = workout.weekly_training_stats(df, labels)
+    targets = workout.load_weekly_set_targets()
+    weeks, sets = [], []
+    for wk in labels:
+        start = dt.date.fromisocalendar(int(wk[:4]), int(wk[-2:]), 1).isoformat()
+        weeks.append({'week': wk, 'week_start': start, 'days': int(table.loc[wk, 'training_days']),
+                      **{k: int(v) for k, v in stats.loc[wk].items()}})
+        for p in workout.weekly_set_progress(table, wk, targets):
+            sets.append({'week': wk, 'week_start': start, 'muscle': p['label'],
+                         'sets': p['actual'], 'target': p['target']})
+    return {'strength_weeks': weeks, 'strength_sets': sets}
+
+
 WEEKDAYS = 5
 
 
@@ -363,6 +380,7 @@ GROUPS = {
     'assets': lambda today, weeks: asset_tables(),
     'balances': lambda today, weeks: balance_tables(today),
     'meditation': lambda today, weeks: meditation_tables(today),
+    'strength': lambda today, weeks: strength_tables(today),
 }
 
 

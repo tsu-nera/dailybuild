@@ -3,7 +3,8 @@
 """
 ワークアウトデータ分析ライブラリ
 
-`scripts/hevy.py show` が使う週次集計（部位別セット数 / 種目別 e1RM / 腹囲）を提供。
+`scripts/hevy.py show` と `scripts/dashboard.py` が使う週次集計（部位別セット数 / 種目別 e1RM / 腹囲 /
+頻度・時間・ボリューム・レップ）を提供。
 """
 
 from pathlib import Path
@@ -285,3 +286,55 @@ def weekly_waist(measurements_df, week_labels):
     df = df.sort_values('date')
     weekly = df.groupby('week_label')['waist_cm'].last()
     return weekly.reindex(week_labels)
+
+
+def weeks_since(first_date, today):
+    """first_date の週から today の週までの ISO週ラベル（古い→新しい）"""
+    first = pd.Timestamp(first_date).normalize()
+    today = pd.Timestamp(today).normalize()
+    weeks = (today - pd.Timedelta(days=today.weekday()) - (first - pd.Timedelta(days=first.weekday()))).days // 7 + 1
+    return recent_iso_weeks(max(weeks, 1), today)
+
+
+def weekly_training_stats(df, week_labels):
+    """
+    週ごとの時間・ボリューム・レップ・セット（頻度は weekly_muscle_sets() の training_days）
+
+    - minutes: ワークアウトの開始〜終了の合計（同じワークアウトの行は1回だけ数える）
+    - volume_kg: 重量 × 回数の合計。**重量のあるセットだけ**（自重は回数を重量の代わりに
+      足すと壊れるので含めない）
+    - reps: 回数の合計（自重を含む）
+    - sets: セット数（自重を含む。部位別セット数と同じ数え方）
+
+    記録の無い週は 0 の行にする。
+
+    Parameters
+    ----------
+    df : DataFrame
+        parse_hevy_csv() 済みの DataFrame
+    week_labels : list[str]
+        表に出す週（古い→新しい）
+
+    Returns
+    -------
+    DataFrame
+        index=week_labels、columns=['minutes', 'volume_kg', 'reps', 'sets']
+    """
+    cols = ['minutes', 'volume_kg', 'reps', 'sets']
+    df = add_week_label(df)
+    df = df[df['week_label'].isin(week_labels)].copy()
+    if df.empty:
+        return pd.DataFrame(0, index=week_labels, columns=cols)
+
+    df['volume'] = (df['weight_kg'] * df['reps']).where(df['weight_kg'].notna(), 0)
+    workouts = df.drop_duplicates(['start_dt', 'end_dt']).copy()
+    workouts['minutes'] = (workouts['end_dt'] - workouts['start_dt']).dt.total_seconds() / 60
+
+    by_week = df.groupby('week_label')
+    out = pd.DataFrame({
+        'minutes': workouts.groupby('week_label')['minutes'].sum().round(),
+        'volume_kg': by_week['volume'].sum().round(),
+        'reps': by_week['reps'].sum(),
+        'sets': by_week.size(),
+    })
+    return out.reindex(week_labels, fill_value=0)[cols].astype(int)
