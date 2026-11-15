@@ -9,10 +9,10 @@ Claude のセッション無しにスマホから見る。claude.ai の Dashboar
 ジャンルごとのフォルダに分ける。JSON は `scripts/ops/grafana/dashboards/<ジャンル>/<uid>.json` に置き、ディレクトリ名がそのまま
 Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`）。フォルダはファイルの置き場所で決まるので、画面の UI では移さない。
 各画面はタグ `dailybuild` とジャンルのタグ（`health` / `habits` / `money` / `home`）を持ち、上部の「健康 ▾ 習慣 ▾ お金 ▾ 暮らし ▾」のドロップダウン
-（ジャンルのタグで引くリンク）で行き来する。リンクは `keepTime: false`（画面ごとに既定の期間が 6時間〜20年と違い、引き継ぐと目標の6時間で Mind 等の時系列が空になる）。画面を足すときはジャンルのディレクトリに置き、タグとリンクを既存の画面と揃える。
+（ジャンルのタグで引くリンク）で行き来する。リンクは `keepTime: false`（画面ごとに既定の期間が 6時間〜20年と違い、引き継ぐと目標の6時間で心等の時系列が空になる）。画面を足すときはジャンルのディレクトリに置き、タグとリンクを既存の画面と揃える。
 ジャンルを足すときは全画面の `links` に1つ足す（ドロップダウンは画面ごとに持つ）。
 
-`habits` は習慣ごとの画面（瞑想・筋トレ・早起きなど）を置く場所で、`health` は体の状態（Body / Sleep / Mind）を見る場所。
+`habits` は習慣ごとの画面（瞑想・筋トレ・早起きなど）を置く場所で、`health` は体の状態（体 / 睡眠 / 心）を見る場所。
 2026-11-14 に週の目標を `health` から移し、同じ日に「目標」へ改めた（月次の目標も置く場所にするため）。uid は `goals` のままなので `/d/goals` のリンクは変わらない。
 `goals` は毎日見る一覧で、習慣ごとの推移は個別の画面（weekly review で対話しながら見る）に置く。一覧と個別の画面は同じ CSV を読み、
 一覧は1行1目標の表1枚（`goals_list.csv`。項目・目標・今週・先週）で、行の項目を押すとその習慣の画面へ飛ぶ。stat を並べると値の数で
@@ -25,12 +25,12 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `early-rising` | habits | 早起き | 今週の睡眠・入床/離床の達成・負債、夜ごと・週ごとの推移 | 週単位の表 |
 | `strength` | habits | 筋トレ | 今週の部位別セット数、部位ごとの週ごとのセット数 | 週単位の表 |
 | `meditation` | habits | 瞑想 | 1日ごとの時間、週ごとの合計・回数（棒は月曜の位置）、1回ごとの記録（Toggl Focus の「瞑想」、`lib/meditation.py`） | 90日 |
-| `body` | health | Body | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・タンパク質 | 90日 |
-| `sleep` | health | Sleep | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
+| `body` | health | 体 | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・筋トレ・タンパク質 | 90日 |
+| `sleep` | health | 睡眠 | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
 | `assets` | money | 資産（B/S） | 今日時点の資産の内訳・資産の推移（積み上げ）・持ち物の中古相場と買値の差（`lib/assets.py`）。下段に口座別残高の種類別の積み上げ・負債（カード利用残高）・純資産・口座ごとの最新残高（`lib/balances.py`。時系列はパネル単位で90日） | 12年 |
 | `consumables` | home | 消耗品 | 一覧。手放していない品目の分類・次に買う頃・尽きる頃・月額・最終購入。分類は見出しで絞り込める。品名をクリックすると詳細へ（台帳は docs/inventory.md） | 表のみ |
 | `consumable-detail` | home | 消耗品の詳細 | 1品目の次に買う頃などの数字・1単位あたりの値段（店ごと）・購入履歴・台帳の欄。`?var-item=<key>` で開く（品目を指定しないと最初の品目） | 20年 |
-| `mind` | health | Mind | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
+| `mind` | health | 心 | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
 
 `body` `sleep` `mind` `meditation` は時系列で、期間は右上の時間範囲で変える（`daily.csv` は直近365日、`metrics_daily.csv` は全期間）。
 日付だけの CSV を UTC 0時として読むので、3画面の timezone は `utc`（`browser` にすると日付が9時間ずれて見える）。
@@ -61,7 +61,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 | `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
 | `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果（主観・前夜の睡眠時間（`metrics_daily` の `sleep_hours` を日付で）・TP の入り→終わり・レポートの要約の数字＝前頭 α・IAF・Fmθ・θ/α・RMSSD・呼吸数・RSA振幅・除外率）。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
 | `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・対照）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |
-| `daily` | `dashboard.py` | Body / Sleep / Mind 画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
+| `daily` | `dashboard.py` | 体 / 睡眠 / 心 画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
 
 `reports/` の他のファイル（journal の md など）は mount はされるが配らない（nginx の `alias` で1本だけ出す）。
