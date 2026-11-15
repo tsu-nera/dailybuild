@@ -69,7 +69,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 `reports/` の他のファイル（journal の md など）は mount はされるが配らない（nginx の `alias` で1本だけ出す）。
 `events.jsonl` は配らない。Infinity は JSON Lines を読む parser を持たず、確かめられていない（2026-11-10）。
 
-- 計算は **`scripts/dashboard.py` に1本**（`metrics_daily.csv` は `journal_skeleton.py`）。Grafana では集計も判定もしない（クエリは列の選択と並べ替えだけ）。
+- 計算は **`src/lib/analytics/`**（Markdown のレポートと同じ層。例: FFMI は `body.py`、早起きの判定・週の目安は `sleep/nightly.py`）。`scripts/dashboard.py` は lib の結果を Grafana 用の CSV に並べるだけで、新しい計算をここに書かない（`metrics_daily.csv` は `journal_skeleton.py`）。Grafana では集計も判定もしない（クエリは列の選択と並べ替えだけ）。
   claude.ai 版（同じスクリプトの JSON）と同じ数字になる
 - `dashboard.py` の CSV（上の表）は毎日**全上書き**で、
   `data/` には置かない。欠測は0でなく空セル

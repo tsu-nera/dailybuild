@@ -7,6 +7,7 @@
     sleep_cycle: 睡眠サイクル検出・分析
     sleep_need_estimator: 最適睡眠時間の推定
     sleep_debt_clean: 睡眠負債の計算
+    nightly: 夜ごと・週ごとの集計（早起きの判定・週の目安。dashboard.py が読む）
     sleep_intraday_analysis: 睡眠中のIntradayデータ分析
     summary_integrity: 睡眠サマリの内部矛盾（乖離行）の検出
 """
