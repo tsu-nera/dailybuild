@@ -442,7 +442,25 @@
         "justifyMode": "center",
         "orientation": "auto",
         "wideLayout": true
-      }
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "start_ms": true
+            },
+            "indexByName": {
+              "背中": 0,
+              "胸": 1,
+              "体幹": 2,
+              "肩": 3,
+              "腕": 4,
+              "脚": 5
+            }
+          }
+        }
+      ]
     },
     {
       "id": 1,
