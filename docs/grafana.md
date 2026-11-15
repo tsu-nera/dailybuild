@@ -9,15 +9,17 @@ Claude のセッション無しにスマホから見る。claude.ai の Dashboar
 ジャンルごとのフォルダに分ける。JSON は `scripts/ops/grafana/dashboards/<ジャンル>/<uid>.json` に置き、ディレクトリ名がそのまま
 Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`）。フォルダはファイルの置き場所で決まるので、画面の UI では移さない。
 各画面はタグ `dailybuild` とジャンルのタグ（`health` / `habits` / `money` / `home`）を持ち、上部の「健康 ▾ 習慣 ▾ お金 ▾ 暮らし ▾」のドロップダウン
-（ジャンルのタグで引くリンク）で行き来する。リンクは `keepTime: false`（画面ごとに既定の期間が 6時間〜20年と違い、引き継ぐと目標の6時間で心等の時系列が空になる）。画面を足すときはジャンルのディレクトリに置き、タグとリンクを既存の画面と揃える。
+（ジャンルのタグで引くリンク）で行き来する。リンクは `keepTime: false`（画面ごとに既定の期間が 6時間〜20年と違い、引き継ぐと `goals` の6時間で `mind` 等の時系列が空になる）。画面を足すときはジャンルのディレクトリに置き、タグとリンクを既存の画面と揃える。
 ジャンルを足すときは全画面の `links` に1つ足す（ドロップダウンは画面ごとに持つ）。
 
-`habits` は習慣ごとの画面（瞑想・筋トレ・早起きなど）を置く場所で、`health` は体の状態（体 / 睡眠 / 心）を見る場所。
+`habits` は習慣ごとの画面（瞑想・筋トレ・早起きなど）を置く場所で、`health` は体の状態（`body` / `sleep` / `mind`）を見る場所。
 2026-11-14 に週の目標を `health` から移し、同じ日に「目標」へ改めた（月次の目標も置く場所にするため）。uid は `goals` のままなので `/d/goals` のリンクは変わらない。
 `goals` は毎日見る一覧で、習慣ごとの推移は個別の画面（weekly review で対話しながら見る）に置く。一覧と個別の画面は同じ CSV を読み、
 一覧は1行1目標の表1枚（`goals_list.csv`。項目・目標・今週・先週）で、行の項目を押すとその習慣の画面へ飛ぶ。stat を並べると値の数で
 文字の大きさが決まり、目標と実績が別のパネルに離れて読めなかった（2026-11-14）。個別の画面は `links` の先頭に「← 目標」を持つ。
 習慣を足すときは個別の画面を作り、`dashboard.py` の `goal_list()` に行を足す（`link` 列に画面の uid）。月次の目標は `period` を `月` にした行で足す。
+
+画面は文章・コメント・パネルの説明では uid で指す。表示名（画面の列）は変わるので、書くのは画面の JSON とこの表だけにする（2026-11-15 に Body/Sleep/Mind を日本語にしたとき、地の文の写しを10箇所追いかけた）。
 
 | uid | フォルダ | 画面 | 中身 | 既定の期間 |
 |---|---|---|---|---|
@@ -61,7 +63,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 | `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
 | `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果（主観・前夜の睡眠時間（`metrics_daily` の `sleep_hours` を日付で）・TP の入り→終わり・レポートの要約の数字＝前頭 α・IAF・Fmθ・θ/α・RMSSD・呼吸数・RSA振幅・除外率）。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
 | `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・対照）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |
-| `daily` | `dashboard.py` | 体 / 睡眠 / 心 画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
+| `daily` | `dashboard.py` | `body` / `sleep` / `mind` の画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
 
 `reports/` の他のファイル（journal の md など）は mount はされるが配らない（nginx の `alias` で1本だけ出す）。

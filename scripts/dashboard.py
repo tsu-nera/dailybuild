@@ -9,7 +9,7 @@ Artifact へは agent が添付ファイルとして上げ直す（スクリプ�
 
 同じ数値を Grafana 用の CSV 7本（nights / weeks / sets / status / current / sets_now /
 freshness）としても reports/dashboard/ へ全上書きで書く（docs/grafana.md）。欠測は空セル。
-加えて 体 / 睡眠 / 心 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
+加えて body / sleep / mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
 消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
 お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）と balances_daily.csv / balances_now.csv（lib/balances.py）、
 瞑想の画面用の meditation_{daily,weeks,now,muse,eval}.csv（lib/meditation.py。muse・eval は satoru の session_log）を書く。
@@ -89,7 +89,7 @@ COLUMNS = {
     'freshness': ['name', 'last', 'behind', 'tolerance'],
     # 目標の一覧（1行1目標）。period は週・月を同じ表に並べるための列。link は行から飛ぶ画面の uid
     'goals_list': ['period', 'habit', 'metric', 'unit', 'target', 'this', 'prev', 'link'],
-    # 体 / 睡眠 / 心 画面。metrics_daily.csv に無い計算（FFMI・ステージ・ベースライン帯・運動）を持つ。
+    # body / sleep / mind 画面。metrics_daily.csv に無い計算（FFMI・ステージ・ベースライン帯・運動）を持つ。
     # bed_h / wake_h は時計の時刻を数値にしたもの（入床は 12時より前なら +24。01:30 → 25.5）
     'daily': ['date',
               'weight', 'body_fat_rate', 'body_water_rate', 'muscle_kg', 'lbm_kg', 'ffmi',
@@ -293,7 +293,7 @@ def _sport_by_day(sessions, calc) -> dict:
 def build_daily(lo: dt.date, hi: dt.date, *, sleep_csv: Path = SLEEP_CSV,
                 innerscan_csv: Path = INNERSCAN_CSV, spo2_csv: Path = SPO2_CSV,
                 nutrition_csv: Path = NUTRITION_CSV, exercise_csv: Path = EXERCISE_CSV) -> list[dict]:
-    """体 / 睡眠 / 心 画面の日次表。データの無い日・指標は空セル（0にしない）
+    """body / sleep / mind 画面の日次表。データの無い日・指標は空セル（0にしない）
 
     体組成は body レポートと同じ healthplanet_innerscan.csv と body.prepare_body_df()。
     HRV / RHR のベースラインは STATE.md と同じ collect_daily_detail()（mind レポートと同じ関数・窓）。
