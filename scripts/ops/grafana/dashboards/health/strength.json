@@ -67,7 +67,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
-      "description": "Hevy の今週（月曜始まり、途中）と先週。export が届いた分だけ。ボリュームは重量のあるセットだけ",
+      "description": "右上の時間範囲に入るワークアウト（Hevy）を数える・足す。export が届いた分だけ。ボリュームは重量のあるセットだけ",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -85,59 +85,45 @@
           "source": "url",
           "parser": "backend",
           "format": "table",
-          "url": "http://files/strength_now.csv",
+          "url": "http://files/strength_workouts.csv",
           "url_options": {
             "method": "GET"
           },
           "columns": [
             {
-              "selector": "workouts",
-              "text": "今週",
+              "selector": "start_ms",
+              "text": "start_ms",
               "type": "number"
             },
             {
-              "selector": "prev_workouts",
-              "text": "先週",
+              "selector": "minutes",
+              "text": "値",
               "type": "number"
             }
-          ]
+          ],
+          "filterExpression": "start_ms >= ${__from} && start_ms <= ${__to}"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
+          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "先週"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "count"
           ],
-          "fields": "",
+          "fields": "/^値$/",
           "values": false
         },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
@@ -153,7 +139,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
-      "description": "Hevy の今週（月曜始まり、途中）と先週。export が届いた分だけ。ボリュームは重量のあるセットだけ",
+      "description": "右上の時間範囲に入るワークアウト（Hevy）を数える・足す。export が届いた分だけ。ボリュームは重量のあるセットだけ",
       "gridPos": {
         "x": 6,
         "y": 0,
@@ -171,59 +157,45 @@
           "source": "url",
           "parser": "backend",
           "format": "table",
-          "url": "http://files/strength_now.csv",
+          "url": "http://files/strength_workouts.csv",
           "url_options": {
             "method": "GET"
           },
           "columns": [
             {
-              "selector": "minutes",
-              "text": "今週",
+              "selector": "start_ms",
+              "text": "start_ms",
               "type": "number"
             },
             {
-              "selector": "prev_minutes",
-              "text": "先週",
+              "selector": "minutes",
+              "text": "値",
               "type": "number"
             }
-          ]
+          ],
+          "filterExpression": "start_ms >= ${__from} && start_ms <= ${__to}"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
+          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "先週"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "sum"
           ],
-          "fields": "",
+          "fields": "/^値$/",
           "values": false
         },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
@@ -239,7 +211,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
-      "description": "Hevy の今週（月曜始まり、途中）と先週。export が届いた分だけ。ボリュームは重量のあるセットだけ",
+      "description": "右上の時間範囲に入るワークアウト（Hevy）を数える・足す。export が届いた分だけ。ボリュームは重量のあるセットだけ",
       "gridPos": {
         "x": 12,
         "y": 0,
@@ -257,59 +229,45 @@
           "source": "url",
           "parser": "backend",
           "format": "table",
-          "url": "http://files/strength_now.csv",
+          "url": "http://files/strength_workouts.csv",
           "url_options": {
             "method": "GET"
           },
           "columns": [
             {
-              "selector": "volume_kg",
-              "text": "今週",
+              "selector": "start_ms",
+              "text": "start_ms",
               "type": "number"
             },
             {
-              "selector": "prev_volume_kg",
-              "text": "先週",
+              "selector": "volume_kg",
+              "text": "値",
               "type": "number"
             }
-          ]
+          ],
+          "filterExpression": "start_ms >= ${__from} && start_ms <= ${__to}"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
+          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "先週"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "sum"
           ],
-          "fields": "",
+          "fields": "/^値$/",
           "values": false
         },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
@@ -325,7 +283,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
-      "description": "Hevy の今週（月曜始まり、途中）と先週。export が届いた分だけ。ボリュームは重量のあるセットだけ",
+      "description": "右上の時間範囲に入るワークアウト（Hevy）を数える・足す。export が届いた分だけ。ボリュームは重量のあるセットだけ",
       "gridPos": {
         "x": 18,
         "y": 0,
@@ -343,59 +301,45 @@
           "source": "url",
           "parser": "backend",
           "format": "table",
-          "url": "http://files/strength_now.csv",
+          "url": "http://files/strength_workouts.csv",
           "url_options": {
             "method": "GET"
           },
           "columns": [
             {
-              "selector": "sets",
-              "text": "今週",
+              "selector": "start_ms",
+              "text": "start_ms",
               "type": "number"
             },
             {
-              "selector": "prev_sets",
-              "text": "先週",
+              "selector": "sets",
+              "text": "値",
               "type": "number"
             }
-          ]
+          ],
+          "filterExpression": "start_ms >= ${__from} && start_ms <= ${__to}"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
+          "noValue": "0",
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
           }
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "先週"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "gray"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "sum"
           ],
-          "fields": "",
+          "fields": "/^値$/",
           "values": false
         },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",

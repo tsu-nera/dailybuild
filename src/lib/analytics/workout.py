@@ -297,25 +297,44 @@ def weeks_since(first_date, today):
     return recent_iso_weeks(max(weeks, 1), today)
 
 
-def weekly_training_stats(df, week_labels):
+def workout_sessions(df):
     """
-    週ごとのワークアウト数・時間・ボリューム・レップ・セット（頻度は weekly_muscle_sets() の training_days）
+    1行 = 1回のワークアウト（Hevy アプリの「トレーニング」）。時間・ボリューム・レップ・セットの定義はここだけに置く
 
-    - workouts: ワークアウトの数（Hevy の「トレーニング」。同じ日に2回なら2）
-    - minutes: ワークアウトの開始〜終了の合計（同じワークアウトの行は1回だけ数える）
-    - volume_kg: 重量 × 回数の合計。**重量のあるセットだけ**（自重は回数を重量の代わりに
-      足すと壊れるので含めない）
+    - minutes: 開始〜終了
+    - volume_kg: 重量 × 回数の合計。**重量のあるセットだけ**（自重は回数を重量の代わりに足すと壊れるので含めない）
     - reps: 回数の合計（自重を含む）
     - sets: セット数（自重を含む。部位別セット数と同じ数え方）
-
-    記録の無い週は 0 の行にする。
 
     Parameters
     ----------
     df : DataFrame
         parse_hevy_csv() 済みの DataFrame
-    week_labels : list[str]
-        表に出す週（古い→新しい）
+
+    Returns
+    -------
+    DataFrame
+        columns=['start_dt', 'minutes', 'volume_kg', 'reps', 'sets']、start_dt 昇順
+    """
+    cols = ['start_dt', 'minutes', 'volume_kg', 'reps', 'sets']
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+    df = df.assign(volume=(df['weight_kg'] * df['reps']).where(df['weight_kg'].notna(), 0))
+    g = df.groupby(['start_dt', 'end_dt'])
+    out = pd.DataFrame({
+        'volume_kg': g['volume'].sum().round(),
+        'reps': g['reps'].sum(),
+        'sets': g.size(),
+    }).reset_index()
+    out['minutes'] = ((out['end_dt'] - out['start_dt']).dt.total_seconds() / 60).round()
+    out[['minutes', 'volume_kg', 'reps', 'sets']] = out[['minutes', 'volume_kg', 'reps', 'sets']].astype(int)
+    return out.sort_values('start_dt')[cols].reset_index(drop=True)
+
+
+def weekly_training_stats(df, week_labels):
+    """
+    週ごとのワークアウト数・時間・ボリューム・レップ・セット（workout_sessions() を週で足したもの。
+    頻度は weekly_muscle_sets() の training_days）。記録の無い週は 0 の行にする。
 
     Returns
     -------
@@ -323,21 +342,8 @@ def weekly_training_stats(df, week_labels):
         index=week_labels、columns=['workouts', 'minutes', 'volume_kg', 'reps', 'sets']
     """
     cols = ['workouts', 'minutes', 'volume_kg', 'reps', 'sets']
-    df = add_week_label(df)
-    df = df[df['week_label'].isin(week_labels)].copy()
-    if df.empty:
-        return pd.DataFrame(0, index=week_labels, columns=cols)
-
-    df['volume'] = (df['weight_kg'] * df['reps']).where(df['weight_kg'].notna(), 0)
-    workouts = df.drop_duplicates(['start_dt', 'end_dt']).copy()
-    workouts['minutes'] = (workouts['end_dt'] - workouts['start_dt']).dt.total_seconds() / 60
-
-    by_week = df.groupby('week_label')
-    out = pd.DataFrame({
-        'workouts': workouts.groupby('week_label').size(),
-        'minutes': workouts.groupby('week_label')['minutes'].sum().round(),
-        'volume_kg': by_week['volume'].sum().round(),
-        'reps': by_week['reps'].sum(),
-        'sets': by_week.size(),
-    })
+    sessions = add_week_label(workout_sessions(df))
+    sessions = sessions[sessions['week_label'].isin(week_labels)]
+    g = sessions.groupby('week_label')
+    out = g[['minutes', 'volume_kg', 'reps', 'sets']].sum().assign(workouts=g.size())
     return out.reindex(week_labels, fill_value=0)[cols].astype(int)

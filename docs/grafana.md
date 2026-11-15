@@ -27,7 +27,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `early-rising` | habits | 早起き | 今週の睡眠・入床/離床の達成・負債、夜ごと・週ごとの推移 | 週単位の表 |
 | `meditation` | habits | 瞑想 | 1日ごとの時間、週ごとの合計・回数（棒は月曜の位置）、1回ごとの記録（Toggl Focus の「瞑想」、`lib/meditation.py`） | 90日 |
 | `body` | health | 体 | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・タンパク質 | 90日 |
-| `strength` | health | 筋トレ | 上に今週・先週の数値カード（トレーニング・時間・ボリューム・セット）、週ごとの頻度・時間・ボリューム（重量のあるセットだけ）・レップ、部位別セット数（Hevy の6部位）と週目標 | 1年 |
+| `strength` | health | 筋トレ | 上に時間範囲で絞った数値カード（トレーニング・時間・ボリューム・セット）、週ごとの頻度・時間・ボリューム（重量のあるセットだけ）・レップ、部位別セット数（Hevy の6部位）と週目標 | 1年 |
 | `sleep` | health | 睡眠 | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
 | `assets` | money | 資産（B/S） | 今日時点の資産の内訳・資産の推移（積み上げ）・持ち物の中古相場と買値の差（`lib/assets.py`）。下段に口座別残高の種類別の積み上げ・負債（カード利用残高）・純資産・口座ごとの最新残高（`lib/balances.py`。時系列はパネル単位で90日） | 12年 |
 | `consumables` | home | 消耗品 | 一覧。手放していない品目の分類・次に買う頃・尽きる頃・月額・最終購入。分類は見出しで絞り込める。品名をクリックすると詳細へ（台帳は docs/inventory.md） | 表のみ |
@@ -63,14 +63,14 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 | `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
 | `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果（主観・前夜の睡眠時間（`metrics_daily` の `sleep_hours` を日付で）・TP の入り→終わり・レポートの要約の数字＝前頭 α・IAF・Fmθ・θ/α・RMSSD・呼吸数・RSA振幅・除外率）。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
 | `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・対照）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |
-| `strength_weeks` `strength_sets` `strength_muscles` `strength_now` | `dashboard.py` | `strength` の画面。部位は Hevy の6部位（`workout.MUSCLE_LABELS`）を目標の有無に関係なく全部出す。Hevy の記録が始まった週から今週まで（記録の無い週は 0）。計算は `lib/analytics/workout.py`（頻度は `weekly_muscle_sets` の `training_days`、時間・ボリューム・レップは `weekly_training_stats`） |
+| `strength_weeks` `strength_sets` `strength_muscles` `strength_workouts` | `dashboard.py` | `strength` の画面。部位は Hevy の6部位（`workout.MUSCLE_LABELS`）を目標の有無に関係なく全部出す。Hevy の記録が始まった週から今週まで（記録の無い週は 0）。計算は `lib/analytics/workout.py`（頻度は `weekly_muscle_sets` の `training_days`、時間・ボリューム・レップは `weekly_training_stats`） |
 | `daily` | `dashboard.py` | `body` / `sleep` / `mind` の画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
 
 `reports/` の他のファイル（journal の md など）は mount はされるが配らない（nginx の `alias` で1本だけ出す）。
 `events.jsonl` は配らない。Infinity は JSON Lines を読む parser を持たず、確かめられていない（2026-11-10）。
 
-- 計算は **`src/lib/analytics/`**（Markdown のレポートと同じ層。例: FFMI は `body.py`、早起きの判定・週の目安は `sleep/nightly.py`）。`scripts/dashboard.py` は lib の結果を Grafana 用の CSV に並べるだけで、新しい計算をここに書かない（`metrics_daily.csv` は `journal_skeleton.py`）。Grafana では集計も判定もしない（クエリは列の選択と並べ替えだけ）。
+- 計算は **`src/lib/analytics/`**（Markdown のレポートと同じ層。例: FFMI は `body.py`、早起きの判定・週の目安は `sleep/nightly.py`）。`scripts/dashboard.py` は lib の結果を Grafana 用の CSV に並べるだけで、新しい計算をここに書かない（`metrics_daily.csv` は `journal_skeleton.py`）。Grafana では判定も、何で割るかの定義が要る集計（平均・割合）もしない。例外は時間範囲で絞った行を数える・足す（count / sum）ことだけで、範囲は画面で自由に選ぶので前もって計算できない（`strength` の数値カード。行は1行1件の事実にし、`${__from}` / `${__to}`（ミリ秒）と比べる列を持たせる）。
   claude.ai 版（同じスクリプトの JSON）と同じ数字になる
 - `dashboard.py` の CSV（上の表）は毎日**全上書き**で、
   `data/` には置かない。欠測は0でなく空セル
