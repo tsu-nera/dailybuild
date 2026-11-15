@@ -348,6 +348,103 @@
       }
     },
     {
+      "id": 110,
+      "type": "stat",
+      "title": "部位別セット数",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "description": "右上の時間範囲に入るワークアウト（Hevy）の部位別セット数の合計。種目と部位の対応は config/exercise_muscles.yaml（1種目1部位、補助で使う部位は数えない）",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "http://files/strength_workouts.csv",
+          "url_options": {
+            "method": "GET"
+          },
+          "columns": [
+            {
+              "selector": "start_ms",
+              "text": "start_ms",
+              "type": "number"
+            },
+            {
+              "selector": "sets_back",
+              "text": "背中",
+              "type": "number"
+            },
+            {
+              "selector": "sets_chest",
+              "text": "胸",
+              "type": "number"
+            },
+            {
+              "selector": "sets_core",
+              "text": "体幹",
+              "type": "number"
+            },
+            {
+              "selector": "sets_shoulders",
+              "text": "肩",
+              "type": "number"
+            },
+            {
+              "selector": "sets_arms",
+              "text": "腕",
+              "type": "number"
+            },
+            {
+              "selector": "sets_legs",
+              "text": "脚",
+              "type": "number"
+            }
+          ],
+          "filterExpression": "start_ms >= ${__from} && start_ms <= ${__to}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "/^(?!start_ms$).*/",
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": true
+      }
+    },
+    {
       "id": 1,
       "type": "timeseries",
       "title": "頻度（日/週）",
@@ -358,7 +455,7 @@
       "description": "Hevy に記録のある日を数える。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
       "gridPos": {
         "x": 0,
-        "y": 4,
+        "y": 8,
         "w": 12,
         "h": 7
       },
@@ -436,7 +533,7 @@
       "description": "Hevy のワークアウトの開始〜終了の合計。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
       "gridPos": {
         "x": 12,
-        "y": 4,
+        "y": 8,
         "w": 12,
         "h": 7
       },
@@ -513,7 +610,7 @@
       "description": "重量 × 回数の合計。重量のあるセットだけで、自重は含まない。器具が変わると段差が出る（2026-08 まではチョコザップのマシン、以降は自宅のダンベル）。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
       "gridPos": {
         "x": 0,
-        "y": 11,
+        "y": 15,
         "w": 12,
         "h": 7
       },
@@ -590,7 +687,7 @@
       "description": "回数の合計（自重を含む）。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
       "gridPos": {
         "x": 12,
-        "y": 11,
+        "y": 15,
         "w": 12,
         "h": 7
       },
@@ -667,7 +764,7 @@
       "description": "Hevy の6部位。種目と部位の対応は config/exercise_muscles.yaml（1種目1部位、補助で使う部位は数えない）。点線は同じ yaml の週目標で、目標の無い部位には出ない。週は月曜始まりで、棒は月曜の位置。Hevy の export が届いた分だけ（今週は途中）。期間は右上の時間範囲で変える",
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 22,
         "w": 8,
         "h": 7
       },

@@ -117,7 +117,8 @@ COLUMNS = {
     'strength_weeks': ['week', 'week_start', 'days', 'workouts', 'minutes', 'volume_kg', 'reps', 'sets'],
     # 筋トレの画面の上の数値カード。1行1ワークアウトで、Grafana が時間範囲で絞って数える・足す。
     # start_ms は絞り込み式（${__from} / ${__to} はミリ秒）と比べるための列
-    'strength_workouts': ['start', 'start_ms', 'minutes', 'volume_kg', 'reps', 'sets'],
+    'strength_workouts': ['start', 'start_ms', 'minutes', 'volume_kg', 'reps', 'sets']
+                         + [f'sets_{c}' for c in workout.MUSCLE_LABELS],
     'strength_sets': ['week', 'week_start', 'muscle', 'sets', 'target'],
     # 部位の一覧（Hevy の6部位の並び）。画面の部位の変数が読む。目標の無い部位は target が空
     'strength_muscles': ['muscle', 'target'],
@@ -337,11 +338,14 @@ def strength_tables(today: dt.date, workouts_csv: Path = WORKOUTS_CSV) -> dict[s
             n = int(table.loc[wk, code]) if code in table.columns else 0
             sets.append({'week': wk, 'week_start': start, 'muscle': label, 'sets': n, 'target': targets.get(code)})
     muscles = [{'muscle': label, 'target': targets.get(code)} for code, label in workout.MUSCLE_LABELS.items()]
+    by_muscle = workout.session_muscle_sets(df, workout.load_muscle_mapping())
     workouts = []
     for r in workout.workout_sessions(df).itertuples():
         start = r.start_dt.tz_localize(JST)
+        muscle = by_muscle.loc[r.start_dt] if r.start_dt in by_muscle.index else {}
         workouts.append({'start': start.isoformat(), 'start_ms': int(start.timestamp() * 1000), 'minutes': r.minutes,
-                         'volume_kg': r.volume_kg, 'reps': r.reps, 'sets': r.sets})
+                         'volume_kg': r.volume_kg, 'reps': r.reps, 'sets': r.sets,
+                         **{f'sets_{c}': int(muscle[c]) if c in muscle else 0 for c in workout.MUSCLE_LABELS}})
     return {'strength_weeks': weeks, 'strength_sets': sets, 'strength_muscles': muscles,
             'strength_workouts': workouts}
 

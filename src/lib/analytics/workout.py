@@ -331,6 +331,23 @@ def workout_sessions(df):
     return out.sort_values('start_dt')[cols].reset_index(drop=True)
 
 
+def session_muscle_sets(df, muscle_map):
+    """
+    ワークアウトごとの部位別セット数（MUSCLE_LABELS の6部位の列。yaml に無い種目は数えない）
+
+    Returns
+    -------
+    DataFrame
+        index=start_dt、columns=MUSCLE_LABELS のキー（部位コード）
+    """
+    codes = list(MUSCLE_LABELS)
+    if df.empty:
+        return pd.DataFrame(columns=codes)
+    df = df.assign(muscle=df['exercise_title'].map(muscle_map)).dropna(subset=['muscle'])
+    table = df.groupby(['start_dt', 'muscle']).size().unstack(fill_value=0)
+    return table.reindex(columns=codes, fill_value=0).astype(int)
+
+
 def weekly_training_stats(df, week_labels):
     """
     週ごとのワークアウト数・時間・ボリューム・レップ・セット（workout_sessions() を週で足したもの。
