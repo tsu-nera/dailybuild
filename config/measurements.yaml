@@ -17,13 +17,13 @@ measurements:
     name: 深部体温
     csv: data/wearable/temperature_core.csv
     date_column: date_time
-    expect_every_days: null   # 基準値は取れている。定期では測らず、きっかけの日だけ（2026-11-17）
+    expect_every_days: 7   # 定期分は起床後・同じ条件で。季節で動く基準値を更新し、きっかけの日の比較に使う（2026-11-17）
     when: 体調不良・熱っぽい日
   - key: blood_pressure
     name: 血圧
     csv: data/healthplanet_bp.csv
     date_column: date
-    expect_every_days: null   # 基準値は取れている。定期では測らず、きっかけの日だけ（2026-11-17）
+    expect_every_days: 7   # 定期分は起床後・同じ条件で。季節で動く基準値を更新し、きっかけの日の比較に使う（2026-11-17）
     when: ふらつき・立ちくらみの日
   - key: body_composition
     name: 体組成
