@@ -234,7 +234,7 @@
         "type": "yesoreyeram-infinity-datasource",
         "uid": "dashboard-files"
       },
-      "description": "目安（サマタ20回・対照6回）に届くまでは見るだけ。Δ は TP の終わり−入り（dB）の中央値で、除外率30%以上の回は使わない",
+      "description": "種類は satoru の config/meditation_types.yaml（サマタ・ヴィパッサナー・メッター）。目安（サマタ20回）に届くまでは見るだけ。Δ は TP の終わり−入り（dB）の中央値で、除外率30%以上の回は使わない",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -315,7 +315,7 @@
           }
         }
       ],
-      "title": "サマタ評価の比較（種類ごと）",
+      "title": "瞑想の種類ごとのまとめ",
       "transformations": [
         {
           "id": "organize",

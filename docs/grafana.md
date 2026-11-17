@@ -62,7 +62,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 | `balances_daily` `balances_now` | `dashboard.py` | お金の画面の口座別残高。`data/mf/balances.csv`（変わった行だけ）を日次に戻した種類別の合計・負債・純資産・欠測の口座数と、口座ごとの最新（gone は出さない）。負債のページの最初の行より前は負債・純資産が空。`balances.csv` が無いうちは見出しだけ（docs/moneyforward.md） |
 | `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |
 | `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果（主観・前夜の睡眠時間（`metrics_daily` の `sleep_hours` を日付で）・TP の入り→終わり・レポートの要約の数字＝前頭 α・IAF・Fmθ・θ/α・RMSSD・呼吸数・RSA振幅・除外率）。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
-| `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・対照）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |
+| `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・ヴィパッサナー・メッター）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |
 | `strength_weeks` `strength_sets` `strength_muscles` `strength_workouts` | `dashboard.py` | `strength` の画面。部位は Hevy の6部位（`workout.MUSCLE_LABELS`）を目標の有無に関係なく全部出す。Hevy の記録が始まった週から今週まで（記録の無い週は 0）。計算は `lib/analytics/workout.py`（頻度は `weekly_muscle_sets` の `training_days`、時間・ボリューム・レップは `weekly_training_stats`） |
 | `daily` | `dashboard.py` | `body` / `sleep` / `mind` の画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |

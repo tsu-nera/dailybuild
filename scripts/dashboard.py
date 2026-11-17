@@ -320,7 +320,7 @@ def meditation_tables(today: dt.date) -> dict[str, list[dict]]:
         raise SystemExit(f'{SATORU_SESSION_LOG} が無い（satoru を clone する）')
     muse = meditation.build_muse(SATORU_SESSION_LOG, require_private_path(METRICS_DAILY_CSV))
     return {**meditation.build(require_private_path(TOGGL_FOCUS_CSV), today), 'meditation_muse': muse,
-            'meditation_eval': meditation.build_eval(muse)}
+            'meditation_eval': meditation.build_eval(muse, meditation.load_types())}
 
 
 def strength_tables(today: dt.date, workouts_csv: Path = WORKOUTS_CSV) -> dict[str, list[dict]]:

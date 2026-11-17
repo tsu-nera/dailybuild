@@ -18,13 +18,14 @@ dailybuild からは書かない）。satoru の session-review が push し、v
 pipeline_version が空の行（2026-05 以前・旧定義）は横に比べられないので入れない。
 
 サマタ評価（satoru の memory samatha-evaluation-plan）の比較用に、種類ごとのまとめ（meditation_eval）を作る。除外率が ARTIFACT_MAX_PCT 以上の回は変化の値を使わない
-（回数には数え、まとめの n_dropped に出す）。目安の回数（サマタ20・対照6）は satoru の scripts/eval_progress.py と同じ。
+（回数には数え、まとめの n_dropped に出す）。種類・表示名・目安の回数は satoru の config/meditation_types.yaml から読む。
 """
 
 import datetime as dt
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 PROJECT = '瞑想'
 
@@ -42,7 +43,8 @@ MUSE_COLUMNS = ['start', 'date', 'meditation_type', 'duration_min', 'focus_ratin
                 'hrv_mean', 'breathing_rate_bpm', 'rsa_amplitude_ms']
 EVAL_COLUMNS = ['meditation_type', 'label', 'n', 'target', 'n_rated', 'n_dropped', 'focus_median',
                 'drowsiness_median', 'tp_alpha_db_change_median', 'tp_delta_db_change_median']
-EVAL_TYPES = {'samatha': ('サマタ', 20), 'control': ('対照', 6)}
+# 瞑想の種類（技法の名前）・表示名・目安の回数の正本。session_log と同じく satoru を読む
+SATORU_MEDITATION_TYPES = Path.home() / 'repo/satoru/config/meditation_types.yaml'
 ARTIFACT_MAX_PCT = 30.0
 
 
@@ -121,11 +123,20 @@ def _median(values: list) -> float | None:
     return round(float(pd.Series(values).median()), 2) if values else None
 
 
-def build_eval(muse: list[dict]) -> list[dict]:
+def load_types(path: Path = SATORU_MEDITATION_TYPES) -> dict[str, dict]:
+    """種類 → {'label', 'target'}（ファイルの順）"""
+    raw = yaml.safe_load(path.read_text(encoding='utf-8'))
+    return {key: {'label': spec['label'], 'target': spec.get('target')} for key, spec in raw.items()}
+
+
+def build_eval(muse: list[dict], types: dict[str, dict]) -> list[dict]:
     """種類ごとの回数・主観と TP の変化の中央値。変化は除外率が ARTIFACT_MAX_PCT 未満の回だけ"""
     rows = []
-    for kind, (label, target) in EVAL_TYPES.items():
+    for kind, spec in types.items():
+        label, target = spec['label'], spec['target']
         typed = [r for r in muse if r['meditation_type'] == kind]
+        if not typed and target is None:
+            continue  # 目安の無い種類は、やった回があるときだけ出す
         usable = [r for r in typed if _usable(r)]
         rows.append({'meditation_type': kind, 'label': label, 'n': len(typed), 'target': target,
                      'n_rated': sum(r['focus_rating'] is not None for r in typed),
