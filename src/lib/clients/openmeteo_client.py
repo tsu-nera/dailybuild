@@ -9,6 +9,7 @@
 
 import datetime as dt
 import logging
+import time
 
 import pandas as pd
 import requests
@@ -26,13 +27,30 @@ FORECAST_MAX_PAST_DAYS = 92
 
 HOURLY_VARS = ['temperature_2m', 'relative_humidity_2m', 'pressure_msl', 'precipitation']
 
-REQUEST_TIMEOUT = 60
+# Forecast API（api.open-meteo.com）は TLS handshake で断続的に固まる（2026-11 以降）。
+# 普段は1秒未満で返るので、短い timeout で切って取り直す。
+REQUEST_TIMEOUT = 20
+MAX_ATTEMPTS = 3
+RETRY_WAIT_SECONDS = 10
+
+
+def _get_with_retry(url: str, params: dict) -> requests.Response:
+    """接続・応答の timeout と接続エラーだけを取り直す（HTTP エラーは取り直さない）"""
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            return requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+        except (requests.Timeout, requests.ConnectionError) as e:
+            if attempt == MAX_ATTEMPTS:
+                raise
+            logger.warning("Open-Meteo 接続失敗 (%d/%d): %s。%d秒後に再試行",
+                           attempt, MAX_ATTEMPTS, e, RETRY_WAIT_SECONDS)
+            time.sleep(RETRY_WAIT_SECONDS)
 
 
 def _request_hourly(url: str, params: dict) -> pd.DataFrame:
     """Open-Meteo に時別データをリクエストして DataFrame 化"""
     params = {**params, 'hourly': ','.join(HOURLY_VARS)}
-    response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
+    response = _get_with_retry(url, params)
     response.raise_for_status()
     hourly = response.json()['hourly']
 
