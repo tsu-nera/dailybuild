@@ -48,7 +48,7 @@ def require_private_path(path: Path) -> Path:
     raise FileNotFoundError(
         f"非公開データが {PRIVATE_REPO} に解決されません: {path}\n"
         f"symlink が未設定の可能性があります。\n"
-        f"セットアップ手順は CLAUDE.md の「非公開データ」を参照してください。"
+        f"セットアップ手順は docs/setup.md を参照してください。"
     )
 
 

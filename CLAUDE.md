@@ -128,73 +128,9 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/weekly-routine.sh"'
 
 ### 日次で生成する派生データ
 
-`daily-fetch.sh` の最後のステップだけは取得ではなく書き込みで、`journal_skeleton.py` がその日の
-数値・7日平均の変化・欠測を `reports/journal/YYYY-Wxx.md` へ追記する。
-レビューの記録（gtd の `/reviewing-health`）は対話が主目的なので、レビューを回さないと1行も残らず、
-実際 2026-08-07 から3週間（うつエピソードで HRV が 25.9→44.7 まで動いた期間）が
-丸ごと空いた。**記録が最も必要な状態が、記録が最も途切れやすい状態と一致する**ため、
-数値だけは対話に依存せず機械が書く。
-
-骨組みは `<!-- skeleton:start -->` 〜 `<!-- skeleton:end -->` に囲まれ、再実行では
-この区間だけを差し替える。区間外の考察は保持し、**マーカーを持たない既存エントリ
-（移行前に人と agent が書いたもの）には一切触れない**。
-
-同じスクリプトが `reports/journal/STATE.md` も毎日**全上書き**で生成する。
-ジャーナルの4ファイルは書き手と寿命で分かれている:
-
-| ファイル | 書き手 | 更新 | 寿命 |
-|---|---|---|---|
-| `STATE.md` | script | 毎日 | 揮発（全上書き） |
-| `ACTIONS.md` | agent | 発行時に1行 append / 結果が出たら1行 edit | 追記のみ |
-| `YYYY-Wxx.md` | script（骨組み）+ agent（考察） | 毎日追記 | 不変 |
-| `JOURNAL.md` | agent | 毎日1行更新 | 索引 |
-
-同じスクリプトが `reports/metrics_daily.csv` も毎日**全上書き**で生成する。
-日付 index の横持ちで、相関分析はこれ1本を読めばよい
-（`pd.read_csv(..., index_col='date').corr()`）。**`data/` には置かない**
-（あちらは取得の正本で、派生を混ぜると意味が壊れる）。
-
-体重の全期間は `reports/weight_daily.csv`（`date, weight, source`。同じく毎日**全上書き**）。
-`metrics_daily.csv` の `weight` は HealthPlanet だけで 2020-01 より前が無いので、長期の体重はこちらを読む。
-経路は `lib.analytics.weight_daily.SOURCES` の優先順で日ごとに1つ採る（HealthPlanet → Google Health）。
-`data/wearable/body_weight.csv`（Fitbit）は Google Health に全日が含まれるので使わない。体脂肪率は機器ごとに
-推定式が違うので入れない。新しい体重計を足すときは `SOURCES` に1行足す。
-
-`sleep_debt` は**意図的に入れていない**。欠測日を睡眠0hとして計上しており、
-相関では実データとして扱われてしまう。0埋めは STATE.md のストリーク用途に
-閉じ込めてある。**「便利だから」と足さないこと。**
-
-`metrics_daily.csv` の interval グレイン版が `reports/events.jsonl`（`scripts/events.py build`。
-日次の最後に毎日**全上書き**で生成）。「その日に何をしていたか」はこれ1本を読む。
-1行1イベントで `{start, end, source, kind, name, attrs}`、`start` 昇順。`start` / `end` は
-必ず tz-aware（`+09:00`。naive な入力は JST として解釈する）、点イベントの `end` は `null`。
-ソースは Toggl（2026-10-27 より前は Track、以降は Focus。`toggl push` 由来を除く）・exercise（platform 重複解決済み）・メイン睡眠・
-Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar（終日は日付の JST 00:00 〜 排他端）。どれかが0件なら更新せず非ゼロ終了する。
-日次に潰すと4分の筋トレと63分の通勤が区別できないので `metrics_daily.csv` には混ぜない。
-**`data/` には置かない**。
-
-`scripts/dashboard.py build` は `reports/dashboard/*.csv`（Grafana が読む表を画面ごとに。`body` / `sleep` / `mind` 画面の `daily.csv` を含む。`--only` で一部のグループだけ作り直せる）を毎日**全上書き**で
-生成する（`daily-fetch.sh` の「ダッシュボード」ステップ）。**`data/` には置かない**。詳細は [docs/grafana.md](docs/grafana.md)。
-
-`scripts/habitica.py fetch` は `reports/habits_daily.csv` も毎日**全上書き**で
-生成する。列は `date, habit, task_type, is_due, completed` の縦持ちで、習慣の
-増減で列が動かないようにしてある。`history` に行が無い日の行は作らない（cron が
-走らなかった日は不生起ではなく欠測）。`metrics_daily.csv` の横持ちには**混ぜない**
-（`is_due=False` と欠測を0埋めで潰す事故を持ち込むため）。こちらも**`data/` には
-置かない**（あちらは取得の正本）。
-
-ストリーク（連続日数）・鮮度・未解決アクションは STATE.md が毎日計算し直すので、
-**散文に書かない**。以前は週の rollup を agent が毎日書き直しており、事実が
-変わっていないのに表現だけが毎日漂流していた。恒久的に効く知見は
-ジャーナルではなく memory に置く（`~/.claude/projects/*/memory/`。リポジトリ外）。
-
-### 体のサイズ（agent が書く・取得スクリプト無し）
-
-`data/body_sizes.csv` は服・靴・メガネを買うための体のサイズ（胸囲・股下・足長・度数など）。
-縦持ち `date,measure,value,unit,source,note` で、測った・伝えられた時に agent が1行足す。
-`date` は測った日（不明なら記録した日にして `note` に書く）。身長・腹囲は `data/checkup.csv`
-にあるので写さない。物の表記サイズと合ったかは持ち物の note（正本は Homebox、[docs/homebox.md](docs/homebox.md)）に書く。
-本人と agent が共に書く置き場は未設計で、具体例が集まったら決め直す（2026-10-18）。
+`daily-fetch.sh` の最後のステップが `reports/` 配下（`journal/STATE.md`・`metrics_daily.csv`・`weight_daily.csv`・
+`events.jsonl`・`habits_daily.csv`・`dashboard/*.csv`）を毎日**全上書き**で生成する。**派生物は `data/` に置かない**
+（`data/` は取得の正本）。どれを読むか・列・落とし穴は [docs/derived-data.md](docs/derived-data.md)。
 
 ## データソース別の詳細
 
@@ -209,7 +145,8 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る。口座別残高（balances.csv）は変わった行だけで、取れなかったページの口座を gone にしない |
 | `scripts/tepco.py` を変更するとき | [docs/tepco.md](docs/tepco.md) — 欠測コマは0でなく行を作らない。30分値は約2年で消える。既定 headless では動かない |
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
-| `data/checkup.csv`・`data/blood_donation.csv` を書く・読むとき | [docs/blood-tests.md](docs/blood-tests.md) — 正本は CSV（シートは旧置き場）。血算を比べるときは2つの CSV の名前と単位をそろえる |
+| 検査の結果票（健診・献血・歯科検診）を CSV に書く・読むとき | [docs/checkups.md](docs/checkups.md) — 正本は CSV。空欄を推定で埋めない。血算を比べるときは2つの CSV の名前と単位をそろえる |
+| 服・靴・メガネのための体のサイズ（`data/body_sizes.csv`）を扱うとき | [docs/body-sizes.md](docs/body-sizes.md) — 身長・腹囲は checkup.csv にあるので写さない |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）・HA の state 履歴を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物。state 履歴の開始時点の行は時刻が丸められているので保存しない |
 | `scripts/dashboard.py` / `scripts/ops/grafana/` を変更するとき | [docs/grafana.md](docs/grafana.md) — 計算は dashboard.py に1本。Grafana 側で集計・判定しない。欠測は空セル |
@@ -223,7 +160,6 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | 行動活性化（BATD-R）を再開・再設計するとき | [docs/batdr.md](docs/batdr.md) — 日次帳票の実装は2026-09-07に廃止済み。同じ形を作り直す前に廃案の節を読む |
 | 観察日記（`scripts/observation.py` / `reports/observation/`）を扱うとき | [docs/observation.md](docs/observation.md) — 材料が欠けた区切りは別の材料で埋めない。判定を変えたら `eval` で答え合わせとのズレを比べる |
-| 歯科検診の結果票を `data/dental_checkup.csv` に書くとき | [docs/dental.md](docs/dental.md) — 空欄を推定で埋めない。写真は縮めてから置く |
 | `src/lib/` の構成・Jinja2 テンプレートを触るとき | [docs/architecture.md](docs/architecture.md) |
 
 ## Report Generation
@@ -236,21 +172,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 
 ## Configuration
 
-認証情報は`config/`ディレクトリにJSONファイルとして配置:
-- `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
-- `tepco_state.json` - くらしTEPCO web のブラウザセッション（`tepco.py fetch --login` が生成）
-- `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
-- `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
-- `gcalendar_token.json` - Google Calendar（readonly）のトークン（`gcalendar.py fetch --login` が生成。`gforms_token.json` とスコープを分けてある）
-- `lastfm_session.json` - Last.fm の認証セッション（`lastfm.py fetch --login` が生成。再生履歴を非公開にしているので API key だけでは読めない）
-- `swarm_token.json` - Foursquare（Swarm）の access token（`swarm.py fetch --login` が生成。期限なし。Client ID / Secret は `.env`）
-- `gmail_token.json` - Gmail（readonly）のトークン（`purchases.py fetch --login` が生成。gtd の modify トークンとは別）
-- `googlehealth_location_token.json` - 運動の GPS 軌跡（TCX）用の Google Health トークン（`exercise_route.py login` が生成。location スコープを日次取得の `googlehealth_token.json` に混ぜないため別ファイル）
-- `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
-- `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
-- `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
-- `private/habits.yaml` - 習慣レビューの対象と週の目標値。**実体は dailybuild-private**（`config/private` は symlink。習慣名が非公開なため）
-- `private/contracts.yaml` - 定期契約の台帳（`mf.py contracts` が読む）。**実体は dailybuild-private**。`config/contracts.yaml.sample` を `config/private/contracts.yaml` へ `cp` して作る
+認証情報（`config/*.json`）の一覧と新マシンでの用意は [docs/setup.md](docs/setup.md)。
 
 **新しい API キー・token は `config/*.json` でなくリポジトリ直下の `.env` に置く**（他プロジェクトと同じ
 python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは `lib.utils.env` の
@@ -258,49 +180,8 @@ python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは
 （Home Assistant / Toggl / HealthPlanet / Habitica / Last.fm / Foursquare）。`tuya_creds.json` は Tuya 削除（#196）まで残す。OAuth の token・ブラウザ
 セッション・Google 配布の JSON は機械が書く状態なのでファイルのまま `config/` に置く。
 
-Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。
-
-## Google Drive
-
-**このプロジェクトが Google 上に作るものは、すべて Drive の `dailybuild` フォルダ
-配下に置く**（`config/personal.yaml` の `gdrive.folder_id`）。Sheets・Forms に限らず、
-今後増える種類も同じ。マイドライブ直下に散らかさない。
-
-**Drive / Forms の作成 API は親を省略するとマイドライブ直下に作る。** 作成時は
-必ず `gdrive.folder_id` を親に指定すること。Forms API の `forms.create` には親の
-指定が無いので、**作成後に Drive API で移動する**（現状の4フォームは手動で移した）。
-
-**フォルダを移動しても `form_id` / スプレッドシート ID は変わらない。** 既存の
-フォームをこのフォルダへ移しても `config/*_def.yaml` の `form_id` はそのままで、
-fetch は影響を受けない。
-
-- **サービスアカウントはファイルを所有できない**（Drive の `storageQuota.limit` が 0）。
-  作成は本人の OAuth で行い、サービスアカウントには**編集者として共有**する。
-  Forms で `forms.create` が 500 になるのと同じ理由（[docs/forms.md](docs/forms.md)）
-- Drive のアクセス制御は ACL なので、ファイル ID や フォルダ ID を public repo に
-  書いても共有されない。**リンク共有を有効にしたファイルの ID は別**（それは
-  実質パスワードになる）
-- Google Forms の回答先スプレッドシートは作らない。回答は Forms API で直接読む
-
-### Apps Script
-
-シートに貼るスクリプトの正本は `scripts/gas/`。反映は clasp で行い、画面で直接
-編集しない（画面で直すとリポジトリ側が古いまま気づけなくなる）。
-
-```bash
-cd scripts/gas && clasp push   # .clasp.json の scriptId へ反映
-```
-
-- **`onEdit` は simple trigger なので、API 経由の書き込みでは発火しない。**
-  gspread や Sheets API で足した行には timestamp が入らない。機械が行を足す
-  設計にするなら、書き込み側で timestamp を入れること
-- `appsscript.json` の `timeZone` は既定が `America/New_York`。`new Date()` を
-  素で使うと9時間ずれる（`Asia/Tokyo` に直してある）
-- clasp は独自の OAuth クライアントを使い、トークンは `~/.clasprc.json`。
-  `config/gforms_token.json` とは無関係なのでフォーム取得に影響しない。
-  利用には https://script.google.com/home/usersettings の
-  「Google Apps Script API」が ON である必要がある（ユーザー単位の設定で、
-  API からは切り替えられない）
+Google 上（Drive・Sheets・Forms・Apps Script）に何かを作る・変えるときは先に [docs/google.md](docs/google.md)
+（作成 API は親を省くとマイドライブ直下に作る。サービスアカウントはファイルを所有できない）。
 
 ## 非公開データ
 
@@ -322,32 +203,10 @@ cd scripts/gas && clasp push   # .clasp.json の scriptId へ反映
 （習慣名は本人の生活と信条をそのまま含む）。認証情報は `.env` と `config/*.json` として
 `.gitignore` 済みなので、private へ移す必要はない。
 
-### セットアップ（新マシン・worktree）
+### セットアップ（新マシン・worktree・vaio）
 
-```bash
-git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-private
-./scripts/setup_private_links.sh   # 冪等。別の場所に置くなら DAILYBUILD_PRIVATE を設定
-```
-
-**git worktree では symlink が引き継がれない。** worktree を作ったら
-`setup_private_links.sh` を実行すること。
-
-#### vaio（取得専用サーバ）
-
-```bash
-git clone git@github.com:tsu-nera/dailybuild.git ~/repo/dailybuild
-git clone git@github.com:tsu-nera/dailybuild-private.git ~/repo/dailybuild-private
-cd ~/repo/dailybuild && uv sync && ./scripts/setup_private_links.sh
-# .env と config/*.json（OAuth token・セッション）を iiyama からコピー（gitignore 済みなので clone では来ない）
-uv run playwright install chromium
-uv run scripts/mf.py fetch --login      # GUI セッション（VNC 可）で一度だけ（TEPCO は取得停止中なので不要）
-# config/lastfm_session.json も iiyama で `lastfm.py fetch --login` して作り、vaio へコピーする
-# config/googlehealth_location_token.json も iiyama で `exercise_route.py login` して作り、vaio へコピーする（無いと日次の運動の軌跡ステップが失敗する）
-# config/gcalendar_token.json は iiyama で `gcalendar.py fetch --login` して作り、vaio へコピーする（無いと日次の Google Calendar ステップが失敗する）
-loginctl enable-linger tsu-nera
-systemctl --user link ~/repo/dailybuild/scripts/ops/systemd/dailybuild-routine.{service,timer}
-systemctl --user enable --now dailybuild-routine.timer
-```
+手順は [docs/setup.md](docs/setup.md)。**git worktree では symlink が引き継がれない**ので、worktree を作ったら
+`./scripts/setup_private_links.sh` を実行する。
 
 ### マウント忘れの検出
 

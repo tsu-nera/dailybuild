@@ -65,7 +65,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 | `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・ヴィパッサナー・メッター）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |
 | `strength_weeks` `strength_sets` `strength_muscles` `strength_workouts` | `dashboard.py` | `strength` の画面。部位は Hevy の6部位（`workout.MUSCLE_LABELS`）を目標の有無に関係なく全部出す。Hevy の記録が始まった週から今週まで（記録の無い週は 0）。計算は `lib/analytics/workout.py`（頻度は `weekly_muscle_sets` の `training_days`、時間・ボリューム・レップは `weekly_training_stats`） |
 | `daily` | `dashboard.py` | `body` / `sleep` / `mind` の画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
-| `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は CLAUDE.md の「日次で生成する派生データ」）。対話で足すパネルの材料 |
+| `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は [derived-data.md](derived-data.md)）。対話で足すパネルの材料 |
 
 `reports/` の他のファイル（journal の md など）は mount はされるが配らない（nginx の `alias` で1本だけ出す）。
 `events.jsonl` は配らない。Infinity は JSON Lines を読む parser を持たず、確かめられていない（2026-11-10）。
