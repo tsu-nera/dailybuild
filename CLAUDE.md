@@ -188,24 +188,6 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 変わっていないのに表現だけが毎日漂流していた。恒久的に効く知見は
 ジャーナルではなく memory に置く（`~/.claude/projects/*/memory/`。リポジトリ外）。
 
-### 採血値（手入力・取得スクリプト無し）
-
-| ファイル | 中身 |
-|---|---|
-| `data/blood_donation.csv` | 献血時の血液検査（血圧・肝機能・血算） |
-| `data/checkup.csv` | 健康診断（身長・体重・脂質・肝機能・血算・腎機能） |
-
-正本は Drive の `daily_report` スプレッドシート（`gdrive.folder_id` 配下）の
-それぞれのタブで、CSV はその写し。**fetch は用意していない。** 年1〜2回しか
-増えず、取得コマンドの存在を忘れるため、結果が出たらその場で両方へ書く運用に
-してある（シートは人、CSV は agent）。
-
-列名はシートの見出しのまま。シート側は `ヘマクリット値`（→ヘマトクリット）
-`空腹時脂肪`（→空腹時中性脂肪）と誤記のままなので、突き合わせるときだけ注意。
-
-`data/healthplanet_bp.csv` とは別物（あちらは家庭用血圧計の日次）。採血の
-血圧値をあちらへ混ぜない。
-
 ### 体のサイズ（agent が書く・取得スクリプト無し）
 
 `data/body_sizes.csv` は服・靴・メガネを買うための体のサイズ（胸囲・股下・足長・度数など）。
@@ -227,6 +209,7 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 | `scripts/mf.py` を変更するとき | [docs/moneyforward.md](docs/moneyforward.md) — セッション切れが 200 で返る。口座別残高（balances.csv）は変わった行だけで、取れなかったページの口座を gone にしない |
 | `scripts/tepco.py` を変更するとき | [docs/tepco.md](docs/tepco.md) — 欠測コマは0でなく行を作らない。30分値は約2年で消える。既定 headless では動かない |
 | `scripts/food.py` / 成分表・食事記録シートを扱うとき | [docs/nutrition.md](docs/nutrition.md) — `-` は未測定であって 0 ではない。`daily.csv` は Cronometer 由来の過去記録を含むのでシート由来だけで全上書きしない |
+| `data/checkup.csv`・`data/blood_donation.csv` を書く・読むとき | [docs/blood-tests.md](docs/blood-tests.md) — 正本は CSV（シートは旧置き場）。血算を比べるときは2つの CSV の名前と単位をそろえる |
 | `emotion.py` / `phq9.py` / `bowel.py` / `daily.py` / Google Forms を変更するとき | [docs/forms.md](docs/forms.md) — **PHQ-9 日本語版は転載禁止**。questionId の再採番で過去回答が孤立する |
 | `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）・HA の state 履歴を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物。state 履歴の開始時点の行は時刻が丸められているので保存しない |
 | `scripts/dashboard.py` / `scripts/ops/grafana/` を変更するとき | [docs/grafana.md](docs/grafana.md) — 計算は dashboard.py に1本。Grafana 側で集計・判定しない。欠測は空セル |
