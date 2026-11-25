@@ -26,7 +26,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `goals` | habits | 目標 | 毎日見る一覧。1行1目標の表（目標・今週・先週）と、折りたたんだデータ鮮度 | 週単位の表 |
 | `early-rising` | habits | 早起き | 今週の睡眠・入床/離床の達成・負債、夜ごと・週ごとの推移 | 週単位の表 |
 | `meditation` | habits | 瞑想 | 1日ごとの時間、週ごとの合計・回数（棒は月曜の位置）、1回ごとの記録（Toggl Focus の「瞑想」、`lib/meditation.py`） | 90日 |
-| `longevity` | health | 老化 | 区画別の老化の指標（台帳 `config/longevity.yaml`）。網羅表と区画0〜3の月次・検査値 | 10年 |
+| `longevity` | health | 老化 | 区画別の老化の指標（台帳 `config/longevity.yaml`）。網羅表（区画0〜9）と、区画0〜8の折りたたみ行に月次の線・検査値の点と表（区画9は測っている指標が無く網羅表だけ）。PAF は satoru の session_log をリポジトリ外から直接読む | 10年 |
 | `body` | health | 体 | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・タンパク質 | 90日 |
 | `strength` | health | 筋トレ | 上に時間範囲で絞った数値カード（トレーニング・時間・ボリューム・セット・部位別セット数）、週ごとの頻度・時間・ボリューム（重量のあるセットだけ）・レップ、部位別セット数（Hevy の6部位）と週目標 | 1年 |
 | `sleep` | health | 睡眠 | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
