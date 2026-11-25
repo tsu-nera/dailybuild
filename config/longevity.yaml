@@ -1,0 +1,77 @@
+# 老化の指標の台帳（lib/longevity.py が読む。Grafana の longevity 画面の元）
+# 1指標1エントリ: key / name / section（0〜9）/ unit / sources
+# sources の各要素: csv（リポジトリからの相対パス）・column・date_column・kind
+#   kind: daily = 月平均にする日次の値 / point = 検査ごとの点（longevity_labs.csv に縦持ち）
+# sources が空の指標は「未測定」。網羅表に空欄の行として出る。測り始めたら source を足すだけ。
+# column が CSV に無いときはビルドが例外で止まる（typo が黙って未測定に見えるのを防ぐ）。
+# data/healthplanet_innerscan.csv の ffmi は計算列で、読むときに lib 側が足す。
+# public リポジトリなので値は書かない。
+
+metrics:
+  - {key: body_age, name: '体内年齢', section: 0, unit: '歳', sources: [
+      {csv: data/healthplanet_innerscan.csv, column: 'body_age', date_column: date, kind: daily},
+    ]}
+  - {key: phenoage, name: 'PhenoAge', section: 0, unit: '歳', sources: []}
+  - {key: dunedinpace, name: 'DunedinPACE', section: 0, unit: '', sources: []}
+  - {key: vo2max, name: 'VO2max', section: 1, unit: 'ml/kg/min', sources: [
+      {csv: data/wearable/cardio_score.csv, column: 'vo2_max', date_column: date, kind: daily},
+    ]}
+  - {key: rhr, name: '安静時心拍', section: 1, unit: 'bpm', sources: [
+      {csv: reports/metrics_daily.csv, column: 'rhr', date_column: date, kind: daily},
+    ]}
+  - {key: hrv, name: 'HRV', section: 1, unit: 'ms', sources: [
+      {csv: reports/metrics_daily.csv, column: 'hrv', date_column: date, kind: daily},
+    ]}
+  - {key: bp_systolic, name: '収縮期血圧', section: 1, unit: 'mmHg', sources: [
+      {csv: data/healthplanet_bp.csv, column: 'bp_systolic', date_column: date, kind: daily},
+      {csv: data/checkup.csv, column: '収縮期血圧', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: '血圧（最高）', date_column: date, kind: point},
+    ]}
+  - {key: bp_diastolic, name: '拡張期血圧', section: 1, unit: 'mmHg', sources: [
+      {csv: data/healthplanet_bp.csv, column: 'bp_diastolic', date_column: date, kind: daily},
+      {csv: data/checkup.csv, column: '拡張期血圧', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: '血圧（最低）', date_column: date, kind: point},
+    ]}
+  - {key: ldl, name: 'LDL コレステロール', section: 1, unit: 'mg/dL', sources: [
+      {csv: data/checkup.csv, column: 'LDLC', date_column: date, kind: point},
+    ]}
+  - {key: hdl, name: 'HDL コレステロール', section: 1, unit: 'mg/dL', sources: [
+      {csv: data/checkup.csv, column: 'HDLC', date_column: date, kind: point},
+    ]}
+  - {key: tg, name: '中性脂肪', section: 1, unit: 'mg/dL', sources: [
+      {csv: data/checkup.csv, column: '空腹時中性脂肪', date_column: date, kind: point},
+    ]}
+  - {key: apob, name: 'ApoB', section: 1, unit: 'mg/dL', sources: []}
+  - {key: lpa, name: 'Lp(a)', section: 1, unit: 'mg/dL', sources: []}
+  - {key: hscrp, name: 'hs-CRP', section: 1, unit: 'mg/dL', sources: []}
+  - {key: hba1c, name: 'HbA1c', section: 2, unit: '%', sources: [
+      {csv: data/checkup.csv, column: 'HbA1c', date_column: date, kind: point},
+    ]}
+  - {key: fasting_glucose, name: '空腹時血糖', section: 2, unit: 'mg/dL', sources: []}
+  - {key: ga, name: 'グリコアルブミン', section: 2, unit: '%', sources: [
+      {csv: data/blood_donation.csv, column: 'GA', date_column: date, kind: point},
+    ]}
+  - {key: visceral_fat, name: '内臓脂肪レベル', section: 2, unit: '', sources: [
+      {csv: data/healthplanet_innerscan.csv, column: 'visceral_fat_level', date_column: date, kind: daily},
+    ]}
+  - {key: waist, name: '腹囲', section: 2, unit: 'cm', sources: [
+      {csv: data/checkup.csv, column: '腹囲', date_column: date, kind: point},
+    ]}
+  - {key: fasting_insulin, name: '空腹時インスリン', section: 2, unit: 'μU/mL', sources: []}
+  - {key: weight, name: '体重', section: 3, unit: 'kg', sources: [
+      {csv: data/healthplanet_innerscan.csv, column: 'weight', date_column: date, kind: daily},
+    ]}
+  - {key: body_fat_rate, name: '体脂肪率', section: 3, unit: '%', sources: [
+      {csv: data/healthplanet_innerscan.csv, column: 'body_fat_rate', date_column: date, kind: daily},
+    ]}
+  - {key: muscle_quality, name: '筋質点数', section: 3, unit: '', sources: [
+      {csv: data/healthplanet_innerscan.csv, column: 'muscle_quality_score', date_column: date, kind: daily},
+    ]}
+  - {key: bone_mass, name: '骨量', section: 3, unit: 'kg', sources: [
+      {csv: data/healthplanet_innerscan.csv, column: 'bone_mass', date_column: date, kind: daily},
+    ]}
+  - {key: ffmi, name: 'FFMI', section: 3, unit: 'kg/m²', sources: [
+      {csv: data/healthplanet_innerscan.csv, column: 'ffmi', date_column: date, kind: daily},
+    ]}
+  - {key: grip, name: '握力', section: 3, unit: 'kg', sources: []}
+  - {key: dexa, name: 'DEXA（骨密度・体組成）', section: 3, unit: '', sources: []}
