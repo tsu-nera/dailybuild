@@ -12,11 +12,12 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 加えて body / sleep / mind 画面用の daily.csv（直近 DAILY_DAYS 日、1日1行）と、
 消耗品画面用の consumables.csv / consumable_purchases.csv（lib/consumables.py）、
 お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）と balances_daily.csv / balances_now.csv（lib/balances.py）、
-瞑想の画面用の meditation_{daily,weeks,now,muse,eval}.csv（lib/meditation.py。muse・eval は satoru の session_log）を書く。
+瞑想の画面用の meditation_{daily,weeks,now,muse,eval}.csv（lib/meditation.py。muse・eval は satoru の session_log）、
+老化の画面用の longevity_{catalog,monthly,labs}.csv（lib/longevity.py。台帳は config/longevity.yaml）を書く。
 計算はここに1本で、Grafana 側では集計も判定もしない。
 
 Usage:
-    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,balances,meditation,strength] [--weeks 8]
+    uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,balances,meditation,strength,longevity] [--weeks 8]
                                       [--out tmp/dashboard/goals.json] [--csv-dir reports/dashboard]
         --only を省くと全グループ。指定したグループの CSV だけ作り直す（台帳を書いた直後・相場を引いた
         直後に Grafana へ反映する用。全体は約10秒）。--out の JSON は goals を作ったときだけ書く
@@ -34,7 +35,7 @@ import pandas as pd
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root / 'src'))
 
-from lib import assets, balances, consumables, exercise_source, hevy_csv, meditation  # noqa: E402
+from lib import assets, balances, consumables, exercise_source, hevy_csv, longevity, meditation  # noqa: E402
 from lib.analytics import activity, body  # noqa: E402
 from lib.analytics import workout  # noqa: E402
 from lib.analytics.sleep.nightly import (  # noqa: E402
@@ -122,6 +123,10 @@ COLUMNS = {
     'strength_sets': ['week', 'week_start', 'muscle', 'sets', 'target'],
     # 部位の一覧（Hevy の6部位の並び）。画面の部位の変数が読む。目標の無い部位は target が空
     'strength_muscles': ['muscle', 'target'],
+    # 老化の画面（lib/longevity.py。台帳は config/longevity.yaml）。monthly の列は台帳の daily 指標の key
+    'longevity_catalog': longevity.CATALOG_COLUMNS,
+    'longevity_monthly': ['month'] + longevity.monthly_keys(longevity.load_registry()),
+    'longevity_labs': longevity.LABS_COLUMNS,
 }
 
 
@@ -353,6 +358,15 @@ def strength_tables(today: dt.date, workouts_csv: Path = WORKOUTS_CSV) -> dict[s
 WEEKDAYS = 5
 
 
+def longevity_tables(today: dt.date) -> dict[str, list[dict]]:
+    """老化の画面の3表。台帳の読み込み・計算は lib/longevity.py"""
+    metrics = longevity.load_registry()
+    obs = longevity.read_observations(metrics, lambda rel: require_private_path(project_root / rel))
+    return {'longevity_catalog': longevity.build_catalog(metrics, obs),
+            'longevity_monthly': longevity.build_monthly(metrics, obs, today),
+            'longevity_labs': longevity.build_labs(metrics, obs)}
+
+
 def goal_list(tables: dict[str, list[dict]], med_now: list[dict]) -> list[dict]:
     """目標の画面の表。目標と今週・先週の実績を1行に並べる（達成の判定や色はつけない）
 
@@ -400,6 +414,7 @@ GROUPS = {
     'balances': lambda today, weeks: balance_tables(today),
     'meditation': lambda today, weeks: meditation_tables(today),
     'strength': lambda today, weeks: strength_tables(today),
+    'longevity': lambda today, weeks: longevity_tables(today),
 }
 
 

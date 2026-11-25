@@ -26,6 +26,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `goals` | habits | 目標 | 毎日見る一覧。1行1目標の表（目標・今週・先週）と、折りたたんだデータ鮮度 | 週単位の表 |
 | `early-rising` | habits | 早起き | 今週の睡眠・入床/離床の達成・負債、夜ごと・週ごとの推移 | 週単位の表 |
 | `meditation` | habits | 瞑想 | 1日ごとの時間、週ごとの合計・回数（棒は月曜の位置）、1回ごとの記録（Toggl Focus の「瞑想」、`lib/meditation.py`） | 90日 |
+| `longevity` | health | 老化 | 区画別の老化の指標（台帳 `config/longevity.yaml`）。網羅表と区画0〜3の月次・検査値 | 10年 |
 | `body` | health | 体 | 体重・除脂肪量・筋肉量・体脂肪率・体水分率・FFMI・サイクリング・タンパク質 | 90日 |
 | `strength` | health | 筋トレ | 上に時間範囲で絞った数値カード（トレーニング・時間・ボリューム・セット・部位別セット数）、週ごとの頻度・時間・ボリューム（重量のあるセットだけ）・レップ、部位別セット数（Hevy の6部位）と週目標 | 1年 |
 | `sleep` | health | 睡眠 | 睡眠時間・負債・入床/起床・ステージ・効率・入眠潜時/起床後臥床・中途覚醒 | 30日 |
@@ -35,7 +36,7 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 | `mind` | health | 心 | HRV / RHR（ベースライン ±1SD の帯）・呼吸数・SpO2・歩数・朝の主観4指標 | 30日 |
 
 `body` `sleep` `mind` `meditation` は時系列で、期間は右上の時間範囲で変える（`daily.csv` は直近365日、`metrics_daily.csv` は全期間）。
-日付だけの CSV を UTC 0時として読むので、3画面の timezone は `utc`（`browser` にすると日付が9時間ずれて見える）。
+日付だけの CSV を UTC 0時として読むので、`longevity` も含め timezone は `utc`（`browser` にすると日付が9時間ずれて見える）。
 期間の終わりは `now+1d` にする。`now` だと当日の行（UTC 0時＝JST 09:00）が JST 09:00 まで範囲の外になり、朝の取得分が見えない。
 
 日次レポートから移さなかったもの（2026-11-10、#255）:
@@ -64,6 +65,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 | `meditation_muse` | `dashboard.py` | 瞑想の画面の Muse の回の結果（主観・前夜の睡眠時間（`metrics_daily` の `sleep_hours` を日付で）・TP の入り→終わり・レポートの要約の数字＝前頭 α・IAF・Fmθ・θ/α・RMSSD・呼吸数・RSA振幅・除外率）。satoru の `logs/session_log.csv` を読む（`pipeline_version` のある行だけ）。vaio の satoru は daily-fetch の `satoru` ステップと satoru の session-review が pull する |
 | `meditation_eval` | `dashboard.py` | 瞑想の画面のサマタ評価の比較。種類（サマタ・ヴィパッサナー・メッター）ごとの回数と目安・主観と TP の変化の中央値。除外率30%以上の回は変化の値を使わない（`lib/meditation.py` の `ARTIFACT_MAX_PCT`） |
 | `strength_weeks` `strength_sets` `strength_muscles` `strength_workouts` | `dashboard.py` | `strength` の画面。部位は Hevy の6部位（`workout.MUSCLE_LABELS`）を目標の有無に関係なく全部出す。Hevy の記録が始まった週から今週まで（記録の無い週は 0）。計算は `lib/analytics/workout.py`（頻度は `weekly_muscle_sets` の `training_days`、時間・ボリューム・レップは `weekly_training_stats`） |
+| `longevity_catalog` `longevity_monthly` `longevity_labs` | `dashboard.py` | `longevity` の画面（`lib/longevity.py`、台帳は `config/longevity.yaml`）。catalog は台帳の全指標1行ずつで、未測定（sources が空）は最終日・件数が空セル。monthly は `kind: daily` の指標の月平均を全期間（最初の月から今月）で横持ち、値の無い月は空セル。labs は `kind: point` の縦持ちで、同じ source・日・key の重複行は1行 |
 | `daily` | `dashboard.py` | `body` / `sleep` / `mind` の画面。`metrics_daily.csv` に無い計算（FFMI・ステージ・負債・ベースライン帯・運動・タンパク質）を直近365日ぶん |
 | `metrics_daily` | `journal_skeleton.py` | 日次の全指標（列は [derived-data.md](derived-data.md)）。対話で足すパネルの材料 |
 

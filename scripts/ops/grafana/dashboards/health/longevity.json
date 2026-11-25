@@ -1,0 +1,1482 @@
+{
+  "uid": "longevity",
+  "title": "老化",
+  "tags": [
+    "dailybuild",
+    "health"
+  ],
+  "timezone": "utc",
+  "schemaVersion": 41,
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-10y",
+    "to": "now+1d"
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "健康",
+      "type": "dashboards",
+      "tags": [
+        "health"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "習慣",
+      "type": "dashboards",
+      "tags": [
+        "habits"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "お金",
+      "type": "dashboards",
+      "tags": [
+        "money"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "暮らし",
+      "type": "dashboards",
+      "tags": [
+        "home"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "筋トレ",
+      "type": "link",
+      "url": "/d/strength",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "title": "入力（習慣）",
+      "type": "dashboards",
+      "tags": [
+        "habits"
+      ],
+      "asDropdown": true,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "網羅表（未測定は空欄）",
+      "description": "台帳（config/longevity.yaml）の全指標。最終日・件数が空の行は未測定。区画4〜9は別 issue で足す",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "dashboard-files"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "type": "csv",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url_options": {
+            "method": "GET"
+          },
+          "url": "http://files/longevity_catalog.csv",
+          "columns": [
+            {
+              "selector": "section",
+              "text": "区画",
+              "type": "number"
+            },
+            {
+              "selector": "key",
+              "text": "key",
+              "type": "string"
+            },
+            {
+              "selector": "name",
+              "text": "指標",
+              "type": "string"
+            },
+            {
+              "selector": "unit",
+              "text": "単位",
+              "type": "string"
+            },
+            {
+              "selector": "last_date",
+              "text": "最終日",
+              "type": "string"
+            },
+            {
+              "selector": "count",
+              "text": "件数",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 26,
+      "type": "row",
+      "title": "区画0 総合",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "体内年齢（歳）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 13,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "body_age",
+                  "text": "体内年齢",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "row",
+      "title": "区画1 心肺・血管",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 12,
+          "type": "timeseries",
+          "title": "VO2max（ml/kg/min）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 14,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "vo2max",
+                  "text": "VO2max",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 13,
+          "type": "timeseries",
+          "title": "安静時心拍（bpm）・HRV（ms）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 14,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "rhr",
+                  "text": "安静時心拍",
+                  "type": "number"
+                },
+                {
+                  "selector": "hrv",
+                  "text": "HRV",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 14,
+          "type": "timeseries",
+          "title": "血圧（mmHg）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml。家庭の測定（HealthPlanet）",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 22,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "bp_systolic",
+                  "text": "収縮期",
+                  "type": "number"
+                },
+                {
+                  "selector": "bp_diastolic",
+                  "text": "拡張期",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 15,
+          "type": "timeseries",
+          "title": "血圧（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 30,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"bp_systolic\" || key == \"bp_diastolic\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "type": "table",
+          "title": "血圧（検査の表）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 30,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "日付",
+                  "type": "string"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                },
+                {
+                  "selector": "unit",
+                  "text": "単位",
+                  "type": "string"
+                },
+                {
+                  "selector": "source",
+                  "text": "ソース",
+                  "type": "string"
+                }
+              ],
+              "filterExpression": "key == \"bp_systolic\" || key == \"bp_diastolic\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "脂質（LDL・HDL・中性脂肪）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 38,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"ldl\" || key == \"hdl\" || key == \"tg\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "table",
+          "title": "脂質（LDL・HDL・中性脂肪）（検査の表）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 38,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "日付",
+                  "type": "string"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                },
+                {
+                  "selector": "unit",
+                  "text": "単位",
+                  "type": "string"
+                },
+                {
+                  "selector": "source",
+                  "text": "ソース",
+                  "type": "string"
+                }
+              ],
+              "filterExpression": "key == \"ldl\" || key == \"hdl\" || key == \"tg\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "区画2 代謝",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 19,
+          "type": "timeseries",
+          "title": "内臓脂肪レベル",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 15,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "visceral_fat",
+                  "text": "内臓脂肪レベル",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 20,
+          "type": "timeseries",
+          "title": "代謝（HbA1c・GA・腹囲）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 23,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"hba1c\" || key == \"ga\" || key == \"waist\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "type": "table",
+          "title": "代謝（HbA1c・GA・腹囲）（検査の表）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 23,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "日付",
+                  "type": "string"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                },
+                {
+                  "selector": "unit",
+                  "text": "単位",
+                  "type": "string"
+                },
+                {
+                  "selector": "source",
+                  "text": "ソース",
+                  "type": "string"
+                }
+              ],
+              "filterExpression": "key == \"hba1c\" || key == \"ga\" || key == \"waist\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "row",
+      "title": "区画3 筋・骨・脂肪",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 22,
+          "type": "timeseries",
+          "title": "体重（kg）・骨量（kg）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "weight",
+                  "text": "体重",
+                  "type": "number"
+                },
+                {
+                  "selector": "bone_mass",
+                  "text": "骨量",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 23,
+          "type": "timeseries",
+          "title": "体脂肪率（%）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "body_fat_rate",
+                  "text": "体脂肪率",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 24,
+          "type": "timeseries",
+          "title": "FFMI（kg/m²）・筋質点数",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 24,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "ffmi",
+                  "text": "FFMI",
+                  "type": "number"
+                },
+                {
+                  "selector": "muscle_quality",
+                  "text": "筋質点数",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
