@@ -1010,7 +1010,7 @@
         {
           "id": 20,
           "type": "timeseries",
-          "title": "代謝（HbA1c・GA・腹囲）（検査）",
+          "title": "代謝（HbA1c・空腹時血糖・GA・腹囲）（検査）",
           "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
           "datasource": {
             "type": "yesoreyeram-infinity-datasource",
@@ -1060,7 +1060,7 @@
                   "type": "number"
                 }
               ],
-              "filterExpression": "key == \"hba1c\" || key == \"ga\" || key == \"waist\""
+              "filterExpression": "key == \"hba1c\" || key == \"fasting_glucose\" || key == \"ga\" || key == \"waist\""
             }
           ],
           "fieldConfig": {
@@ -1116,7 +1116,7 @@
         {
           "id": 21,
           "type": "table",
-          "title": "代謝（HbA1c・GA・腹囲）（検査の表）",
+          "title": "代謝（HbA1c・空腹時血糖・GA・腹囲）（検査の表）",
           "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
           "datasource": {
             "type": "yesoreyeram-infinity-datasource",
@@ -1175,7 +1175,7 @@
                   "type": "string"
                 }
               ],
-              "filterExpression": "key == \"hba1c\" || key == \"ga\" || key == \"waist\""
+              "filterExpression": "key == \"hba1c\" || key == \"fasting_glucose\" || key == \"ga\" || key == \"waist\""
             }
           ],
           "fieldConfig": {
