@@ -1477,6 +1477,1921 @@
           }
         }
       ]
+    },
+    {
+      "id": 49,
+      "type": "row",
+      "title": "区画4 睡眠",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 30,
+          "type": "timeseries",
+          "title": "睡眠時間（時間）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 17,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "sleep_hours",
+                  "text": "睡眠時間",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 31,
+          "type": "timeseries",
+          "title": "睡眠効率（%）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 17,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "sleep_efficiency",
+                  "text": "睡眠効率",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "type": "row",
+      "title": "区画5 血液・免疫・炎症",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 17,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 32,
+          "type": "timeseries",
+          "title": "ヘモグロビン（g/dL）・ヘマトクリット・MCHC（%）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 18,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"hb\" || key == \"ht\" || key == \"mchc\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 33,
+          "type": "timeseries",
+          "title": "MCV（fL）・MCH（pg）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 18,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"mcv\" || key == \"mch\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 34,
+          "type": "timeseries",
+          "title": "赤血球数・血小板数（万/μL）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 26,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"rbc\" || key == \"plt\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 35,
+          "type": "timeseries",
+          "title": "白血球数（/μL）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 26,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"wbc\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 36,
+          "type": "table",
+          "title": "血算（検査の表）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 34,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "日付",
+                  "type": "string"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                },
+                {
+                  "selector": "unit",
+                  "text": "単位",
+                  "type": "string"
+                },
+                {
+                  "selector": "source",
+                  "text": "ソース",
+                  "type": "string"
+                }
+              ],
+              "filterExpression": "key == \"hb\" || key == \"rbc\" || key == \"ht\" || key == \"mcv\" || key == \"mch\" || key == \"mchc\" || key == \"wbc\" || key == \"plt\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "type": "row",
+      "title": "区画6 肝・腎",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 37,
+          "type": "timeseries",
+          "title": "肝酵素（AST・ALT・γ-GTP、U/L）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 19,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"ast\" || key == \"alt\" || key == \"ggt\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 38,
+          "type": "timeseries",
+          "title": "総蛋白・アルブミン（g/dL）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 19,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"total_protein\" || key == \"albumin\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 39,
+          "type": "timeseries",
+          "title": "クレアチニン・尿酸（mg/dL）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 27,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"creatinine\" || key == \"uric_acid\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 40,
+          "type": "timeseries",
+          "title": "eGFR（mL/min/1.73m²）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 27,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"egfr\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "type": "table",
+          "title": "肝・腎（検査の表）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 35,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "日付",
+                  "type": "string"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                },
+                {
+                  "selector": "unit",
+                  "text": "単位",
+                  "type": "string"
+                },
+                {
+                  "selector": "source",
+                  "text": "ソース",
+                  "type": "string"
+                }
+              ],
+              "filterExpression": "key == \"ast\" || key == \"alt\" || key == \"ggt\" || key == \"total_protein\" || key == \"albumin\" || key == \"creatinine\" || key == \"egfr\" || key == \"uric_acid\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "type": "row",
+      "title": "区画7 脳・こころ",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 42,
+          "type": "timeseries",
+          "title": "PAF（Hz）",
+          "description": "月平均（longevity_monthly.csv）。値の無い月は空白（0にしない）。台帳は config/longevity.yaml。satoru の session_log の tp_iaf_hz（側頭後部）。除外率が高い回は除く",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 20,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_monthly.csv",
+              "columns": [
+                {
+                  "selector": "month",
+                  "text": "month",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "paf",
+                  "text": "PAF",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 4,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          }
+        },
+        {
+          "id": 43,
+          "type": "timeseries",
+          "title": "PHQ-9 合計（点）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 20,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"phq9\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 44,
+          "type": "table",
+          "title": "PHQ-9 合計（検査の表）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 28,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "日付",
+                  "type": "string"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                },
+                {
+                  "selector": "unit",
+                  "text": "単位",
+                  "type": "string"
+                },
+                {
+                  "selector": "source",
+                  "text": "ソース",
+                  "type": "string"
+                }
+              ],
+              "filterExpression": "key == \"phq9\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        }
+      ]
+    },
+    {
+      "id": 53,
+      "type": "row",
+      "title": "区画8 目・歯・皮膚",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [
+        {
+          "id": 45,
+          "type": "timeseries",
+          "title": "視力（右・左）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 21,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"va_r\" || key == \"va_l\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 46,
+          "type": "timeseries",
+          "title": "球面度数・加入度数（右・左、D）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 21,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"sph_r\" || key == \"sph_l\" || key == \"add_r\" || key == \"add_l\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 47,
+          "type": "timeseries",
+          "title": "歯（現在歯数・健全歯数・DMF歯数・歯周ポケットの最大コード）（検査）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 29,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "date",
+                  "type": "timestamp",
+                  "timestampFormat": "2006-01-02"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                }
+              ],
+              "filterExpression": "key == \"teeth_present\" || key == \"teeth_sound\" || key == \"dmft\" || key == \"pd_max_code\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "points",
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "pointSize": 7,
+                "showPoints": "always",
+                "spanNulls": true,
+                "barAlignment": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "text",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "transformations": [
+            {
+              "id": "prepareTimeSeries",
+              "options": {
+                "format": "multi"
+              }
+            }
+          ]
+        },
+        {
+          "id": 48,
+          "type": "table",
+          "title": "目・歯（検査の表）",
+          "description": "検査ごとの値（longevity_labs.csv）。同じソース・同じ日・同じ指標は1行",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "dashboard-files"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 29,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "dashboard-files"
+              },
+              "type": "csv",
+              "source": "url",
+              "parser": "backend",
+              "format": "table",
+              "url_options": {
+                "method": "GET"
+              },
+              "url": "http://files/longevity_labs.csv",
+              "columns": [
+                {
+                  "selector": "date",
+                  "text": "日付",
+                  "type": "string"
+                },
+                {
+                  "selector": "key",
+                  "text": "key",
+                  "type": "string"
+                },
+                {
+                  "selector": "name",
+                  "text": "指標",
+                  "type": "string"
+                },
+                {
+                  "selector": "value",
+                  "text": "値",
+                  "type": "number"
+                },
+                {
+                  "selector": "unit",
+                  "text": "単位",
+                  "type": "string"
+                },
+                {
+                  "selector": "source",
+                  "text": "ソース",
+                  "type": "string"
+                }
+              ],
+              "filterExpression": "key == \"va_r\" || key == \"va_l\" || key == \"sph_r\" || key == \"sph_l\" || key == \"add_r\" || key == \"add_l\" || key == \"teeth_present\" || key == \"teeth_sound\" || key == \"dmft\" || key == \"pd_max_code\""
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        }
+      ]
     }
   ]
 }

@@ -361,7 +361,14 @@ WEEKDAYS = 5
 def longevity_tables(today: dt.date) -> dict[str, list[dict]]:
     """老化の画面の3表。台帳の読み込み・計算は lib/longevity.py"""
     metrics = longevity.load_registry()
-    obs = longevity.read_observations(metrics, lambda rel: require_private_path(project_root / rel))
+
+    def resolve(rel: str) -> Path:
+        # ~/ はリポジトリ外（satoru の session_log。public なので private の検査を掛けない）
+        if rel.startswith('~/'):
+            return Path(rel).expanduser()
+        return require_private_path(project_root / rel)
+
+    obs = longevity.read_observations(metrics, resolve)
     return {'longevity_catalog': longevity.build_catalog(metrics, obs),
             'longevity_monthly': longevity.build_monthly(metrics, obs, today),
             'longevity_labs': longevity.build_labs(metrics, obs)}

@@ -164,3 +164,83 @@ def test_ffmi_computed_for_innerscan(tmp_path):
     obs = read_observations(metrics, resolver(tmp_path))
     # LBM 60kg・身長170cm: 60 / 1.7^2 + 6.1 * (1.8 - 1.7)
     assert obs['ffmi'][0].value == pytest.approx(60 / 1.7 ** 2 + 0.61)
+
+
+def test_repository_registry_has_sections_4_to_9():
+    items = {m.key: m for m in load_registry()}
+    for key in ('sleep_hours', 'sleep_efficiency', 'hb', 'rbc', 'ht', 'mcv', 'mch', 'mchc', 'wbc',
+                'plt', 'ast', 'alt', 'ggt', 'total_protein', 'albumin', 'creatinine', 'egfr',
+                'uric_acid', 'paf', 'phq9', 'va_r', 'va_l', 'sph_r', 'sph_l', 'add_r', 'add_l',
+                'teeth_present', 'teeth_sound', 'dmft', 'pd_max_code'):
+        assert items[key].sources, key
+    for key in ('lymph_pct', 'rdw', 'ferritin', 'alp', 'cystatin_c', 'urinalysis',
+                'reaction_time', 'cognitive_test', 'hearing', 'skin',
+                'tsh', 'ft4', 'testosterone', 'vitamin_d', 'igf1'):
+        assert items[key].sources == (), key
+    assert {m.section for m in items.values()} == set(range(10))
+    [_, donation] = items['wbc'].sources
+    assert donation.scale == 100.0  # 献血は 百/μL
+
+
+def test_where_keeps_both_eyes_on_same_day(tmp_path):
+    write_csv(tmp_path, 'data/rx.csv', 'date,eye,VA\n2026-01-05,R,1.2\n2026-01-05,L,0.9\n')
+    src = {'csv': 'data/rx.csv', 'column': 'VA', 'date_column': 'date', 'kind': 'point'}
+    metrics = load_registry(write_registry(tmp_path, [
+        {**ENTRY, 'key': 'va_r', 'sources': [{**src, 'where': {'eye': 'R'}}]},
+        {**ENTRY, 'key': 'va_l', 'sources': [{**src, 'where': {'eye': 'L'}}]}]))
+    obs = read_observations(metrics, resolver(tmp_path))
+    assert [(o.date, o.value) for o in obs['va_r']] == [(dt.date(2026, 1, 5), 1.2)]
+    assert [(o.date, o.value) for o in obs['va_l']] == [(dt.date(2026, 1, 5), 0.9)]
+
+
+def test_where_picks_one_item_from_long_format(tmp_path):
+    write_csv(tmp_path, 'data/dental.csv',
+              'date,item,value\n2026-01-05,現在歯数,28\n2026-01-05,健全歯数,17\n'
+              '2026-01-05,口腔衛生状態,不良\n')
+    src = {'csv': 'data/dental.csv', 'column': 'value', 'date_column': 'date', 'kind': 'point',
+           'where': {'item': '健全歯数'}}
+    metrics = load_registry(write_registry(tmp_path, [{**ENTRY, 'sources': [src]}]))
+    obs = read_observations(metrics, resolver(tmp_path))
+    assert [(o.date, o.value) for o in obs['x']] == [(dt.date(2026, 1, 5), 17.0)]
+
+
+def test_scale_multiplies_value(tmp_path):
+    write_csv(tmp_path, 'data/x.csv', 'date,v\n2026-01-05,32\n')
+    metrics = load_registry(write_registry(
+        tmp_path, [{**ENTRY, 'sources': [{**SRC, 'kind': 'point', 'scale': 100}]}]))
+    obs = read_observations(metrics, resolver(tmp_path))
+    assert obs['x'][0].value == 3200.0
+
+
+def test_where_column_missing_raises(tmp_path):
+    write_csv(tmp_path, 'data/x.csv', 'date,v\n2026-01-05,1\n')
+    metrics = load_registry(write_registry(
+        tmp_path, [{**ENTRY, 'sources': [{**SRC, 'where': {'eye': 'R'}}]}]))
+    with pytest.raises(RegistryError, match="'eye'"):
+        read_observations(metrics, resolver(tmp_path))
+
+
+@pytest.mark.parametrize('where', [['eye', 'R'], 'eye=R', {'eye': 1}, {}])
+def test_where_not_string_mapping_rejected(tmp_path, where):
+    with pytest.raises(RegistryError, match='where'):
+        load_registry(write_registry(tmp_path, [{**ENTRY, 'sources': [{**SRC, 'where': where}]}]))
+
+
+@pytest.mark.parametrize('scale', ['100', True, [100]])
+def test_scale_not_number_rejected(tmp_path, scale):
+    with pytest.raises(RegistryError, match='scale'):
+        load_registry(write_registry(tmp_path, [{**ENTRY, 'sources': [{**SRC, 'scale': scale}]}]))
+
+
+def test_session_log_drops_high_artifact_sessions(tmp_path):
+    write_csv(tmp_path, 'satoru.csv',
+              'timestamp,tp_iaf_hz,artifact_reject_pct\n'
+              '2026-01-05 07:00:00,9.0,1.0\n'
+              f'2026-01-06 07:00:00,5.0,{longevity.ARTIFACT_MAX_PCT}\n'
+              '2026-01-07 07:00:00,10.0,29.9\n')
+    src = {'csv': longevity.SATORU_SESSION_LOG, 'column': 'tp_iaf_hz',
+           'date_column': 'timestamp', 'kind': 'daily'}
+    metrics = load_registry(write_registry(tmp_path, [{**ENTRY, 'key': 'paf', 'sources': [src]}]))
+    obs = read_observations(metrics, lambda rel: tmp_path / 'satoru.csv')
+    rows = build_monthly(metrics, obs, dt.date(2026, 1, 31))
+    assert rows == [{'month': '2026-01-01', 'paf': 9.5}]

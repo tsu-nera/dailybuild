@@ -4,7 +4,14 @@ config/longevity.yaml（老化の指標の台帳）の読み込みと、Grafana 
 台帳は「どの CSV のどの列が、どの指標か」だけを持つ。sources が空の指標は未測定で、
 網羅表に空欄の行として出す（測り始めたら source を足すだけで埋まる）。
 検証は measurements_registry と同じく読み込み時に全件行い、1件でも壊れていれば RegistryError。
-台帳の column / date_column が CSV に無いときも例外にする（typo が黙って未測定に見えるのを防ぐ）。
+台帳の column / date_column / where の列が CSV に無いときも例外にする（typo が黙って未測定に見えるのを防ぐ）。
+
+source の任意項目:
+- where: 列名 → 値。すべての列が値と等しい行だけを使う（右目と左目・縦持ちの項目名）。比較は文字列
+- scale: 値に掛ける数（CSV ごとの単位の違いをそろえる）
+適用の順は where → 数値化 → scale → point の同日重複の除去。where より先に重複を落とすと、
+同じ日の右目と左目が1行に潰れる。
+csv が ~/ で始まるときはリポジトリ外のファイル（resolve 側で扱う）。
 """
 
 import datetime as dt
@@ -17,6 +24,7 @@ import yaml
 
 from lib.analytics.body import prepare_body_df
 from lib.forms_registry import RegistryError
+from lib.meditation import ARTIFACT_MAX_PCT
 
 LONGEVITY_YAML = Path(__file__).resolve().parents[2] / 'config' / 'longevity.yaml'
 
@@ -26,10 +34,21 @@ LABS_COLUMNS = ['date', 'key', 'name', 'value', 'unit', 'source']
 KINDS = ('daily', 'point')
 METRIC_FIELDS = ('key', 'name', 'section', 'unit', 'sources')
 SOURCE_FIELDS = ('csv', 'column', 'date_column', 'kind')
+SOURCE_OPTIONAL = ('where', 'scale')
+
+SATORU_SESSION_LOG = '~/repo/satoru/logs/session_log.csv'
+
+
+def _drop_artifact_sessions(df: pd.DataFrame) -> pd.DataFrame:
+    """瞑想の画面と同じ基準で、除外率が ARTIFACT_MAX_PCT 以上（または不明）の回を落とす"""
+    pct = pd.to_numeric(df['artifact_reject_pct'], errors='coerce')
+    return df[pct < ARTIFACT_MAX_PCT]
+
 
 # CSV ごとの前処理。台帳の column に計算列（innerscan の ffmi）を書けるようにする
 PREPROCESS: dict[str, Callable[[pd.DataFrame], pd.DataFrame]] = {
     'data/healthplanet_innerscan.csv': prepare_body_df,
+    SATORU_SESSION_LOG: _drop_artifact_sessions,
 }
 
 
@@ -39,6 +58,8 @@ class Source:
     column: str
     date_column: str
     kind: str
+    where: tuple[tuple[str, str], ...] = ()
+    scale: float | None = None
 
 
 @dataclass(frozen=True)
@@ -58,11 +79,11 @@ class Observation:
     source: str  # csv のファイル名（拡張子なし）
 
 
-def _check_fields(where, entry, required):
+def _check_fields(where, entry, required, optional=()):
     missing = [f for f in required if f not in entry]
     if missing:
         raise RegistryError(f"{where}: 必須項目が無い: {', '.join(missing)}")
-    unknown = set(entry) - set(required)
+    unknown = set(entry) - set(required) - set(optional)
     if unknown:
         raise RegistryError(f"{where}: 未知の項目: {', '.join(sorted(unknown))}")
 
@@ -70,13 +91,21 @@ def _check_fields(where, entry, required):
 def _parse_source(entry, where) -> Source:
     if not isinstance(entry, dict):
         raise RegistryError(f'{where}: マッピングではない')
-    _check_fields(where, entry, SOURCE_FIELDS)
+    _check_fields(where, entry, SOURCE_FIELDS, SOURCE_OPTIONAL)
     for field in SOURCE_FIELDS:
         if not isinstance(entry[field], str) or not entry[field]:
             raise RegistryError(f'{where}: {field} は空でない文字列')
     if entry['kind'] not in KINDS:
         raise RegistryError(f"{where}: kind は {' / '.join(KINDS)} のどちらか: {entry['kind']!r}")
-    return Source(**{f: entry[f] for f in SOURCE_FIELDS})
+    cond = entry.get('where', {})
+    if 'where' in entry and (not isinstance(cond, dict) or not cond
+            or not all(isinstance(k, str) and k and isinstance(v, str) for k, v in cond.items())):
+        raise RegistryError(f'{where}: where は列名（文字列）から値（文字列）へのマッピング: {cond!r}')
+    scale = entry.get('scale')
+    if scale is not None and (isinstance(scale, bool) or not isinstance(scale, int | float)):
+        raise RegistryError(f'{where}: scale は数値: {scale!r}')
+    return Source(**{f: entry[f] for f in SOURCE_FIELDS}, where=tuple(cond.items()),
+                  scale=None if scale is None else float(scale))
 
 
 def _parse(entry, index) -> Metric:
@@ -122,7 +151,8 @@ def read_observations(metrics: list[Metric],
     """指標ごとの観測値（key → Observation のリスト）。CSV は重複なく1回だけ読む
 
     resolve は台帳の相対パスを実パスにする（dashboard.py は require_private_path を渡す）。
-    point の source は同じ日の行が重複していても1行にする（先の行を残す）。
+    point の source は同じ日の行が重複していても1行にする（先の行を残す）。重複の除去は
+    where で行を絞った後に行う。
     """
     frames: dict[str, pd.DataFrame] = {}
     result: dict[str, list[Observation]] = {}
@@ -135,13 +165,18 @@ def read_observations(metrics: list[Metric],
                     df = PREPROCESS[src.csv](df)
                 frames[src.csv] = df
             df = frames[src.csv]
-            for col in (src.column, src.date_column):
+            for col in (src.column, src.date_column, *(c for c, _ in src.where)):
                 if col not in df.columns:
                     raise RegistryError(
                         f'{m.key}: {src.csv} に列 {col!r} が無い（台帳の typo か CSV の見出し変更）')
+            for col, val in src.where:
+                df = df[df[col].astype(str) == val]
+            value = pd.to_numeric(df[src.column], errors='coerce')
+            if src.scale is not None:
+                value = value * src.scale
             part = pd.DataFrame({
                 'date': pd.to_datetime(df[src.date_column], errors='coerce').dt.date,
-                'value': pd.to_numeric(df[src.column], errors='coerce'),
+                'value': value,
             }).dropna()
             if src.kind == 'point':
                 part = part.drop_duplicates('date')

@@ -1,7 +1,10 @@
 # 老化の指標の台帳（lib/longevity.py が読む。Grafana の longevity 画面の元）
 # 1指標1エントリ: key / name / section（0〜9）/ unit / sources
-# sources の各要素: csv（リポジトリからの相対パス）・column・date_column・kind
+# sources の各要素: csv（リポジトリからの相対パス）・column・date_column・kind、任意で where・scale
 #   kind: daily = 月平均にする日次の値 / point = 検査ごとの点（longevity_labs.csv に縦持ち）
+#   where: 列名 → 値（文字列）。一致する行だけを使う（右目と左目、縦持ちの項目名）
+#   scale: 値に掛ける数。CSV ごとの単位の違いをそろえる（献血の WBC は 百/μL なので 100）
+#   csv が ~/ で始まるのはリポジトリ外のファイル（satoru の session_log。除外率の高い回は lib 側で落とす）
 # sources が空の指標は「未測定」。網羅表に空欄の行として出る。測り始めたら source を足すだけ。
 # column が CSV に無いときはビルドが例外で止まる（typo が黙って未測定に見えるのを防ぐ）。
 # data/healthplanet_innerscan.csv の ffmi は計算列で、読むときに lib 側が足す。
@@ -77,3 +80,118 @@ metrics:
     ]}
   - {key: grip, name: '握力', section: 3, unit: 'kg', sources: []}
   - {key: dexa, name: 'DEXA（骨密度・体組成）', section: 3, unit: '', sources: []}
+  - {key: sleep_hours, name: '睡眠時間', section: 4, unit: '時間', sources: [
+      {csv: reports/metrics_daily.csv, column: 'sleep_hours', date_column: date, kind: daily},
+    ]}
+  - {key: sleep_efficiency, name: '睡眠効率', section: 4, unit: '%', sources: [
+      {csv: reports/metrics_daily.csv, column: 'sleep_efficiency', date_column: date, kind: daily},
+    ]}
+  - {key: hb, name: 'ヘモグロビン', section: 5, unit: 'g/dL', sources: [
+      {csv: data/checkup.csv, column: '血色素量', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'Hb', date_column: date, kind: point},
+    ]}
+  - {key: rbc, name: '赤血球数', section: 5, unit: '万/μL', sources: [
+      {csv: data/checkup.csv, column: '赤血球数', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'RBC', date_column: date, kind: point},
+    ]}
+  - {key: ht, name: 'ヘマトクリット', section: 5, unit: '%', sources: [
+      {csv: data/checkup.csv, column: 'ヘマトクリット値', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'Ht', date_column: date, kind: point},
+    ]}
+  - {key: mcv, name: 'MCV', section: 5, unit: 'fL', sources: [
+      {csv: data/checkup.csv, column: 'MCV', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'MCV', date_column: date, kind: point},
+    ]}
+  - {key: mch, name: 'MCH', section: 5, unit: 'pg', sources: [
+      {csv: data/checkup.csv, column: 'MCH', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'MCH', date_column: date, kind: point},
+    ]}
+  - {key: mchc, name: 'MCHC', section: 5, unit: '%', sources: [
+      {csv: data/checkup.csv, column: 'MCHC', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'MCHC', date_column: date, kind: point},
+    ]}
+  - {key: wbc, name: '白血球数', section: 5, unit: '/μL', sources: [
+      {csv: data/checkup.csv, column: '白血球数', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'WBC', date_column: date, kind: point, scale: 100},
+    ]}
+  - {key: plt, name: '血小板数', section: 5, unit: '万/μL', sources: [
+      {csv: data/checkup.csv, column: '血小板数', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'PLT', date_column: date, kind: point},
+    ]}
+  - {key: lymph_pct, name: 'リンパ球%', section: 5, unit: '%', sources: []}
+  - {key: rdw, name: 'RDW', section: 5, unit: '%', sources: []}
+  - {key: ferritin, name: 'フェリチン', section: 5, unit: 'ng/mL', sources: []}
+  - {key: ast, name: 'AST', section: 6, unit: 'U/L', sources: [
+      {csv: data/checkup.csv, column: 'GOT', date_column: date, kind: point},
+    ]}
+  - {key: alt, name: 'ALT', section: 6, unit: 'U/L', sources: [
+      {csv: data/checkup.csv, column: 'GPT', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'ALT(GPT)', date_column: date, kind: point},
+    ]}
+  - {key: ggt, name: 'γ-GTP', section: 6, unit: 'U/L', sources: [
+      {csv: data/checkup.csv, column: 'r-GTP', date_column: date, kind: point},
+      {csv: data/blood_donation.csv, column: 'y-GTP', date_column: date, kind: point},
+    ]}
+  - {key: total_protein, name: '総蛋白', section: 6, unit: 'g/dL', sources: [
+      {csv: data/blood_donation.csv, column: 'TP', date_column: date, kind: point},
+    ]}
+  - {key: albumin, name: 'アルブミン', section: 6, unit: 'g/dL', sources: [
+      {csv: data/blood_donation.csv, column: 'ALB', date_column: date, kind: point},
+    ]}
+  - {key: creatinine, name: 'クレアチニン', section: 6, unit: 'mg/dL', sources: [
+      {csv: data/checkup.csv, column: '血清クレアチニン', date_column: date, kind: point},
+    ]}
+  - {key: egfr, name: 'eGFR', section: 6, unit: 'mL/min/1.73m²', sources: [
+      {csv: data/checkup.csv, column: 'eGFR', date_column: date, kind: point},
+    ]}
+  - {key: uric_acid, name: '尿酸', section: 6, unit: 'mg/dL', sources: [
+      {csv: data/checkup.csv, column: '血清尿酸', date_column: date, kind: point},
+    ]}
+  - {key: alp, name: 'ALP', section: 6, unit: 'U/L', sources: []}
+  - {key: cystatin_c, name: 'シスタチンC', section: 6, unit: 'mg/L', sources: []}
+  - {key: urinalysis, name: '尿検査', section: 6, unit: '', sources: []}
+  - {key: paf, name: 'PAF（α波のピーク周波数）', section: 7, unit: 'Hz', sources: [
+      {csv: ~/repo/satoru/logs/session_log.csv, column: 'tp_iaf_hz', date_column: timestamp, kind: daily},
+    ]}
+  - {key: phq9, name: 'PHQ-9 合計', section: 7, unit: '点', sources: [
+      {csv: data/phq9.csv, column: 'total', date_column: date, kind: point},
+    ]}
+  - {key: reaction_time, name: '反応時間', section: 7, unit: 'ms', sources: []}
+  - {key: cognitive_test, name: '認知テスト', section: 7, unit: '', sources: []}
+  - {key: va_r, name: '視力（右）', section: 8, unit: '', sources: [
+      {csv: data/eyeglass_rx.csv, column: 'VA', date_column: date, kind: point, where: {eye: 'R'}},
+    ]}
+  - {key: va_l, name: '視力（左）', section: 8, unit: '', sources: [
+      {csv: data/eyeglass_rx.csv, column: 'VA', date_column: date, kind: point, where: {eye: 'L'}},
+    ]}
+  - {key: sph_r, name: '球面度数（右）', section: 8, unit: 'D', sources: [
+      {csv: data/eyeglass_rx.csv, column: 'SPH', date_column: date, kind: point, where: {eye: 'R'}},
+    ]}
+  - {key: sph_l, name: '球面度数（左）', section: 8, unit: 'D', sources: [
+      {csv: data/eyeglass_rx.csv, column: 'SPH', date_column: date, kind: point, where: {eye: 'L'}},
+    ]}
+  - {key: add_r, name: '加入度数（右）', section: 8, unit: 'D', sources: [
+      {csv: data/eyeglass_rx.csv, column: 'ADD', date_column: date, kind: point, where: {eye: 'R'}},
+    ]}
+  - {key: add_l, name: '加入度数（左）', section: 8, unit: 'D', sources: [
+      {csv: data/eyeglass_rx.csv, column: 'ADD', date_column: date, kind: point, where: {eye: 'L'}},
+    ]}
+  - {key: teeth_present, name: '現在歯数', section: 8, unit: '本', sources: [
+      {csv: data/dental_checkup.csv, column: 'value', date_column: date, kind: point, where: {item: '現在歯数'}},
+    ]}
+  - {key: teeth_sound, name: '健全歯数', section: 8, unit: '本', sources: [
+      {csv: data/dental_checkup.csv, column: 'value', date_column: date, kind: point, where: {item: '健全歯数'}},
+    ]}
+  - {key: dmft, name: 'DMF歯数', section: 8, unit: '本', sources: [
+      {csv: data/dental_checkup.csv, column: 'value', date_column: date, kind: point, where: {item: 'DMF歯数'}},
+    ]}
+  - {key: pd_max_code, name: '歯周ポケットの最大コード', section: 8, unit: '', sources: [
+      {csv: data/dental_checkup.csv, column: 'value', date_column: date, kind: point, where: {item: 'PD最大コード'}},
+    ]}
+  - {key: hearing, name: '聴力', section: 8, unit: '', sources: []}
+  - {key: skin, name: '皮膚', section: 8, unit: '', sources: []}
+  - {key: tsh, name: 'TSH', section: 9, unit: 'μIU/mL', sources: []}
+  - {key: ft4, name: 'FT4', section: 9, unit: 'ng/dL', sources: []}
+  - {key: testosterone, name: 'テストステロン', section: 9, unit: 'ng/mL', sources: []}
+  - {key: vitamin_d, name: 'ビタミンD（25(OH)D）', section: 9, unit: 'ng/mL', sources: []}
+  - {key: igf1, name: 'IGF-1', section: 9, unit: 'ng/mL', sources: []}
