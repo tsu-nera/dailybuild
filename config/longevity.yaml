@@ -47,7 +47,9 @@ metrics:
   - {key: hba1c, name: 'HbA1c', section: 2, unit: '%', sources: [
       {csv: data/checkup.csv, column: 'HbA1c', date_column: date, kind: point},
     ]}
-  - {key: fasting_glucose, name: '空腹時血糖', section: 2, unit: 'mg/dL', sources: []}
+  - {key: fasting_glucose, name: '空腹時血糖', section: 2, unit: 'mg/dL', sources: [
+      {csv: data/checkup.csv, column: '空腹時血糖', date_column: date, kind: point},
+    ]}
   - {key: ga, name: 'グリコアルブミン', section: 2, unit: '%', sources: [
       {csv: data/blood_donation.csv, column: 'GA', date_column: date, kind: point},
     ]}

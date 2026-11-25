@@ -46,7 +46,7 @@ def test_repository_registry_loads():
                 'fasting_glucose', 'ga', 'visceral_fat', 'waist', 'fasting_insulin', 'weight',
                 'body_fat_rate', 'muscle_quality', 'bone_mass', 'ffmi', 'grip', 'dexa'):
         assert key in items
-    for key in ('phenoage', 'apob', 'fasting_glucose', 'fasting_insulin', 'grip', 'dexa'):
+    for key in ('phenoage', 'apob', 'fasting_insulin', 'grip', 'dexa'):
         assert items[key].sources == ()
     assert len(items['bp_systolic'].sources) == 3
 
