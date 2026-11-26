@@ -2,7 +2,7 @@
 
 Notion の列: 品目(title) key(text) 分類(select) 単位(select) 量(number) メモ(text) 更新(last_edited_time)。
 
-- key が空のページには `n_` + ページ ID 先頭8桁を振り、Notion の key 列へ書き戻す。振った key は変えない
+- key が空のページには `n_` + ページ ID 全32桁を振り（先頭は作成時刻に近い値で、同じ日に作ったページで重なる）、Notion の key 列へ書き戻す。振った key は変えない
 - key が重複していたら、どの CSV も書かずに SyncError（どちらの購入履歴か決められない）
 - Notion が0行なら SyncError（取りこぼしで全品目に ended_on が付くのを防ぐ）
 - consumables.csv: Notion が持つ列（name category unit note）は Notion の値で上書きし、
@@ -53,7 +53,7 @@ def _text(prop: dict | None) -> str:
 
 
 def auto_key(page_id: str) -> str:
-    return KEY_PREFIX + page_id.replace('-', '')[:8]
+    return KEY_PREFIX + page_id.replace('-', '')
 
 
 def parse_page(page: dict) -> NotionItem:

@@ -72,10 +72,19 @@ def base_pages():
 def test_empty_key_gets_page_id_key_and_one_writeback(csvs):
     fake = FakeNotion(base_pages() + [page('abcd1234-ef56-7890-0000-000000000003', 'トランクス')])
     run(fake, csvs)
-    assert fake.updates == [('abcd1234-ef56-7890-0000-000000000003', 'key', 'n_abcd1234')]
+    assert fake.updates == [('abcd1234-ef56-7890-0000-000000000003', 'key', 'n_abcd1234ef5678900000000000000003')]
     new = rows(csvs[0])[-1]
-    assert new['key'] == 'n_abcd1234' and new['name'] == 'トランクス'
+    assert new['key'] == 'n_abcd1234ef5678900000000000000003' and new['name'] == 'トランクス'
     assert new['location'] == '' and new['ended_on'] == ''
+
+
+def test_pages_created_the_same_day_get_distinct_keys(csvs):
+    # Notion page IDs share their leading hex for pages created close together
+    fake = FakeNotion(base_pages() + [page('417532ef-3c42-8100-b83e-c83f9a221254', 'トランクス'),
+                                      page('417532ef-3c42-80d7-80cb-e4fd9dd3876c', 'Tシャツ')])
+    run(fake, csvs)
+    keys = [r['key'] for r in rows(csvs[0])[-2:]]
+    assert len(set(keys)) == 2 and len(fake.updates) == 2
 
 
 def test_duplicate_key_writes_nothing(csvs):

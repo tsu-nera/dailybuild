@@ -49,8 +49,8 @@ dailybuild-private の `data/inventory/` に、持ち物まわりの台帳を全
 Notion の列は `品目`(title) `key`(text) `分類`(select) `単位`(select) `量`(number) `メモ`(text) `更新`(last_edited_time)。
 読むのは公式 REST API（data source の query）。MCP は日次から呼べないので使わない。
 
-- **key の採番**: `key` が空の行には同期が `n_` + ページ ID の先頭8桁（ハイフン除く）を振り、Notion の `key` 列へ書き戻す。
-  既存の key（`protein` など）も振った key も変えない。本人も agent も key を手で決めなくてよい
+- **key の採番**: `key` が空の行には同期が `n_` + ページ ID の全32桁（ハイフン除く）を振り、Notion の `key` 列へ書き戻す。
+  既存の key（`protein` など）も振った key も変えない。ID の先頭を切り取らない（先頭は作成時刻に近い値で、同じ日に作ったページで重なる。2026-11-26 に先頭8桁で3品目が衝突した）。本人も agent も key を手で決めなくてよい
 - **key の重複**: 同じ key が2行以上あれば CSV を書かずに exit 1 し、重複した品目名を stderr に出す。片方の key を Notion で空にすれば次の同期が振り直す
 - **Notion が0行**: 何も書かずに exit 1（ページ送りの取りこぼしや API 障害で全品目に `ended_on` が付くのを防ぐ）
 - **consumables.csv**: `name`←品目・`category`←分類・`unit`←単位・`note`←メモ は Notion の値で上書きする。
