@@ -135,3 +135,14 @@ def test_stocktake_only_changed_quantity_with_jst_date(csvs):
     st = rows(csvs[1])
     assert len(st) == 3
     assert st[-1] == {'date': '2026-11-27', 'key': 'protein', 'quantity': '0.8', 'note': ''}
+
+
+def test_stocktake_newer_manual_record_is_not_overridden(csvs):
+    """agent が Notion の 更新 より後の日付で別の量を書いていたら、同期は足さない（足すと毎回増える）"""
+    with csvs[1].open('a', encoding='utf-8') as f:
+        f.write('2026-11-28,protein,0.3,本人が言った残量\n')
+    for _ in range(2):
+        run(FakeNotion(base_pages()), csvs)  # protein は 1.5、更新は JST 11-26
+    st = rows(csvs[1])
+    assert len(st) == 2
+    assert st[-1]['quantity'] == '0.3'

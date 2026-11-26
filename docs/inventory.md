@@ -57,6 +57,7 @@ Notion の列は `品目`(title) `key`(text) `分類`(select) `単位`(select) `
   Notion に無い列（`location` `keep` `subscription` `ended_on`）は CSV の値を保ち、新しい key の行では空
 - **Notion から消えた品目**: 行は消さず、`ended_on` が空なら同期した日を入れる
 - **stocktake.csv**: `量` が空でない品目について、その key の最後の記録と量が違うときだけ、`更新` を JST の日付にして1行足す（`note` は空）。
+  最後の記録が `更新` より後の日付なら足さない（agent が後から書いた棚卸しの方が新しい）。
   同じ量なら足さないので何度流しても増えない
 
 ## 器を替えるとき

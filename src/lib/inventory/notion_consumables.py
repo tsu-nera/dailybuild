@@ -8,7 +8,8 @@ Notion の列: 品目(title) key(text) 分類(select) 単位(select) 量(number)
 - consumables.csv: Notion が持つ列（name category unit note）は Notion の値で上書きし、
   持たない列（location keep subscription ended_on）は CSV の値を保つ。新しい key は末尾に足す。
   Notion から消えた key は行を残し、ended_on が空なら同期日を入れる
-- stocktake.csv: 量のある品目について、その key の最後の記録と量が違うときだけ `更新` の JST 日付で1行足す
+- stocktake.csv: 量のある品目について、その key の最後の記録と量が違うときだけ `更新` の JST 日付で1行足す。
+  最後の記録が `更新` より後の日付なら足さない（後から書かれた棚卸しの方が新しい）
 """
 
 import csv
@@ -137,17 +138,22 @@ def format_quantity(q: float) -> str:
 
 
 def merge_stocktake(rows: list[dict[str, str]], items: list[NotionItem]) -> list[dict[str, str]]:
-    last: dict[str, float] = {}
+    """その key の最後の記録より Notion の量が新しく、かつ違うときだけ1行足す。
+    最後の記録が `更新` より後の日付なら（agent が後から書いた棚卸し）、Notion の量は古いので足さない"""
+    last: dict[str, tuple[str, float]] = {}
     for r in sorted(rows, key=lambda r: r['date']):  # sorted は安定なので同日はファイル順
         if r.get('quantity', '') != '':
-            last[r['key']] = float(r['quantity'])
+            last[r['key']] = (r['date'], float(r['quantity']))
     out = [dict(r) for r in rows]
     for it in items:
-        if it.quantity is None or last.get(it.key) == it.quantity:
+        if it.quantity is None:
             continue
-        out.append({'date': it.edited_on.isoformat(), 'key': it.key,
-                    'quantity': format_quantity(it.quantity), 'note': ''})
-        last[it.key] = it.quantity
+        date = it.edited_on.isoformat()
+        prev = last.get(it.key)
+        if prev and (prev[0] > date or prev[1] == it.quantity):
+            continue
+        out.append({'date': date, 'key': it.key, 'quantity': format_quantity(it.quantity), 'note': ''})
+        last[it.key] = (date, it.quantity)
     return out
 
 
