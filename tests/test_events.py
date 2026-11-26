@@ -34,6 +34,7 @@ def paths(tmp_path):
         toggl_pushed=tmp_path / 'pushed.csv',
         toggl_focus_entries=tmp_path / 'focus_entries.csv',
         toggl_focus_pushed=tmp_path / 'focus_pushed.csv',
+        toggl_focus_projects=tmp_path / 'focus_projects.csv',
         exercise=tmp_path / 'exercise.csv',
         sleep=tmp_path / 'sleep.csv',
         habitica_history=tmp_path / 'history.csv',
@@ -131,7 +132,8 @@ def test_point_events_have_null_end(paths, tmp_path):
 
 def toggl_events(paths):
     return sources.toggl_events(paths.toggl_entries, paths.toggl_pushed,
-                                paths.toggl_focus_entries, paths.toggl_focus_pushed)
+                                paths.toggl_focus_entries, paths.toggl_focus_pushed,
+                                paths.toggl_focus_projects)
 
 
 def test_pushed_toggl_entry_is_dropped(paths):
@@ -155,6 +157,44 @@ def test_auto_tagged_focus_rows_are_dropped(paths):
     ids = [e['attrs']['id'] for e in toggl_events(paths)]
     assert not {'f1', 'f3', 'f4'} & set(ids)
     assert '4600000001' not in ids  # Track 側の区切り後の行も出さない
+
+
+FOCUS_WITH_PROJECT_HEADER = 'id,start,stop,duration_sec,description,project_id,project_name,tags\n'
+
+
+def _write_focus_with_projects(paths):
+    paths.toggl_focus_entries.write_text(
+        FOCUS_WITH_PROJECT_HEADER
+        + 'g1,2026-10-28 07:00:00,2026-10-28 07:30:00,1800,,101,架空良,\n'
+        + 'g2,2026-10-28 22:00:00,2026-10-28 22:30:00,1800,,202,架空悪,\n'
+        + 'g3,2026-10-29 09:00:00,2026-10-29 10:00:00,3600,,303,一覧に無い,\n'
+        + 'g4,2026-10-29 11:00:00,2026-10-29 11:10:00,600,,,,\n'
+    )
+
+
+def test_focus_rows_have_client_name_from_projects(paths):
+    _write_focus_with_projects(paths)
+    paths.toggl_focus_projects.write_text(
+        'id,name,client_id,client_name,created_at,archived_at\n'
+        '101,架空良,1,良い習慣,2026-10-27T00:00:00Z,\n'
+        '202,架空悪,2,悪い習慣,2026-10-27T00:00:00Z,\n'
+        '404,クライアント無し,,,2026-10-27T00:00:00Z,\n'
+    )
+    attrs = {e['attrs']['id']: e['attrs'] for e in toggl_events(paths)}
+    assert attrs['g1']['client_name'] == '良い習慣'
+    assert attrs['g2']['client_name'] == '悪い習慣'
+    assert 'client_name' not in attrs['g3']   # 一覧に無いプロジェクト
+    assert 'client_name' not in attrs['g4']   # プロジェクト無し
+    assert 'client_name' not in attrs['4509467120']   # Track 由来は引かない
+
+
+def test_missing_focus_projects_does_not_stop_build(paths, tmp_path):
+    _write_focus_with_projects(paths)
+    assert not paths.toggl_focus_projects.exists()
+    lines = build_lines(paths, tmp_path)
+    toggl = [line for line in lines if line['source'] == 'toggl']
+    assert {'g1', 'g2'} <= {line['attrs']['id'] for line in toggl}
+    assert all('client_name' not in line['attrs'] for line in toggl)
 
 
 def test_exercise_platform_duplicate_resolves_to_one(paths):

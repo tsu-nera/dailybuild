@@ -14,7 +14,8 @@ freshness）としても reports/dashboard/ へ全上書きで書く（docs/graf
 お金の画面用の assets.csv / assets_now.csv / goods.csv（lib/assets.py）と balances_daily.csv / balances_now.csv（lib/balances.py）、
 瞑想の画面用の meditation_{daily,weeks,now,muse,eval}.csv（lib/meditation.py。muse・eval は satoru の session_log）、
 老化の画面用の longevity_{catalog,monthly,labs}.csv（lib/longevity.py。台帳は config/longevity.yaml）を書く。
-計算はここに1本で、Grafana 側では集計も判定もしない。
+計算はここに1本で、Grafana 側では集計も判定もしない。習慣の行（goals_list）の日数だけは
+lib/habits/weekly.py が数え、ここでは並べるだけ（数え方を habits_daily.csv に1本化するため）。
 
 Usage:
     uv run scripts/dashboard.py build [--only goals,daily,consumables,assets,balances,meditation,strength,longevity] [--weeks 8]
@@ -38,6 +39,9 @@ sys.path.insert(0, str(project_root / 'src'))
 from lib import assets, balances, consumables, exercise_source, hevy_csv, longevity, meditation  # noqa: E402
 from lib.analytics import activity, body  # noqa: E402
 from lib.analytics import workout  # noqa: E402
+from lib.habits import config as habits_config  # noqa: E402
+from lib.habits import weekly as habits_weekly  # noqa: E402
+from lib.toggl import focus as toggl_focus  # noqa: E402
 from lib.analytics.sleep.nightly import (  # noqa: E402
     SLEEP_PER_NIGHT_H, build_nights, debt_by_day, main_sleep, week_label)
 from lib.utils.private_data import ensure_dir, require_private_path, require_private_write  # noqa: E402
@@ -374,14 +378,21 @@ def longevity_tables(today: dt.date) -> dict[str, list[dict]]:
             'longevity_labs': longevity.build_labs(metrics, obs)}
 
 
-def goal_list(tables: dict[str, list[dict]], med_now: list[dict]) -> list[dict]:
+def habit_goal_rows(habits: list[dict], this_week: str, prev_week: str) -> list[dict]:
+    """習慣ごとに1行（lib/habits/weekly.weekly_days の結果を並べ替えるだけで、ここでは数えない）"""
+    return [{'period': '週', 'habit': h['habit'], 'metric': f"{h['habit']} (日)", 'unit': '日',
+             'target': h['target'], 'this': h['days'].get(this_week), 'prev': h['days'].get(prev_week),
+             'link': None}
+            for h in habits]
+
+
+def goal_list(tables: dict[str, list[dict]], habits: list[dict], prev_week: str) -> list[dict]:
     """目標の画面の表。目標と今週・先週の実績を1行に並べる（達成の判定や色はつけない）
 
-    スマホ幅で4列（項目・目標・今週・先週）に収めるため、metric に習慣名と単位を含める"""
+    スマホ幅で4列（項目・目標・今週・先週）に収めるため、metric に習慣名と単位を含める。
+    habits は lib/habits/weekly.weekly_days の結果（今週・先週を含む）"""
     status = tables['status'][0]
     cur = tables['current'][0] if tables['current'] else {}
-    this_week = status['this_week']
-    prev_week = cur.get('prev_week')
     rows = [
         ('早起き', f"入床 {status['bed_target']}まで (平日)", '日', WEEKDAYS, 'bed_hit', 'early-rising'),
         ('早起き', f"離床 {status['rise_target']}まで (平日)", '日', WEEKDAYS, 'rise_hit', 'early-rising'),
@@ -393,22 +404,26 @@ def goal_list(tables: dict[str, list[dict]], med_now: list[dict]) -> list[dict]:
            for h, m, u, t, k, link in rows]
     sets = {(r['week'], r['muscle']): r for r in tables['sets']}
     for r in tables['sets_now']:
-        prev = sets.get((prev_week, r['muscle']), {})
+        prev = sets.get((cur.get('prev_week'), r['muscle']), {})
         out.append({'period': '週', 'habit': '筋トレ', 'metric': f"筋トレ {r['muscle']} (セット)", 'unit': 'セット',
                     'target': r['target'], 'this': r['sets'], 'prev': prev.get('sets'), 'link': 'strength'})
-    med = med_now[0] if med_now else {}
-    for metric, unit, k in (('瞑想 回数', '回', 'sessions'), ('瞑想 合計 (分)', '分', 'total_min')):
-        # 瞑想の目標値はまだ無い（空セル）
-        out.append({'period': '週', 'habit': '瞑想', 'metric': metric, 'unit': unit, 'target': None,
-                    'this': med.get(k) if med.get('week') == this_week else None, 'prev': med.get(f'prev_{k}'),
-                    'link': 'meditation'})
+    out += habit_goal_rows(habits, status['this_week'], prev_week)
     return out
+
+
+def load_habit_weeks(today: dt.date) -> tuple[list[dict], str]:
+    """今週・先週の習慣ごとの日数（weekly_days）と先週のキー"""
+    this_week, prev_week = habits_weekly.week_key(today), habits_weekly.week_key(today - dt.timedelta(weeks=1))
+    habits = habits_weekly.weekly_days(habits_config.load_daily(), toggl_focus.load_projects(),
+                                       habits_config.load_clients(), habits_config.load_roster(),
+                                       [prev_week, this_week])
+    return habits, prev_week
 
 
 def goal_tables(today: dt.date, weeks: int) -> dict[str, list[dict]]:
     tables = build_tables(today, weeks)
-    med_now = meditation.build(require_private_path(TOGGL_FOCUS_CSV), today)['meditation_now']
-    tables['goals_list'] = goal_list(tables, med_now)
+    habits, prev_week = load_habit_weeks(today)
+    tables['goals_list'] = goal_list(tables, habits, prev_week)
     return tables
 
 

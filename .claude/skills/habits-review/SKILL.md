@@ -18,22 +18,41 @@ allowed-tools: Bash, Read, Write, Edit
 
 `/reviewing-health weekly` とは別に回す（あちらは体組成・睡眠・メンタルのレポート）。
 
-## Step 1: 取得と集計
+## Step 1: 集計
+
+日次の取得（vaio の `daily-routine.sh`）が `fetch-focus` → `habits.py build` まで済ませている。
+iiyama では取得しない（`dailybuild-private` を pull してから読む）。
+
+`reports/habits_daily.csv` を読み、数え方は `lib/habits/weekly.py` を使う（自前で数え直さない）。
+セルは `実施日数/行がある日数`、行が1件も無い週は `-`。`WEEKS` は進行中の週を含むので、
+4完了週を見るなら 5、12完了週なら 13。
 
 ```bash
 cd /home/tsu-nera/repo/dailybuild
-uv run scripts/habits.py show --weeks 4
+uv run python - <<'PY'
+import datetime as dt, sys
+sys.path.insert(0, 'src')
+from lib.habits import config, weekly
+from lib.toggl import focus
+
+WEEKS = 5
+today = dt.date.today()
+weeks = [weekly.week_key(today - dt.timedelta(weeks=i)) for i in reversed(range(WEEKS))]
+daily, projects, clients = config.load_daily(), focus.load_projects(), config.load_clients()
+roster = config.load_roster()
+counts = {(r.habit, r.week): f'{r.done}/{r.observed}' for r in weekly.weekly_counts(daily, weeks).itertuples()}
+print('kind', 'habit', 'target', *weeks, sep='\t')
+for kind in ('good', 'bad'):
+    for name in weekly.active_habits(projects, clients, kind):
+        target = (roster.get(name) or {}).get('target_per_week') if kind == 'good' else ''
+        print(kind, name, target, *(counts.get((name, w), '-') for w in weeks), sep='\t')
+PY
 ```
 
-日次の取得（vaio の `daily-routine.sh`）が `fetch-focus` → `habits.py build` まで済ませている。
-iiyama では取得しない。
-
-**`--weeks N` は進行中の週を含む。** 移行を判定するときは1つ多く取る
-（4完了週なら `--weeks 5`、12完了週なら `--weeks 13`）。
-
-`show` が非ゼロで終わったら、設定とのずれがある（stderr に名前が出る）。
-(a) `target_per_week` の無い良い習慣、(b) yaml にあるのに良い習慣のアーカイブされていない
-プロジェクトに無い名前（改名・アーカイブ・クライアント替え）。**直すまで目標との比較ができない。**
+**設定とのずれは日次の `habits.py build` が知らせる。** daily routine の commit メッセージに
+失敗ステップ「習慣」が出ていたら、vaio のログに名前が出ている。(a) `target_per_week` の無い良い習慣、
+(b) yaml にあるのに良い習慣のアーカイブされていないプロジェクトに無い名前（改名・アーカイブ・
+クライアント替え）。**直すまで目標との比較ができない。**
 
 ## Step 2: レビュー
 
@@ -56,8 +75,8 @@ iiyama では取得しない。
 
 ### 言う
 
-- 窓のクリア数（`clear` 列 = クリアした完了期間 / **観測できた**完了期間）と、
-  前回のレビューからの変化
+- 窓のクリア数（`clear` = 実施日数が `target_per_week` 以上の完了週 / **観測できた**完了週。
+  上の表から数える）と、前回のレビューからの変化
 - **`clear` の分母が移行条件の期間数に足りないうちは判定しない。** `2/2` は
   「2期間しか観測していない」であって条件を満たした意味ではない
 - 窓のなかで習慣の行が `-` から始まる場合、その習慣はその週に作られた
@@ -104,9 +123,9 @@ iiyama では取得しない。
 （`config/habits.yaml`）に属する**アーカイブされていない**プロジェクトで、yaml に一覧は無い。
 
 - 足す: `uv run scripts/toggl.py project add <名前>`（悪い習慣は `--bad`）。良い習慣なら
-  `config/private/habits.yaml` に `target_per_week` を本人と決めて書く（書くまで `show` が落ちる）
+  `config/private/habits.yaml` に `target_per_week` を本人と決めて書く（書くまで日次の `habits.py build` が落ちる）
 - 外す: 本人が画面でアーカイブする（API ではできない）。記録は `habits_daily.csv` に残る。
-  良い習慣なら yaml からも消す（残すと `show` が落ちる）
+  良い習慣なら yaml からも消す（残すと日次の `habits.py build` が落ちる）
 - **削除しない。** プロジェクトが消えると記録ごと追えなくなる
 
 対象を増やしたい／減らしたいという話が出たら、実測を根拠にする。

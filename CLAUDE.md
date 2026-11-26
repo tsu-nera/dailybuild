@@ -155,7 +155,6 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/weekly-routine.sh"'
 | `scripts/timeline.py` / 場所ごとの訪問（Google マップ Timeline の export）を扱うとき | [docs/timeline.md](docs/timeline.md) — 同じ訪問が hierarchyLevel 違いで重複する。座標は度記号付きの文字列。取得は手動 export 頼み。名前は places.csv の辞書（Places API）|
 | `scripts/dawarich.py` / `scripts/gpslogger.py` / 位置の履歴（Dawarich）を扱うとき | [docs/dawarich.md](docs/dawarich.md) — 正本は data/ で DB は派生物。mouse で動き寝る。import 名で二重投入を判定。Visit は Timeline の重複と自前判定が重なる |
 | `scripts/xoss.py` / XOSS サイコンの FIT・ロードバイクのライドを扱うとき | [docs/xoss.md](docs/xoss.md) — BLE のみで一覧は `workouts.json`。サイズ不一致でも上流は保存する。心拍 0・標高 -500 は無効値。FIT が正本で rides.csv は消さない |
-| `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
 | `scripts/habits.py` / 習慣（Toggl Focus の「良い習慣」「悪い習慣」）の対象・目標値を扱うとき | [docs/habits.md](docs/habits.md) — 移行済みプロジェクトの created_at は移行時刻なので行の起点は切替日で切る。観測していない日に行を作らない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | 行動活性化（BATD-R）を再開・再設計するとき | [docs/batdr.md](docs/batdr.md) — 日次帳票の実装は2026-09-07に廃止済み。同じ形を作り直す前に廃案の節を読む |
@@ -177,7 +176,7 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/weekly-routine.sh"'
 **新しい API キー・token は `config/*.json` でなくリポジトリ直下の `.env` に置く**（他プロジェクトと同じ
 python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは `lib.utils.env` の
 `get_env` / `require_env` に統一し、client ごとに読み込み処理を書かない。キーは `.env.example` が一覧
-（Home Assistant / Toggl / HealthPlanet / Habitica / Last.fm / Foursquare）。OAuth の token・ブラウザ
+（Home Assistant / Toggl / HealthPlanet / Last.fm / Foursquare）。OAuth の token・ブラウザ
 セッション・Google 配布の JSON は機械が書く状態なのでファイルのまま `config/` に置く。
 
 Google 上（Drive・Sheets・Forms・Apps Script）に何かを作る・変えるときは先に [docs/google.md](docs/google.md)

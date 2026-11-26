@@ -17,7 +17,10 @@ Grafana のフォルダになる（provisioning の `foldersFromFilesStructure`�
 `goals` は毎日見る一覧で、習慣ごとの推移は個別の画面（weekly review で対話しながら見る）に置く。一覧と個別の画面は同じ CSV を読み、
 一覧は1行1目標の表1枚（`goals_list.csv`。項目・目標・今週・先週）で、行の項目を押すとその習慣の画面へ飛ぶ。stat を並べると値の数で
 文字の大きさが決まり、目標と実績が別のパネルに離れて読めなかった（2026-11-14）。個別の画面は `links` の先頭に「← 目標」を持つ。
-習慣を足すときは個別の画面を作り、`dashboard.py` の `goal_list()` に行を足す（`link` 列に画面の uid）。月次の目標は `period` を `月` にした行で足す。
+Toggl Focus の習慣（クライアント `良い習慣` / `悪い習慣` のプロジェクト）の行は `reports/habits_daily.csv` と `config/private/habits.yaml` から習慣ごとに1行自動で出る
+（項目 `<習慣名> (日)`、良い習慣は目標に `target_per_week`、悪い習慣は目標が空。日数は `lib/habits/weekly.py` が数え、`dashboard.py` は並べるだけ。`link` は空）。
+プロジェクトを足す・アーカイブするだけで出し入れでき、`dashboard.py` に習慣名を書かない。
+早起き・睡眠・筋トレのように時刻や量で判定する目標は、個別の画面を作り `goal_list()` に行を足す（`link` 列に画面の uid）。月次の目標は `period` を `月` にした行で足す。
 
 画面は文章・コメント・パネルの説明では uid で指す。表示名（画面の列）は変わるので、書くのは画面の JSON とこの表だけにする（2026-11-15 に Body/Sleep/Mind を日本語にしたとき、地の文の写しを10箇所追いかけた）。
 
@@ -58,7 +61,7 @@ nginx が配るのは次の CSV（`http://files/<name>.csv`）。設定は `scri
 
 | CSV | 作り手 | 用途 |
 |---|---|---|
-| `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` `goals_list` | `dashboard.py` | 習慣の画面（目標・早起き）。`sets` `sets_now` は目標の一覧の筋トレの行が読む。`goals_list` は目標の一覧で、瞑想の今週も含む |
+| `nights` `weeks` `sets` `status` `current` `sets_now` `freshness` `goals_list` | `dashboard.py` | 習慣の画面（目標・早起き）。`sets` `sets_now` は目標の一覧の筋トレの行が読む。`goals_list` は目標の一覧で、習慣ごとの今週・先週の日数（`habits_daily.csv`）も含む |
 | `assets` `assets_now` `goods` | `dashboard.py` | お金の画面。MF の資産推移＋持ち物の中古相場（`data/inventory/market.csv`）。相場の無い物・相場の履歴が始まる前は空セル |
 | `balances_daily` `balances_now` | `dashboard.py` | お金の画面の口座別残高。`data/mf/balances.csv`（変わった行だけ）を日次に戻した種類別の合計・負債・純資産・欠測の口座数と、口座ごとの最新（gone は出さない）。負債のページの最初の行より前は負債・純資産が空。`balances.csv` が無いうちは見出しだけ（docs/moneyforward.md） |
 | `meditation_daily` `meditation_weeks` `meditation_now` | `dashboard.py` | 瞑想の画面（`daily` / `weeks` は時系列で、週は `week_start`）と一覧の瞑想（`now`）。Toggl Focus の「瞑想」だけを読む（Track・Muse・Fitbit はつながない）。記録の無い日・週は0回の行 |

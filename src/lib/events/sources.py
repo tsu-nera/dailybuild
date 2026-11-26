@@ -64,16 +64,32 @@ def _event(start, end, source, kind, name, attrs) -> dict:
     }
 
 
-def _toggl_rows(df: pd.DataFrame) -> list[dict]:
+def _toggl_rows(df: pd.DataFrame, client_by_project: dict[str, str] | None = None) -> list[dict]:
+    """client_by_project（project_id → クライアント名）は Focus の行だけに渡す。
+
+    Track の project_id は Focus のプロジェクト一覧と別の ID 空間なので引かない。
+    一覧に無い・project_id が空の行は client_name を持たない（_clean で落ちる）。
+    """
+    client_by_project = client_by_project or {}
+    project_ids = df['project_id'] if 'project_id' in df else pd.Series([None] * len(df), index=df.index)
     return [
         _event(row['start'], row['stop'], 'toggl', 'time_entry', row['project_name'], {
             'id': row['id'],
             'description': row['description'],
             'tags': row['tags'],
             'duration_sec': row['duration_sec'],
+            'client_name': client_by_project.get(project_id),
         })
-        for row in df.to_dict('records')
+        for row, project_id in zip(df.to_dict('records'), project_ids)
     ]
+
+
+def _focus_clients(projects_csv: Path) -> dict[str, str]:
+    """focus_projects.csv の project_id（文字列）→ クライアント名。無ければ空（生成は止めない）"""
+    if not projects_csv.exists():
+        return {}
+    df = pd.read_csv(projects_csv, dtype={'id': str, 'client_name': str}).dropna(subset=['client_name'])
+    return dict(zip(df['id'], df['client_name']))
 
 
 def _read_toggl(csv: Path, side: str, pushed_csv: Path) -> pd.DataFrame | None:
@@ -89,13 +105,15 @@ def _read_toggl(csv: Path, side: str, pushed_csv: Path) -> pd.DataFrame | None:
 
 
 def toggl_events(entries_csv: Path, pushed_csv: Path,
-                 focus_csv: Path, focus_pushed_csv: Path) -> list[dict]:
+                 focus_csv: Path, focus_pushed_csv: Path, focus_projects_csv: Path) -> list[dict]:
     """Toggl のタイムエントリ。区切り日（store.CUTOVER_DATE）の前は Track、以降は Focus
 
     移行済み期間は両ファイルに別 ID で入っているので、区切りで切って二重を防ぐ。
     toggl push で投入したもの（睡眠・運動）は落とす。元ソース（exercise / sleep）側の行を
     採るので、残すと同じ活動が2行になる。Track は pushed.csv、Focus は focus_pushed.csv の
     ID に加えて auto タグで落とす（migrate でコピーされた auto は台帳に居ない）。
+    Focus の行の attrs.client_name は focus_projects.csv を project_id で引く
+    （習慣のクライアントで絞るため。docs/derived-data.md）。
     """
     events = []
     track = _read_toggl(entries_csv, 'before', pushed_csv)
@@ -105,7 +123,7 @@ def toggl_events(entries_csv: Path, pushed_csv: Path,
     if focus is not None:
         tags = focus['tags'].fillna('').astype(str).str.split(',')
         focus = focus[~tags.apply(lambda names: 'auto' in names)]
-        events += _toggl_rows(focus)
+        events += _toggl_rows(focus, _focus_clients(focus_projects_csv))
     return events
 
 
@@ -148,7 +166,7 @@ def sleep_events(sleep_csv: Path) -> list[dict]:
 
 
 def habitica_events(history_csv: Path) -> list[dict]:
-    """Habitica の実行記録（点イベント）
+    """Habitica の実行記録（点イベント）。凍結した履歴（2026-10-05 で記録停止・取得は退役済み）
 
     history には「やったこと」以外の行も入る。Daily は cron 時に
     completed=False の行が入るので、completed=True の行だけを採る。Habit は

@@ -41,7 +41,9 @@
 1行1イベントで `{start, end, source, kind, name, attrs}`、`start` 昇順。`start` / `end` は
 必ず tz-aware（`+09:00`。naive な入力は JST として解釈する）、点イベントの `end` は `null`。
 ソースは Toggl（2026-10-27 より前は Track、以降は Focus。`toggl push` 由来を除く）・exercise（platform 重複解決済み）・メイン睡眠・
-Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar（終日は日付の JST 00:00 〜 排他端）。どれかが0件なら更新せず非ゼロ終了する。
+凍結した Habitica の履歴（2026-10-05 で記録停止・取得は退役済み。Daily は完了行、Habit は押下のある行のみ）・Calendar（終日は日付の JST 00:00 〜 排他端）。どれかが0件なら更新せず非ゼロ終了する。
+Focus 由来の Toggl の行は `attrs.client_name`（`data/toggl/focus_projects.csv` を `project_id` で引いたクライアント名）を持つので、
+`良い習慣` / `悪い習慣` の出来事の前後をそのまま引ける。Track 由来の行・一覧に無いプロジェクト・`focus_projects.csv` が無いときは持たない（生成は止めない）。
 日次に潰すと4分の筋トレと63分の通勤が区別できないので `metrics_daily.csv` には混ぜない。
 **`data/` には置かない**。
 
@@ -55,7 +57,9 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 から `archived_at` または今日まで）だけで、範囲外の日の行は作らない（欠測と不生起を分ける）。
 `task_type` は `toggl`、`is_due` は空。`metrics_daily.csv` の横持ちには**混ぜない**
 （`is_due=False` と欠測を0埋めで潰す事故を持ち込むため）。こちらも**`data/` には
-置かない**（あちらは取得の正本）。
+置かない**（あちらは取得の正本）。読み手は Grafana の「目標」画面（`dashboard.py` の `goals_list`。
+習慣ごとの今週・先週の日数は `lib/habits/weekly.py`）と habits-review スキル。設定とのずれ（目標の無い良い習慣など）が
+あっても CSV は書き、名前を stderr に出して非ゼロで終わる（[docs/habits.md](habits.md)）。
 
 ストリーク（連続日数）・鮮度・未解決アクションは STATE.md が毎日計算し直すので、
 **散文に書かない**。以前は週の rollup を agent が毎日書き直しており、事実が
