@@ -1,6 +1,6 @@
 """中古相場（メルカリ SOLD の中央値）を引き、履歴を data/inventory/market.csv に積む
 
-検索条件は Homebox の custom field `相場検索` に、gtd の scripts/shopping/price.py と同じ引数の書式で持つ
+検索条件は Homebox の custom field `相場検索` に、scripts/price.py と同じ引数の書式で持つ
 （'WH-1000XM3 --min 5000'、'Domane AL 2 Gen4 --min 50000 --exclude "フレーム ホイール"'）。
 品名の単語をすべて含み、除外語を含まない SOLD だけを数える。mercapi は非公式 API なので、取れない日がある前提で使う。
 

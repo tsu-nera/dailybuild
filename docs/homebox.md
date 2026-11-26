@@ -19,7 +19,7 @@
 
 ## 中古相場（任意、2026-11-12〜の実験）
 
-- 全部には付けない。売るかもしれない物にだけ custom field `相場検索` を付ける（`homebox.py market <key> --query '...'`）。書式は gtd の `scripts/shopping/price.py` と同じ引数（品名の語・`--min`・`--exclude`）
+- 全部には付けない。売るかもしれない物にだけ custom field `相場検索` を付ける（`homebox.py market <key> --query '...'`）。書式は `scripts/price.py` と同じ引数（品名の語・`--min`・`--exclude`）
 - 日次の「中古相場」ステップが、前回から30日空いた物だけメルカリ SOLD（直近90日）の中央値を引く。最新値は custom field `中古相場`、履歴は `data/inventory/market.csv`（1回1行）とメモ末尾の「相場 YYYY-MM-DD: …」
 - SOLD が4件未満の日は `median` を空にした行だけ残し、`中古相場` は前の値のまま。品名の表記揺れで0件になりやすい（メルカリでは `Domane AL 2` でなく `AL2`）。照合は NFKC で全角を潰してから行う
 - mercapi は非公式 API。取れなかった日はステップが失敗し、行が残らないので翌日引き直す
