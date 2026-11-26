@@ -1,61 +1,10 @@
-# HealthPlanet API 仕様書
+# HealthPlanet API
 
-HealthPlanet（タニタの健康管理サービス）からデータを取得するためのAPIクライアント。
+HealthPlanet（タニタ）の取得は非公式 graph.json API（`src/lib/clients/healthplanet_unofficial.py`）だけを使う。
+入口は `scripts/fetch_healthplanet.py`。
 
-## 概要
-
-| API | ファイル | 認証方式 | 取得可能データ |
-|-----|---------|---------|--------------|
-| 公式OAuth API | `healthplanet_official.py` | OAuth 2.0 | 体組成計データ（制限あり） |
-| 非公式graph.json API | `healthplanet_unofficial.py` | Webログイン | 全項目 |
-
----
-
-## 公式OAuth API (`healthplanet_official.py`)
-
-### エンドポイント
-
-| 用途 | URL |
-|-----|-----|
-| 認証 | `https://www.healthplanet.jp/oauth/auth` |
-| トークン取得 | `https://www.healthplanet.jp/oauth/token` |
-| 体組成計データ | `https://www.healthplanet.jp/status/innerscan.json` |
-
-### 認証フロー
-
-1. `get_auth_code()` - ブラウザで認証URL開き、手動でauthorization codeを入力
-2. `get_access_token()` - authorization codeからaccess tokenを取得
-3. `refresh_token()` - リフレッシュトークンでアクセストークンを更新
-
-### 取得可能なデータタグ
-
-| タグ | 名前 | 説明 |
-|-----|-----|-----|
-| 6021 | weight | 体重 |
-| 6022 | body_fat_rate | 体脂肪率 |
-| 6023 | muscle_mass | 筋肉量 |
-| 6024 | muscle_score | 筋肉スコア |
-| 6025 | visceral_fat_level2 | 内臓脂肪レベル2 |
-| 6026 | visceral_fat_level | 内臓脂肪レベル |
-| 6027 | basal_metabolic_rate | 基礎代謝量 |
-| 6028 | body_age | 体内年齢 |
-| 6029 | bone_mass | 推定骨量 |
-| 6030 | body_water_rate | 体水分率 |
-| 6031 | bmi | BMI |
-
-### 関数
-
-#### `get_auth_code(client_id, redirect_uri, scope="innerscan")`
-ブラウザで認証してauthorization codeを取得（手動入力）
-
-#### `get_access_token(client_id, client_secret, redirect_uri, auth_code)`
-authorization codeからaccess tokenを取得
-
-#### `get_innerscan_data(access_token, from_date=None, to_date=None)`
-体組成計データを取得。日付はdatetimeオブジェクトで指定。
-
-#### `parse_innerscan_data(data)`
-APIレスポンスをレコードリストに変換
+公式 OAuth API（`/status/innerscan.json`）は使わない。取れるのは体組成計だけで血圧計が無く、
+認証も authorization code を手で貼る OAuth 2.0 で無人運用に向かないため。クライアントは削除済み。
 
 ---
 
@@ -182,10 +131,8 @@ Webログインセッションを作成。requestsのSessionオブジェクト�
 
 ## 使用例
 
-### 非公式API（推奨）
-
 ```python
-from src.lib.healthplanet_unofficial import create_login_session, get_innerscan_data
+from lib.clients.healthplanet_unofficial import create_login_session, get_innerscan_data
 
 # ログイン
 session = create_login_session("your_login_id", "your_password")
@@ -197,31 +144,3 @@ data = get_innerscan_data(session, days=90)
 custom_kinds = {1: 'weight', 2: 'body_fat_rate'}
 data = get_innerscan_data(session, days=30, kinds=custom_kinds)
 ```
-
-### 公式API
-
-```python
-from src.lib.healthplanet_official import (
-    get_auth_code, get_access_token, get_innerscan_data, parse_innerscan_data
-)
-
-# 初回認証
-auth_code = get_auth_code(client_id, redirect_uri)
-token_info = get_access_token(client_id, client_secret, redirect_uri, auth_code)
-
-# データ取得
-raw_data = get_innerscan_data(token_info['access_token'])
-records = parse_innerscan_data(raw_data)
-```
-
----
-
-## 公式API vs 非公式APIの比較
-
-| 項目 | 公式API | 非公式API |
-|-----|--------|----------|
-| 認証 | OAuth 2.0（複雑） | ID/パスワード（簡単） |
-| 安定性 | 公式サポート | 将来変更の可能性あり |
-| データ種類 | 体組成計のみ | 歩数計・血圧計なども可 |
-| 期間指定 | from/to日時指定 | 過去N日分 |
-| 推奨用途 | 長期運用 | 実験・個人利用 |
