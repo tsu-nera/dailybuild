@@ -11,6 +11,8 @@ Usage:
     python scripts/homebox.py add amazon:250-...:B0XXXX --category 日用品
     python scripts/homebox.py add manual --name 'フライパン' --category 日用品 \\
         --acquired-on 2026-11-11 --price 1980 --from '店名'  # manual は manual:<次の番号> を振る
+    python scripts/homebox.py add manual --isbn 978-4-300-10881-9 --category 本  # 書名は openBD から引く
+    python scripts/homebox.py add manual --isbn 9784300108819 --name '電験三種 理論 第3版' --category 本  # --name があれば openBD は引かない
     python scripts/homebox.py add uniqlo:2026-05-27:482300:03 --category ファッション --subcategory トップス
     python scripts/homebox.py dispose manual:12 --date 2026-11-11 --how '粗大ごみ'
     python scripts/homebox.py dispose manual:12 --mercari m72763833954   # 売却日・売値は mercari.csv から
@@ -26,7 +28,7 @@ Usage:
 
 market の検索条件は custom field `相場検索`（書式は lib.inventory.market）。引いた相場は `中古相場` とメモ、
 履歴は data/inventory/market.csv（手で入れた相場も count 空で積む）。--all / --query は最後に中古相場の合計を stdout に出す。
-add は同じ key があれば何もせず止まる。品名・購入日・価格・購入先は key から data/purchases/ を引いて埋める。
+add は同じ key があれば何もせず止まる。--isbn は custom field `ISBN` に入れ、同じ ISBN の手放していない物があれば止まる。品名・購入日・価格・購入先は key から data/purchases/ を引いて埋める。
 add / dispose / move は最後に export まで行う。find は Homebox を直接読み、表を stdout に出す。ログは stderr。
 """
 
@@ -40,10 +42,11 @@ import re
 import datetime
 
 from lib.clients.homebox_client import HomeboxClient
+from lib.clients.openbd_client import fetch_title
 from lib.inventory.homebox import (DISPOSAL_KINDS, InventoryError, add_item, dispose_item,
                                    export_rows, find_rows, load_items, mercari_sales, move_item,
-                                   market_price, market_targets, plan_disposal, purchase_lookup,
-                                   set_market_price, set_market_query, write_csv)
+                                   market_price, market_targets, normalize_isbn, plan_disposal,
+                                   purchase_lookup, set_market_price, set_market_query, write_csv)
 from lib.inventory.market import append_history, due, fetch_sold, read_history
 from lib.utils.private_data import ensure_dir, require_private_path
 
@@ -72,14 +75,21 @@ def cmd_export(args, client) -> None:
 
 
 def cmd_add(args, client) -> None:
+    isbn = normalize_isbn(args.isbn) if args.isbn else ''  # Homebox に触れる前に止める
+    name = args.name
+    if isbn and not name:
+        name = fetch_title(isbn)
+        if not name:
+            raise InventoryError(f'ISBN {isbn} は openBD に無い（--name で渡す）')
+        print(f'openBD: {isbn} {name}', file=sys.stderr)
     key = next_manual_key(client) if args.key == 'manual' else args.key
     joined = purchase_lookup(require_private_path(PURCHASES_DIR)).get(key)
     if joined is None and not key.startswith('manual:'):
         print(f'warning: {key} は data/purchases/ に無い（先に purchases.py fetch するか key を確かめる）',
               file=sys.stderr)
-    entity = add_item(client, key, args.category, args.subcategory, args.name,
+    entity = add_item(client, key, args.category, args.subcategory, name,
                       args.acquired_on, args.note, joined, args.url,
-                      price=args.price, purchase_from=args.purchase_from)
+                      price=args.price, purchase_from=args.purchase_from, isbn=isbn)
     print(f'追加: {key} {entity["name"]}', file=sys.stderr)
     export(client)
 
@@ -206,6 +216,7 @@ def main() -> int:
     p.add_argument('--url', default='', help='商品ページ（Amazon・楽天・メルカリは key から作り、開けるときだけ付ける。ユニクロ・店頭は手で渡す）')
     p.add_argument('--price', type=float, default=0.0, help='購入価格（店頭購入など購入データに無いとき）')
     p.add_argument('--from', dest='purchase_from', default='', help='購入先（店頭購入など）')
+    p.add_argument('--isbn', default='', help='本の ISBN-13（ハイフン可）。--name が無ければ書名を openBD から引く')
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser('dispose', help='手放した印を付ける')

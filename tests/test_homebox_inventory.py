@@ -5,10 +5,10 @@ import uuid
 
 import pytest
 
-from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows,
-                                   find_rows, fit_name, mercari_sales, move_item, notes_with_link,
-                                   plan_disposal, set_market_price, set_market_query, market_targets,
-                                   write_csv)
+from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows, field_text,
+                                   find_rows, fit_name, mercari_sales, move_item, normalize_isbn,
+                                   notes_with_link, plan_disposal, set_market_price, set_market_query,
+                                   market_targets, write_csv)
 
 NIL = '00000000-0000-0000-0000-000000000000'
 ITEM_TYPE = {'id': 't-item', 'name': 'Item', 'isLocation': False}
@@ -329,3 +329,45 @@ def test_market_targets_skip_disposed_and_bad_query_is_rejected():
         set_market_query(hb, 'manual:3', 'Charge 6 --min abc')
 
     assert {k: q for k, (_, q) in market_targets(hb).items()} == {'manual:1': 'WH-1000XM3 --min 5000'}
+
+
+ISBN = '9784300108819'
+
+
+def test_isbn_goes_into_custom_field_as_text():
+    hb = FakeHomebox()
+    entity = add_item(hb, 'manual:1', '本', name='電験三種 理論', isbn='978-4-300-10881-9')
+
+    assert field_text(entity, 'ISBN') == ISBN
+
+
+def test_same_isbn_owned_refuses_without_creating():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', '本', name='電験三種 理論', isbn=ISBN)
+
+    with pytest.raises(InventoryError):
+        add_item(hb, 'manual:2', '本', name='電験三種 理論 第3版', isbn=ISBN)
+
+    assert len(hb.entities) == 1
+
+
+def test_same_isbn_disposed_can_be_added_again():
+    hb = FakeHomebox()
+    add_item(hb, 'manual:1', '本', name='電験三種 理論', isbn=ISBN)
+    dispose_item(hb, 'manual:1', '2026-11-20', how='売却')
+
+    add_item(hb, 'manual:2', '本', name='電験三種 理論', isbn=ISBN)
+
+    assert len(hb.entities) == 2
+
+
+@pytest.mark.parametrize('isbn', ['9784300108818', '1234567890128', '4300108819', '97843001088X9'])
+def test_bad_isbn_refuses_before_touching_homebox(isbn):
+    class Untouchable:
+        def __getattr__(self, name):
+            raise AssertionError(f'Homebox に触れた: {name}')
+
+    with pytest.raises(InventoryError):
+        normalize_isbn(isbn)
+    with pytest.raises(InventoryError):
+        add_item(Untouchable(), 'manual:1', '本', name='x', isbn=isbn)

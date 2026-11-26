@@ -17,6 +17,11 @@
 - 手放した物は `status=disposed` と `disposed_on`。手放し方は `note` の末尾「手放し方: 」
 - 写真・添付は入らない。Homebox を失うと写真は戻らない
 
+## 本
+
+- 本は custom field `ISBN`（ISBN-13 の数字だけ）を持つ。`homebox.py add manual --isbn <ISBN> --category 本`。manual key は毎回新しい番号になるので、二重登録は同じ ISBN の手放していない物があるかで止める。items.csv には列を足さず、ISBN は Homebox から読む
+- 書名は openBD 由来。openBD は版元が登録した本しか持たず（無ければ `--name` で渡す）、`summary.title` に版（「第3版」など）が無いことがあるので、版は `--name` で補う
+
 ## 中古相場（任意、2026-11-12〜の実験）
 
 - 全部には付けない。売るかもしれない物にだけ custom field `相場検索` を付ける（`homebox.py market <key> --query '...'`）。書式は `scripts/price.py` と同じ引数（品名の語・`--min`・`--exclude`）

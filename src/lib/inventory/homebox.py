@@ -8,6 +8,7 @@
   手放したら完了日を入れて閉じる。売値はメンテナンスの費用でなく soldPrice（費用は合計されるため）
 - 中古相場は任意の custom field `中古相場`（最新の1つ）。number 型は PUT が 500 になるので text に円の整数を入れる。履歴はメモ末尾の「相場 YYYY-MM-DD: …」行に積む。
   全部には付けない実験（2026-11-12〜）。定期取得の検索条件は custom field `相場検索`（書式は lib.inventory.market）
+- 本は custom field `ISBN`（ISBN-13 の数字だけ）。manual key は毎回新しい番号になるので、本の二重登録は ISBN で止める
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import requests
 KEY_FIELD = 'key'
 MARKET_FIELD = '中古相場'
 QUERY_FIELD = '相場検索'
+ISBN_FIELD = 'ISBN'
 DISPOSAL_KINDS = ('売却', '破棄')
 NAME_MAX_BYTES = 255  # ent schema の MaxLen(255)。len は UTF-8 のバイト数で数える
 NIL_ID = '00000000-0000-0000-0000-000000000000'
@@ -41,6 +43,17 @@ def fit_name(name: str) -> str:
     while len((out + '…').encode()) > NAME_MAX_BYTES:
         out = out[:-1]
     return out + '…'
+
+
+def normalize_isbn(isbn: str) -> str:
+    """ハイフン・空白を除いた ISBN-13。978/979 始まり・チェックディジットが合わなければ止める（ISBN-10 は受けない）"""
+    digits = isbn.replace('-', '').replace(' ', '')
+    if not (len(digits) == 13 and digits.isdigit() and digits[:3] in ('978', '979')):
+        raise InventoryError(f'ISBN {isbn} は 978/979 で始まる13桁でない')
+    total = sum(int(d) * (1 if i % 2 == 0 else 3) for i, d in enumerate(digits[:12]))
+    if (10 - total % 10) % 10 != int(digits[12]):
+        raise InventoryError(f'ISBN {isbn} のチェックディジットが合わない')
+    return digits
 
 
 # ---- 購入データからの補完（add で使う） ----
@@ -196,10 +209,18 @@ def notes_with_link(note: str, url: str, source: str) -> str:
 
 def add_item(client, key: str, category: str, subcategory: str = '', name: str = '',
              acquired_on: str = '', note: str = '', joined: dict | None = None,
-             url: str = '', alive=url_alive, price: float = 0.0, purchase_from: str = '') -> dict:
-    """物を1つ足す。同じ key が既にあれば何もせず止める（二重登録しない）"""
-    if key in load_items(client):
+             url: str = '', alive=url_alive, price: float = 0.0, purchase_from: str = '',
+             isbn: str = '') -> dict:
+    """物を1つ足す。同じ key・同じ ISBN の手放していない物が既にあれば何もせず止める（二重登録しない）"""
+    isbn = normalize_isbn(isbn) if isbn else ''
+    items = load_items(client)
+    if key in items:
         raise InventoryError(f'{key} は登録済み')
+    if isbn:
+        dup = next((k for k, e in items.items()
+                    if not e.get('archived') and field_text(e, ISBN_FIELD) == isbn), None)
+        if dup:
+            raise InventoryError(f'ISBN {isbn} は {dup} で登録済み')
     joined = joined or {}
     name = name or joined.get('name')
     if not name:
@@ -216,7 +237,9 @@ def add_item(client, key: str, category: str, subcategory: str = '', name: str =
         'purchaseFrom': purchase_from or joined.get('purchaseFrom', ''),
         'tagIds': _tag_ids(client, category, subcategory),
     })
-    body['fields'].append({'name': KEY_FIELD, 'type': 'text', 'textValue': key})
+    _set_field(body, KEY_FIELD, key)
+    if isbn:
+        _set_field(body, ISBN_FIELD, isbn)
     return client.update_entity(created['id'], body)
 
 
