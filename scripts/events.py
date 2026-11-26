@@ -3,7 +3,8 @@
 """
 行動イベントの正規化ストリーム CLI（build）
 
-Toggl・運動・睡眠・Habitica・Google Calendar の行動系 CSV を、時刻を tz-aware（JST）に揃えた
+Toggl・運動・睡眠・Google Calendar の行動系 CSV と、凍結した Habitica の履歴
+（2026-10-05 で記録停止。取得は退役済みで data/habitica/history.csv を読むだけ）を、時刻を tz-aware（JST）に揃えた
 1行1イベントの reports/events.jsonl へまとめる。全上書きの派生物なので
 data/ には置かない（あちらは取得の正本）。
 

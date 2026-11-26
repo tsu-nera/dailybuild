@@ -36,7 +36,6 @@ PIPELINE_BEFORE = [
     ('Toggl', 'data/toggl/focus_entries.csv', 'start', 2, 'active', ''),
     ('MoneyForward', 'data/mf/収入・支出詳細_{year}.csv', '日付', 4, 'degraded',
      '連携が切れた口座の明細が入らない。**MF の集計は過少**。再認証しない方針'),
-    ('Habitica', 'data/habitica/cron_log.csv', 'date', 1, 'active', ''),
 ]
 SPARSE_AFTER = [
     ('temperature_core', 'data/wearable/temperature_core.csv', 'date_time', '深部体温'),
@@ -66,7 +65,7 @@ def test_pipeline_rows_are_unchanged_by_registry():
     assert sorted(rows) == sorted(PIPELINE_BEFORE)
     assert [r[0] for r in rows] == [
         'Fitbit sleep', 'Fitbit HRV', 'Fitbit activity', '日次記録（朝）', '排便記録',
-        'PHQ-9', '体組成', 'Toggl', 'MoneyForward', 'Habitica']
+        'PHQ-9', '体組成', 'Toggl', 'MoneyForward']
 
 
 def test_sparse_rows_keep_forms_and_measurements():

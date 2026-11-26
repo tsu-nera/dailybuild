@@ -22,6 +22,7 @@ class SourcePaths:
     toggl_pushed: Path
     toggl_focus_entries: Path
     toggl_focus_pushed: Path
+    toggl_focus_projects: Path
     exercise: Path
     sleep: Path
     habitica_history: Path
@@ -35,6 +36,7 @@ class SourcePaths:
             toggl_pushed=data / 'toggl' / 'pushed.csv',
             toggl_focus_entries=data / 'toggl' / 'focus_entries.csv',
             toggl_focus_pushed=data / 'toggl' / 'focus_pushed.csv',
+            toggl_focus_projects=data / 'toggl' / 'focus_projects.csv',
             exercise=data / 'googlehealth' / 'exercise.csv',
             sleep=data / 'wearable' / 'sleep.csv',
             habitica_history=data / 'habitica' / 'history.csv',
@@ -47,7 +49,7 @@ def collect(paths: SourcePaths) -> dict[str, list[dict]]:
     return {
         'toggl': sources.toggl_events(
             paths.toggl_entries, paths.toggl_pushed,
-            paths.toggl_focus_entries, paths.toggl_focus_pushed),
+            paths.toggl_focus_entries, paths.toggl_focus_pushed, paths.toggl_focus_projects),
         'googlehealth_exercise': sources.exercise_events(paths.exercise),
         'wearable_sleep': sources.sleep_events(paths.sleep),
         'habitica': sources.habitica_events(paths.habitica_history),

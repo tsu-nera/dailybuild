@@ -4,8 +4,8 @@
 睡眠・体組成・活動量・時間・お金・気分を API から取得して CSV に落とし、
 Markdown のレポートを生成する。
 
-Google Health / HealthPlanet / Toggl Track / MoneyForward ME /
-Google Forms / Habitica。
+Google Health / HealthPlanet / Toggl / MoneyForward ME /
+Google Forms。
 
 **ここにはコードしか無い。** データとレポートの実体は非公開の
 `dailybuild-private` にあり、`data/` `reports/` はそこへの symlink。

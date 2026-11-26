@@ -691,7 +691,6 @@ def pipeline_sources(forms) -> list[tuple]:
         ('Toggl', 'data/toggl/focus_entries.csv', 'start', 2, 'active', ''),
         ('MoneyForward', 'data/mf/収入・支出詳細_{year}.csv', '日付', 4, 'degraded',
          '連携が切れた口座の明細が入らない。**MF の集計は過少**。再認証しない方針'),
-        ('Habitica', 'data/habitica/cron_log.csv', 'date', 1, 'active', ''),
     ]
 
 

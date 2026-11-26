@@ -1,4 +1,4 @@
-"""reports/habits_daily.csv（Toggl Focus 起点）と habits.py show のテスト
+"""reports/habits_daily.csv（Toggl Focus 起点）と週ごとの日数・ずれ検出のテスト
 
 最も危険な故障は「欠測の捏造」。プロジェクトが観測されていない日（created_at /
 切替日より前、archived_at より後）に completed=False の行を作らないことを中心に見る。
@@ -17,7 +17,7 @@ BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR / 'src'))
 
 from lib.habits.daily import HABITS_DAILY_COLUMNS, build_habits_daily  # noqa: E402
-from lib.habits.show import bad_table, drift, good_table, render_show, week_keys  # noqa: E402
+from lib.habits.weekly import drift, weekly_days  # noqa: E402
 from lib.toggl import focus  # noqa: E402
 from lib.toggl.store import CUTOVER_DATE  # noqa: E402
 
@@ -31,7 +31,6 @@ def _load_script(name, module_name):
 
 
 habits_script = _load_script('habits.py', 'habits_script_daily')
-habitica = _load_script('habitica.py', 'habitica_script_daily')
 
 CLIENTS = {'good': '良い習慣', 'bad': '悪い習慣'}
 TODAY = dt.date(2026, 11, 22)   # 日曜 = ISO 週 2026-W47 の最終日
@@ -139,6 +138,7 @@ def build_env(monkeypatch, tmp_path):
     monkeypatch.setattr(habits_script, 'HABITS_DAILY_CSV', daily_csv)
     monkeypatch.setattr(habits_script, 'require_private_path', lambda p: p)
     monkeypatch.setattr(habits_script, 'today', lambda: TODAY)
+    monkeypatch.setattr(habits_script, 'load_roster', lambda: {'架空A': {'target_per_week': 1}})
     return daily_csv
 
 
@@ -151,39 +151,46 @@ def test_buildを2回実行しても結果が同じ(build_env):
     assert len(df) == 14  # 2習慣 × 2026-11-16〜22
 
 
-# --- show ---
+# --- 週ごとの日数（lib/habits/weekly.py） ---
 
 def _daily(*rows):
     return pd.DataFrame([{'date': d, 'habit': h, 'task_type': 'toggl', 'is_due': None,
                           'completed': c} for d, h, c in rows], columns=HABITS_DAILY_COLUMNS)
 
 
-def _week(habit, start, done_days):
+def _week(habit, start, done_days, days=range(7)):
     first = dt.date.fromisoformat(start)
-    return [((first + dt.timedelta(days=i)).isoformat(), habit, i in done_days) for i in range(7)]
+    return [((first + dt.timedelta(days=i)).isoformat(), habit, i in done_days) for i in days]
 
 
-def test_悪い習慣は週ごとに7日中何日で出る():
-    daily = _daily(*_week('架空B', '2026-11-09', {0, 3}), *_week('架空B', '2026-11-16', {6}))
-    table = bad_table(daily, ['架空B'], week_keys(TODAY, 3))
-    assert table.loc['架空B'].tolist() == ['-', '2/7', '1/7']   # 行が無い週は欠測の -
+WEEKS = ['2026-W45', '2026-W46', '2026-W47']
 
 
-def test_良い習慣は目標以上の週に印が付きclearを数える():
-    daily = _daily(*_week('架空A', '2026-11-09', {0, 1, 2}), *_week('架空A', '2026-11-16', {0}))
-    table = good_table(daily, ['架空A'], {'架空A': {'target_per_week': 3}},
-                       week_keys(TODAY, 2), TODAY)
-    assert table.loc['架空A', '2026-W46'] == '3/7*'
-    assert table.loc['架空A', '2026-W47'] == '1/7'
-    assert table.loc['架空A', 'clear'] == '1/2'
+def _by_habit(rows):
+    return {r['habit']: r for r in rows}
 
 
-def test_アーカイブ済みの習慣はshowの表から外れる():
-    projects = _projects(_project(1, '架空A'), _project(2, '架空済', archived='2026-11-18T00:00:00Z'))
-    daily = _daily(*_week('架空A', '2026-11-16', {0}), ('2026-11-16', '架空済', True))
-    out = render_show(daily, projects, CLIENTS, {'架空A': {'target_per_week': 1}}, TODAY, 2)
-    assert '架空A' in out
-    assert '架空済' not in out
+def test_週ごとの日数_観測していない日と週は数えない():
+    # W46 は月〜水だけ観測（木以降は行が無い）、W45 は行が1件も無い
+    daily = _daily(*_week('架空A', '2026-11-09', {0, 2}, days=range(3)),
+                   *_week('架空B', '2026-11-16', {6}))
+    projects = _projects(_project(1, '架空A', created='2026-11-09T00:00:00Z'),
+                         _project(2, '架空B', client='悪い習慣'))
+    rows = _by_habit(weekly_days(daily, projects, CLIENTS, {'架空A': {'target_per_week': 3}}, WEEKS))
+    assert rows['架空A']['days'] == {'2026-W45': None, '2026-W46': 2, '2026-W47': None}
+    assert rows['架空A']['target'] == 3
+    assert rows['架空B']['days'] == {'2026-W45': None, '2026-W46': None, '2026-W47': 1}
+    assert rows['架空B']['target'] is None   # 悪い習慣は目標を持たない
+    assert [r['kind'] for r in weekly_days(daily, projects, CLIENTS, {}, WEEKS)] == ['good', 'bad']
+
+
+def test_週ごとの日数_アーカイブ済みの習慣は返さない():
+    projects = _projects(_project(1, '架空A'), _project(2, '架空済', archived='2026-11-18T00:00:00Z'),
+                         _project(3, '架空悪済', client='悪い習慣', archived='2026-11-18T00:00:00Z'))
+    daily = _daily(*_week('架空A', '2026-11-16', {0}), ('2026-11-16', '架空済', True),
+                   ('2026-11-16', '架空悪済', True))
+    rows = weekly_days(daily, projects, CLIENTS, {'架空A': {'target_per_week': 1}}, WEEKS)
+    assert [r['habit'] for r in rows] == ['架空A']
 
 
 def test_ずれa_目標の無い良い習慣():
@@ -198,44 +205,27 @@ def test_ずれb_yamlにあって良い習慣のアーカイブされていな�
     assert drift(projects, CLIENTS, roster) == ([], ['架空消', '架空済'])
 
 
+# --- build のずれ検出 ---
+
 @pytest.mark.parametrize('roster, name', [
     ({}, '架空A'),                                                           # (a)
     ({'架空A': {'target_per_week': 1}, '架空消': {'target_per_week': 1}}, '架空消'),  # (b)
 ])
-def test_ずれがあるとshowは習慣名を出して非ゼロ(build_env, monkeypatch, capsys, roster, name):
-    habits_script.cmd_build(None)
+def test_ずれがあってもbuildはCSVを書き習慣名を出して非ゼロ(build_env, monkeypatch, capsys, roster, name):
     monkeypatch.setattr(habits_script, 'load_roster', lambda: roster)
-    rc = habits_script.cmd_show(type('Args', (), {'weeks': 2})())
+    rc = habits_script.cmd_build(None)
     assert rc != 0
     assert name in capsys.readouterr().err
+    assert len(pd.read_csv(build_env)) == 14
 
 
-def test_ずれが無ければshowは0(build_env, monkeypatch):
-    habits_script.cmd_build(None)
-    monkeypatch.setattr(habits_script, 'load_roster', lambda: {'架空A': {'target_per_week': 1}})
-    assert habits_script.cmd_show(type('Args', (), {'weeks': 2})()) == 0
+def test_ずれが無ければbuildは0(build_env):
+    assert habits_script.cmd_build(None) == 0
 
 
-# --- 書き手は1本（habitica.py fetch は書かない） ---
-
-class FakeFetchClient:
-    def get_tasks(self, kind):
-        return [{'id': 'd1', 'text': '架空D', 'value': 1.0, 'history': []}] if kind == 'dailys' else []
-
-    def get_tags(self):
-        return []
-
-
-def test_habitica_fetchはhabits_daily_csvを書かない(monkeypatch, tmp_path):
-    monkeypatch.setattr(habitica, 'HISTORY_CSV', tmp_path / 'data' / 'habitica' / 'history.csv')
-    monkeypatch.setattr(habitica, 'TASKS_JSON', tmp_path / 'data' / 'habitica' / 'tasks.json')
-    monkeypatch.setattr(habitica, 'require_private_path', lambda p: p)
-    monkeypatch.setattr(habitica.HabiticaClient, 'from_env', staticmethod(FakeFetchClient))
-    (tmp_path / 'data' / 'habitica').mkdir(parents=True)
-
-    assert habitica.cmd_fetch(None) == 0
-    assert not list(tmp_path.rglob('habits_daily.csv'))
-    assert not hasattr(habitica, 'HABITS_DAILY_CSV')
+def test_showサブコマンドは無い():
+    with pytest.raises(SystemExit):
+        habits_script.build_parser().parse_args(['show'])
 
 
 def test_HABITS_DAILY_CSVはreports配下でありdata配下ではない():

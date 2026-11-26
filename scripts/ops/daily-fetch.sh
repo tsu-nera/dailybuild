@@ -78,9 +78,6 @@ step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 step "Todoist"       uv run python scripts/todoist.py fetch --update
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される
 step "MoneyForward"  uv run python scripts/mf.py fetch --refresh
-# Habitica の日付をまたぐ処理（cron）を確定させる。Daily の未完了はこれでしか
-# history に残らないので、走らせない日は「未達」でなく「欠測」になる
-step "Habitica"     uv run python scripts/habitica.py cron
 # Google Calendar（primary）の読み取り専用の写し。骨組みと events.jsonl が予定を読むので、それらより前
 step "Google Calendar" uv run python scripts/gcalendar.py fetch --days "$DAYS"
 # Last.fm の scrobble（スマホの Pano Scrobbler が YouTube の再生を送る）。遅れて届く分のため CSV の最新から14日遡って取り直す
