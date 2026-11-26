@@ -24,7 +24,8 @@ Toggl 側で削除されたエントリは Track の CSV に残り続ける（�
 大文字小文字無視 → 部分一致の順に解決し、複数候補に当たったら黙って1つ選ばず候補を出して落とす。
 名前 → ID の解決は `data/toggl/focus_projects.json` のキャッシュで行い、**キャッシュに無い名前を
 引いたときだけ**取り直す（`--refresh-projects` で明示更新）。Track の `projects.json` とは
-ID 体系が別なので混ぜない。2.0 のプロジェクトは archived の情報が返らないので絞り込まない。
+ID 体系が別なので混ぜない。キャッシュは `GET /projects`（アーカイブ済みを含まない）の写しなので、
+アーカイブ済みのプロジェクトは名前で引けない。
 `open` は `https://focus.toggl.com/` を開くだけ（個別画面の URL は未確認）。
 
 **タグは名前でなく ID（`tag_ids`）でしか付かない。** タグ一覧の API は見つからなかったので、
@@ -109,7 +110,11 @@ import して使う）。push とレポート（body / mind / circadian）が同
 Track v9 の `/me/time_entries` には 2.0 に書いたエントリが返らないので、
 `toggl.py fetch-focus` が Focus API（`https://focus.toggl.com/api`、`Authorization: Bearer`）
 から別に取り、`data/toggl/focus_entries.csv` へ保存する（`lib.toggl.focus`）。
-日次は `fetch-focus` → `push` の順（`daily-fetch.sh`）。
+日次は `fetch-focus` → `habits.py build` → `push` の順（`daily-fetch.sh`）。
+`fetch-focus` はアーカイブ済みを含むプロジェクト一覧も `data/toggl/focus_projects.csv`
+（`id, name, client_id, client_name, created_at, archived_at`）に全上書きする。習慣
+（`scripts/habits.py`）の対象はここから決まる。`start` の名前解決に使う `focus_projects.json`
+キャッシュとは別物。
 
 書き込みの形（2026-11-02 に実測。base は
 `/organizations/{org}/workspaces/{ws}`）:
@@ -118,7 +123,9 @@ Track v9 の `/me/time_entries` には 2.0 に書いたエントリが返らな�
 |---|---|---|
 | 作成 | `POST /time-entries`。`type: "activity"`（**必須**。無いと 400）・`start`（UTC RFC3339）・`duration`（秒）・`description`・`project_id`・`tag_ids` | 201 とエントリ |
 | 削除 | `DELETE /time-entries/{id}` | 204 |
-| プロジェクト一覧 | `GET /projects?page=N&per_page=100`（上限100、200は400、既定20件） | 配列 |
+| プロジェクト一覧 | `GET /projects?page=N&per_page=100`（上限100、200は400、既定20件）。**アーカイブ済みを含まない**。`archived=true` を付けるとアーカイブ済み**だけ**が返る（全件には2回引く） | `{page, per_page, data, total}` |
+| プロジェクト作成 | `POST /projects` `{name}`。**`client_id` を付けると `402 feature_not_available`** | 201 とプロジェクト |
+| クライアントを付ける | `PATCH /projects/{id}` `{client_id}`（作成後に別リクエストで） | 204 |
 | 計測開始 | `POST /tracking/start` | 200 とエントリ（duration 無し） |
 | 計測中 | `GET /tracking/current` | 無ければ 204 |
 | 計測停止 | `POST /tracking/stop` `{"end": ...}` | 200 とエントリ |
@@ -127,6 +134,22 @@ Track v9 の `/me/time_entries` には 2.0 に書いたエントリが返らな�
   201 が返るのにタグが空になる（黙って落ちる）。一方 `GET /time-entries` の各エントリは
   `tags: [{id, name}]` を持つ
 - 書き込みでもクォータのヘッダは返らない
+
+プロジェクトとクライアント（2026-11-26 に実測。`toggl.py project add` が使う）:
+
+- **クライアントは API で作れず、一覧もできない**（`/clients` は 404）。各プロジェクトの
+  `client: {id, name}` から読む。だから `project add` は client_id を `focus_projects.csv` の
+  既存プロジェクトから名前で引き、見つからなければ止まる。画面でクライアントを変えると
+  API の `client` / `client_id` に反映される
+- **アーカイブの状態は `archived_at`**（null でなければアーカイブ済み）。**`active` は画面の状態と
+  対応しないので使わない**（API で作ったプロジェクトは作成直後から `active: false`）
+- **API でアーカイブする方法は見つからない。** `active` / `archived` / `archived_at` /
+  `is_archived` の PATCH は 204 が返るが無視される。`POST /projects/{id}/archive` は 405。
+  アーカイブは本人が画面で行う
+- アーカイブ済みプロジェクトのエントリは `GET /time-entries` で引き続き返り、埋め込みの
+  `project.name` も入る
+- **削除（画面・`DELETE /projects/{id}`）はプロジェクトが 404 になる。** 運用で使わない
+- Track から migrate したプロジェクトの `created_at` は**移行時刻（2026-01-13）**で、作った日ではない
 
 - **`include_taskless=true` を付けないと task 無しのエントリが返らない。** 手動エントリは
   ほぼ task 無しなので、外すと黙って大半を取り逃す

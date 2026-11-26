@@ -48,10 +48,12 @@ Habitica（Daily は完了行、Habit は押下のある行のみ）・Calendar�
 `scripts/dashboard.py build` は `reports/dashboard/*.csv`（Grafana が読む表を画面ごとに。`body` / `sleep` / `mind` 画面の `daily.csv` を含む。`--only` で一部のグループだけ作り直せる）を毎日**全上書き**で
 生成する（`daily-fetch.sh` の「ダッシュボード」ステップ）。**`data/` には置かない**。詳細は [docs/grafana.md](docs/grafana.md)。
 
-`scripts/habitica.py fetch` は `reports/habits_daily.csv` も毎日**全上書き**で
-生成する。列は `date, habit, task_type, is_due, completed` の縦持ちで、習慣の
-増減で列が動かないようにしてある。`history` に行が無い日の行は作らない（cron が
-走らなかった日は不生起ではなく欠測）。`metrics_daily.csv` の横持ちには**混ぜない**
+`scripts/habits.py build` は `reports/habits_daily.csv` を毎日**全上書き**で
+生成する（`daily-fetch.sh` の「習慣」ステップ。Toggl Focus のクライアント「良い習慣」「悪い習慣」の
+プロジェクトが習慣）。列は `date, habit, task_type, is_due, completed` の縦持ちで、習慣の
+増減で列が動かないようにしてある。行はプロジェクトを観測できた日（`max(created_at, 2026-10-27)`
+から `archived_at` または今日まで）だけで、範囲外の日の行は作らない（欠測と不生起を分ける）。
+`task_type` は `toggl`、`is_due` は空。`metrics_daily.csv` の横持ちには**混ぜない**
 （`is_due=False` と欠測を0埋めで潰す事故を持ち込むため）。こちらも**`data/` には
 置かない**（あちらは取得の正本）。
 
