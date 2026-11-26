@@ -19,7 +19,7 @@ Usage:
     python scripts/homebox.py plan manual:12 売却              # 手放すと決めた印（売却・破棄。dispose で閉じる）
     python scripts/homebox.py market manual:33 7150 --source 'メルカリ SOLD（直近90日）中央値'  # 任意の中古相場
     python scripts/homebox.py market manual:33 --query 'WH-1000XM3 --min 5000'  # 検索条件を付けてその場で1回引く
-    python scripts/homebox.py market --all                     # 検索条件のある物のうち30日以上調べていない物を引く（日次）
+    python scripts/homebox.py market --all                     # 検索条件のある物・ISBN のある物のうち30日以上調べていない物を引く（日次）
     python scripts/homebox.py market --all --every 0           # 全部引き直す
     python scripts/homebox.py move manual:12 クローゼット      # 末端の名前か経路（'メイン / 机'）
     python scripts/homebox.py find 耳栓                        # key・品名・メモの部分一致
@@ -28,6 +28,7 @@ Usage:
 
 market の検索条件は custom field `相場検索`（書式は lib.inventory.market）。引いた相場は `中古相場` とメモ、
 履歴は data/inventory/market.csv（手で入れた相場も count 空で積む）。--all / --query は最後に中古相場の合計を stdout に出す。
+--all は custom field `ISBN` を持つ物の買取価格（lib.inventory.buyback）も引き、最新値を `買取価格`、履歴を data/inventory/buyback.csv に書く。
 add は同じ key があれば何もせず止まる。--isbn は custom field `ISBN` に入れ、同じ ISBN の手放していない物があれば止まる。品名・購入日・価格・購入先は key から data/purchases/ を引いて埋める。
 add / dispose / move は最後に export まで行う。find は Homebox を直接読み、表を stdout に出す。ログは stderr。
 """
@@ -47,12 +48,14 @@ from lib.inventory.homebox import (DISPOSAL_KINDS, InventoryError, add_item, dis
                                    export_rows, find_rows, load_items, mercari_sales, move_item,
                                    market_price, market_targets, normalize_isbn, plan_disposal,
                                    purchase_lookup, set_market_price, set_market_query, write_csv)
+from lib.inventory.buyback import fetch_buybacks
 from lib.inventory.market import append_history, due, fetch_sold, read_history
 from lib.utils.private_data import ensure_dir, require_private_path
 
 BASE_DIR = Path(__file__).parent.parent
 ITEMS_CSV = BASE_DIR / 'data' / 'inventory' / 'items.csv'
 MARKET_CSV = BASE_DIR / 'data' / 'inventory' / 'market.csv'
+BUYBACK_CSV = BASE_DIR / 'data' / 'inventory' / 'buyback.csv'
 PURCHASES_DIR = BASE_DIR / 'data' / 'purchases'
 
 
@@ -159,6 +162,9 @@ def cmd_market(args, client) -> None:
                    datetime.date.fromisoformat(date), args.every)
         print(f'相場検索あり {len(targets)} 件、うち今回引く {len(keys)} 件', file=sys.stderr)
         failed = fetch_markets(client, keys, targets, date) if keys else 0
+        buyback_path = require_private_path(BUYBACK_CSV)
+        ensure_dir(buyback_path.parent)
+        failed += fetch_buybacks(client, buyback_path, date, args.every)
     elif args.query is not None:
         if not args.key:
             raise InventoryError('--query には key が要る')
@@ -180,7 +186,7 @@ def cmd_market(args, client) -> None:
     export(client)
     print_market_total(client)
     if failed:
-        raise InventoryError(f'{failed} 件の相場が取れなかった')
+        raise InventoryError(f'{failed} 件の相場・買取価格が取れなかった')
 
 
 def cmd_move(args, client) -> None:
