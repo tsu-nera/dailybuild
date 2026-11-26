@@ -2,7 +2,7 @@
 # coding: utf-8
 """
 HealthPlanet 体組成計・血圧計データ取得スクリプト
-非公式APIを使用して全データを取得
+非公式APIを使用して全データを取得（API の形と公式 API を使わない理由は docs/healthplanet_api.md）
 """
 
 import sys

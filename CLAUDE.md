@@ -177,7 +177,7 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/weekly-routine.sh"'
 **新しい API キー・token は `config/*.json` でなくリポジトリ直下の `.env` に置く**（他プロジェクトと同じ
 python-dotenv 方式。`.env.example` を `cp` して作る）。読み込みは `lib.utils.env` の
 `get_env` / `require_env` に統一し、client ごとに読み込み処理を書かない。キーは `.env.example` が一覧
-（Home Assistant / Toggl / HealthPlanet / Habitica / Last.fm / Foursquare）。`tuya_creds.json` は Tuya 削除（#196）まで残す。OAuth の token・ブラウザ
+（Home Assistant / Toggl / HealthPlanet / Habitica / Last.fm / Foursquare）。OAuth の token・ブラウザ
 セッション・Google 配布の JSON は機械が書く状態なのでファイルのまま `config/` に置く。
 
 Google 上（Drive・Sheets・Forms・Apps Script）に何かを作る・変えるときは先に [docs/google.md](docs/google.md)

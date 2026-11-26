@@ -31,7 +31,6 @@ systemctl --user enable --now dailybuild-routine.timer
 - `mf_state.json` - MoneyForward ME のブラウザセッション（`mf.py fetch --login` が生成）
 - `tepco_state.json` - くらしTEPCO web のブラウザセッション（`tepco.py fetch --login` が生成）
 - `gcloud_creds.json` - Google サービスアカウント（手動記録のGoogle Sheets取得用）
-- `tuya_creds.json` - Tuya Cloud API（api_region, api_key, api_secret, device_id）
 - `gcalendar_token.json` - Google Calendar（readonly）のトークン（`gcalendar.py fetch --login` が生成。`gforms_token.json` とスコープを分けてある）
 - `lastfm_session.json` - Last.fm の認証セッション（`lastfm.py fetch --login` が生成。再生履歴を非公開にしているので API key だけでは読めない）
 - `swarm_token.json` - Foursquare（Swarm）の access token（`swarm.py fetch --login` が生成。期限なし。Client ID / Secret は `.env`）
