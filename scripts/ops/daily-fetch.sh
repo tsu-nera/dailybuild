@@ -96,6 +96,8 @@ step "中古相場"      uv run python scripts/homebox.py market --all
 step "ジャーナル骨組み" uv run python scripts/journal_skeleton.py
 # satoru（瞑想の Muse の回の結果。session_log.csv を読むだけのデータソース）。session-review が push した分を拾う
 step "satoru"        git -C "$HOME/repo/satoru" pull --ff-only -q
+# 消耗品の正本は Notion「消耗品DB」。消耗品画面の計算（dashboard.py）が読むので、その前に CSV へ写す
+step "消耗品"        uv run python scripts/notion_consumables.py fetch
 # ダッシュボード（Grafana が読む reports/dashboard/*.csv と claude.ai 用 JSON）。判定は dashboard.py だけが持つ
 step "ダッシュボード" uv run python scripts/dashboard.py build
 # 行動イベントの正規化ストリーム（reports/events.jsonl）。取得の後でないと当日分が欠ける。

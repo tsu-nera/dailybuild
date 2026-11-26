@@ -6,9 +6,9 @@ dailybuild-private の `data/inventory/` に、持ち物まわりの台帳を全
 | ファイル | 1行 | 正本 | 書き手 |
 |---|---|---|---|
 | `items.csv` | 所持品（買い替える物）1つ | 今は Homebox。ここは日次 export の写し（docs/homebox.md） | `homebox.py`（export） |
-| `consumables.csv` | 消耗品の品目1つ | ここ | agent |
+| `consumables.csv` | 消耗品の品目1つ | Notion「生活 / 消耗品DB」。ここは日次同期の写し（`location` `keep` `subscription` `ended_on` だけはここが正本） | `notion_consumables.py fetch` |
 | `purchase_rules.csv` | 注文の行 → 品目 の規則 | ここ | agent |
-| `stocktake.csv` | 棚卸し1回の1品目（`date, key, quantity, note`） | ここ | agent（本人が言った残量を書く） |
+| `stocktake.csv` | 棚卸し1回の1品目（`date, key, quantity, note`） | ここ（Notion の `量` が変わった日の行は同期が足す） | `notion_consumables.py fetch`・agent（本人が言った残量を書く） |
 
 店の注文そのものは `data/purchases/<店>.csv`（取り込みスクリプトが書く生データ）。店頭で買った分は
 `data/purchases/store.csv`（`date, order_id, shop, item, quantity, price, jan`。agent がレシートから書く。`price` はレシートの表示価格のまま＝業務スーパーは税抜）。
@@ -42,10 +42,26 @@ dailybuild-private の `data/inventory/` に、持ち物まわりの台帳を全
 - 計算（次に買う頃・1単位あたりの値段）は `src/lib/consumables.py` → `dashboard.py` が `reports/dashboard/consumables.csv`
   `consumable_purchases.csv` に出す。器の側では計算しない
 - agent が台帳を書いたら `uv run scripts/dashboard.py build --only consumables` で消耗品の2本だけ作り直す（約3秒。全体の build は約10秒）。日次でも全体の build が作り直す
-- 品目を足すときは vaio で `ssh vaio 'cd ~/repo/dailybuild && uv run scripts/consumables.py add <key> --name .. --category .. --unit ..'` を叩く（pull→追記→Grafana 用2本の再生成→commit・push まで1回で済む）
+- 品目の追加・名前・分類・単位・量・メモは本人が Notion「消耗品DB」で直す。agent も品目を足すなら Notion に足す（CSV に直接足すと翌日の同期で `ended_on` が付く）
+
+## Notion からの同期（`scripts/notion_consumables.py fetch`、日次）
+
+Notion の列は `品目`(title) `key`(text) `分類`(select) `単位`(select) `量`(number) `メモ`(text) `更新`(last_edited_time)。
+読むのは公式 REST API（data source の query）。MCP は日次から呼べないので使わない。
+
+- **key の採番**: `key` が空の行には同期が `n_` + ページ ID の先頭8桁（ハイフン除く）を振り、Notion の `key` 列へ書き戻す。
+  既存の key（`protein` など）も振った key も変えない。本人も agent も key を手で決めなくてよい
+- **key の重複**: 同じ key が2行以上あれば CSV を書かずに exit 1 し、重複した品目名を stderr に出す。片方の key を Notion で空にすれば次の同期が振り直す
+- **Notion が0行**: 何も書かずに exit 1（ページ送りの取りこぼしや API 障害で全品目に `ended_on` が付くのを防ぐ）
+- **consumables.csv**: `name`←品目・`category`←分類・`unit`←単位・`note`←メモ は Notion の値で上書きする。
+  Notion に無い列（`location` `keep` `subscription` `ended_on`）は CSV の値を保ち、新しい key の行では空
+- **Notion から消えた品目**: 行は消さず、`ended_on` が空なら同期した日を入れる
+- **stocktake.csv**: `量` が空でない品目について、その key の最後の記録と量が違うときだけ、`更新` を JST の日付にして1行足す（`note` は空）。
+  最後の記録が `更新` より後の日付なら足さない（agent が後から書いた棚卸しの方が新しい）。
+  同じ量なら足さないので何度流しても増えない
 
 ## 器を替えるとき
 
 - Homebox をやめてローカルに戻す: `items.csv` の export を止め、以後は agent が `items.csv` を直接書く（正本がここに移るだけで、列と key はそのまま）
-- 消耗品を Notion に出す: `reports/dashboard/consumables*.csv` を Notion へ一方向に同期する（Notion のページ id は同期側で key と対応させる）。
-  本人が Notion で直すようになったら、Homebox と同じく Notion を正本にして日次でここへ書き戻す
+- 消耗品は 2026-11-26 に Notion を正本にした（本人が 11-13 から Notion で直すようになったため）。CSV は写しとして残るので、
+  Notion をやめるときは `notion_consumables.py` の日次ステップを外し、以後は agent が CSV を直接書く（列と key はそのまま）

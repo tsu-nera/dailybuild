@@ -151,6 +151,7 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/weekly-routine.sh"'
 | `scripts/fetch_homeassistant.py` / 室内環境（HA の5分値）・HA の state 履歴を扱うとき | [docs/indoor.md](docs/indoor.md) — 照度は lux ではない相対値。室内と外気（weather.csv）は別物。state 履歴の開始時点の行は時刻が丸められているので保存しない |
 | `scripts/dashboard.py` / `scripts/ops/grafana/` を変更するとき | [docs/grafana.md](docs/grafana.md) — 計算は dashboard.py に1本。Grafana 側で集計・判定しない。欠測は空セル |
 | 持ち物（`scripts/homebox.py` / `data/inventory/items.csv`）を扱うとき | [docs/homebox.md](docs/homebox.md) — 正本は Homebox で items.csv は日次の写し。一覧は `includeArchived` を付けないと手放した物が消える。PUT は全欄置き換え |
+| 消耗品（`scripts/notion_consumables.py` / `data/inventory/consumables.csv`・`stocktake.csv`）を扱うとき | [docs/inventory.md](docs/inventory.md) — 正本は Notion「消耗品DB」で CSV は日次の写し。key は同期が振る。key の重複・0行では CSV を書かずに止まる |
 | `scripts/hevy.py` / 筋トレのセット記録・腹囲を扱うとき | [docs/hevy.md](docs/hevy.md) — 取得は手動 export 頼み。月名はアプリの表示言語で変わる。腹囲は Hevy だけが持つ |
 | `scripts/timeline.py` / 場所ごとの訪問（Google マップ Timeline の export）を扱うとき | [docs/timeline.md](docs/timeline.md) — 同じ訪問が hierarchyLevel 違いで重複する。座標は度記号付きの文字列。取得は手動 export 頼み。名前は places.csv の辞書（Places API）|
 | `scripts/dawarich.py` / `scripts/gpslogger.py` / 位置の履歴（Dawarich）を扱うとき | [docs/dawarich.md](docs/dawarich.md) — 正本は data/ で DB は派生物。mouse で動き寝る。import 名で二重投入を判定。Visit は Timeline の重複と自前判定が重なる |

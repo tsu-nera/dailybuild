@@ -1,7 +1,7 @@
 """
 消耗品（補充する物）の購入履歴と次に買う頃（Grafana の consumables 画面）
 
-データモデルは Grocy を借りている（docs/inventory.md）。正本は data/inventory/ の2本で、書くのは agent。
+データモデルは Grocy を借りている（docs/inventory.md）。品目の正本は Notion「消耗品DB」で、data/inventory/consumables.csv はその写し（scripts/notion_consumables.py）。
 計算はここに置いて CSV に出す（表示の器を Notion などに替えても同じ CSV を流せるように）。
 
 - consumables.csv: 品目（Grocy の product）。「プロテイン」「卵」のような一般名で、1品目1行、key は変えない。
