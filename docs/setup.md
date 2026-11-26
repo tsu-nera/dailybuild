@@ -40,7 +40,8 @@ systemctl --user enable --now dailybuild-routine.timer
 - `gforms_token.json` - Google Forms のトークン（`emotion.py` が生成し `bowel.py` / `phq9.py` とも共用。OAuth クライアントは `googlehealth_creds.json` と共用）
 - `toggl_push.yaml` - Toggl push のソース別マッピング（プロジェクト名・説明・タグ）。yamlなのでコミット対象
 - `phq9_def.yaml` - PHQ-9 の設問文・選択肢の実体。**著作権の都合で `.gitignore` 済み**（`phq9_def.yaml.sample` から作る。詳細は「PHQ-9（週次）」節）
-- `private/habits.yaml` - 習慣レビューの対象と週の目標値。**実体は dailybuild-private**（`config/private` は symlink。習慣名が非公開なため）
+- `habits.yaml` - 習慣とみなす Toggl Focus のクライアント名（public）
+- `private/habits.yaml` - 良い習慣の週の目標値（`target_per_week`）。**実体は dailybuild-private**（`config/private` は symlink。習慣名が非公開なため）
 - `private/contracts.yaml` - 定期契約の台帳（`mf.py contracts` が読む）。**実体は dailybuild-private**。`config/contracts.yaml.sample` を `config/private/contracts.yaml` へ `cp` して作る
 
 Google Sheets クライアント（`src/lib/clients/gsheets_client.py`）は `config/gcloud_creds.json` を直接参照しない。環境変数 `GOOGLE_APPLICATION_CREDENTIALS` か既定パス `~/.config/gcp/gdrive-creds.json` を探すため、新マシンではどちらかを用意する（リポジトリの認証情報を使う場合は `ln -sf "$PWD/config/gcloud_creds.json" ~/.config/gcp/gdrive-creds.json`）。

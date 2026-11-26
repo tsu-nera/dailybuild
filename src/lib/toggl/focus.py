@@ -41,6 +41,9 @@ PAGE_SIZE = 100  # per_page の上限
 
 CSV_FILE = store.FOCUS_CSV_FILE
 TAGS_FILE = require_private_path(store.BASE_DIR / 'data' / 'toggl' / 'focus_tags.json')
+PROJECTS_CSV_FILE = require_private_path(store.BASE_DIR / 'data' / 'toggl' / 'focus_projects.csv')
+
+PROJECT_COLUMNS = ['id', 'name', 'client_id', 'client_name', 'created_at', 'archived_at']
 
 UTC_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
 
@@ -140,22 +143,98 @@ def fetch_time_entries(api_token: str, organization_id: str, workspace_id: str,
     return entries
 
 
-def fetch_projects(ws: Workspace) -> dict[int, str]:
-    """プロジェクト ID → 名前。per_page の上限は100（200は400）、既定は20件なので全ページ取る
-
-    2.0 のプロジェクトには archived の情報が返らないので絞り込まない。
-    """
-    projects: dict[int, str] = {}
+def _fetch_project_pages(ws: Workspace, extra: dict | None = None) -> list[dict]:
+    """GET /projects を全ページ取る。per_page の上限は100（200は400）、既定は20件"""
+    projects: list[dict] = []
     page = 1
     while True:
         body = _get(ws.api_token, f'{ws.base_path}/projects',
-                    {'page': page, 'per_page': PAGE_SIZE}).json()
+                    {'page': page, 'per_page': PAGE_SIZE, **(extra or {})}).json()
         batch = body.get('data', []) if isinstance(body, dict) else body
-        projects.update({p['id']: p['name'] for p in batch})
+        projects.extend(batch)
         if len(batch) < PAGE_SIZE:
             break
         page += 1
     return projects
+
+
+def fetch_projects(ws: Workspace) -> dict[int, str]:
+    """アーカイブされていないプロジェクトの ID → 名前（start の名前解決用）
+
+    GET /projects はアーカイブ済みを含まない。全件が要るときは fetch_project_records。
+    """
+    return {p['id']: p['name'] for p in _fetch_project_pages(ws)}
+
+
+def fetch_project_records(ws: Workspace) -> list[dict]:
+    """アーカイブ済みを含む全プロジェクト（2回引く）
+
+    GET /projects はアーカイブ済みを含まず、archived=true はアーカイブ済みだけを返す。
+    アーカイブの判定は archived_at（null でなければアーカイブ済み）。active は画面の
+    状態と対応しない（API で作ったプロジェクトは作成直後から active: false）ので使わない。
+    """
+    by_id = {p['id']: p for p in _fetch_project_pages(ws)}
+    by_id.update({p['id']: p for p in _fetch_project_pages(ws, {'archived': 'true'})})
+    return list(by_id.values())
+
+
+def build_projects_dataframe(projects: list[dict]) -> pd.DataFrame:
+    """プロジェクト一覧を focus_projects.csv 用にする（id 昇順）
+
+    クライアントは /clients が 404 で一覧できないので、各プロジェクトの client から読む。
+    """
+    rows = []
+    for p in projects:
+        client = p.get('client') or {}
+        rows.append({
+            'id': p['id'],
+            'name': p.get('name') or '',
+            'client_id': client.get('id', p.get('client_id')),
+            'client_name': client.get('name') or '',
+            'created_at': p.get('created_at') or '',
+            'archived_at': p.get('archived_at') or '',
+        })
+    df = pd.DataFrame(rows, columns=PROJECT_COLUMNS)
+    df['client_id'] = df['client_id'].astype('Int64')
+    return df.sort_values('id').reset_index(drop=True)
+
+
+def save_projects(df: pd.DataFrame, csv_path: Path | None = None) -> Path:
+    """focus_projects.csv を全上書きする（API の一覧そのものの写し）"""
+    path = csv_path or PROJECTS_CSV_FILE
+    ensure_dir(path.parent)
+    df.to_csv(path, index=False)
+    return path
+
+
+def load_projects(csv_path: Path | None = None) -> pd.DataFrame:
+    """focus_projects.csv。無ければ空"""
+    path = csv_path or PROJECTS_CSV_FILE
+    if not path.exists():
+        return pd.DataFrame(columns=PROJECT_COLUMNS)
+    df = pd.read_csv(path, dtype={'name': str, 'client_name': str,
+                                  'created_at': str, 'archived_at': str})
+    df['client_id'] = df['client_id'].astype('Int64')
+    return df.fillna({'name': '', 'client_name': '', 'created_at': '', 'archived_at': ''})
+
+
+def client_id_by_name(projects: pd.DataFrame, client_name: str) -> int | None:
+    """クライアント名 → ID。/clients が無いので既存プロジェクトの client から引く"""
+    hit = projects.loc[(projects['client_name'] == client_name) & projects['client_id'].notna(),
+                       'client_id']
+    return int(hit.iloc[0]) if not hit.empty else None
+
+
+def create_project(ws: Workspace, name: str, client_id: int) -> dict:
+    """POST /projects {name} → PATCH /projects/{id} {client_id}
+
+    POST に client_id を付けると 402 feature_not_available になる（実測）ので2段に分ける。
+    PATCH は 204 で本文が無い。
+    """
+    project = _post(ws.api_token, f'{ws.base_path}/projects', {'name': name}).json()
+    _request(ws.api_token, 'PATCH', f"{ws.base_path}/projects/{project['id']}",
+             json_body={'client_id': client_id})
+    return project
 
 
 def create_time_entry(ws: Workspace, payload: dict) -> dict:

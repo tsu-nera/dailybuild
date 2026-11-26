@@ -8,11 +8,12 @@
 
 Usage:
     python scripts/habitica.py cron     # cron を確定させ、実行を記録する
-    python scripts/habitica.py fetch    # Habit / Daily の history を CSV に落とす
+    python scripts/habitica.py fetch    # Habit / Daily の history を CSV に落とす（habits_daily.csv は書かない）
     python scripts/habitica.py show     # 期間ごとの回数・達成をまとめて出す（--unit week|month）
     python scripts/habitica.py status   # 現在の状態を表示（何も変更しない）
 
-詳細と落とし穴は docs/habitica.md を参照。
+習慣の記録元は Toggl Focus に移した（reports/habits_daily.csv の書き手は scripts/habits.py）。
+ここに残るのは history.csv の取得と cron。詳細と落とし穴は docs/habitica.md を参照。
 """
 
 import sys
@@ -49,9 +50,6 @@ HISTORY_COLUMNS = [
     'value', 'is_due', 'completed', 'scored_up', 'scored_down',
 ]
 HISTORY_KEY = ['date', 'task_id']
-
-HABITS_DAILY_CSV = BASE_DIR / 'reports' / 'habits_daily.csv'
-HABITS_DAILY_COLUMNS = ['date', 'habit', 'task_type', 'is_due', 'completed']
 
 # 習慣名そのものが非公開なので private 側に置く（dailybuild は public）
 HABITS_YAML = require_private_path(BASE_DIR / 'config' / 'private' / 'habits.yaml')
@@ -206,52 +204,9 @@ def fetch_history(client: HabiticaClient) -> tuple:
     return merge_history(load_history(), new), tasks, new
 
 
-def habits_daily(hist: pd.DataFrame, roster: dict, tasks: dict) -> pd.DataFrame:
-    """日次グレインの派生（`reports/habits_daily.csv` の中身）。
-
-    roster（`config/private/habits.yaml` の `habits`）に載っている名前だけを対象にし、
-    出力の `habit` 列には roster 側の名前（＝現在の Habitica 上の名前）を入れる。
-    history 側の `task_name` は使わない（リネームで割れるため）。
-
-    **`history` に行が無い日の行を作らない。** cron が走らなかった日は「不生起」
-    ではなく欠測なので、日付の穴埋め・reindex を一切しない。
-    """
-    by_name = {t.get('text', ''): t for t in tasks.get('habits', []) + tasks.get('dailys', [])}
-    id_to_name = {by_name[name]['id']: name for name in roster if name in by_name}
-    if hist.empty or not id_to_name:
-        return pd.DataFrame(columns=HABITS_DAILY_COLUMNS)
-
-    df = hist[hist['task_id'].isin(id_to_name)].copy()
-    if df.empty:
-        return pd.DataFrame(columns=HABITS_DAILY_COLUMNS)
-
-    # (date, task_id) で最後の ts を採って畳む（merge_history と同じ規則。
-    # cron 行 completed=False と完了行 completed=True が同日に並ぶことがある）
-    df = (df.sort_values(['date', 'task_id', 'ts'])
-            .drop_duplicates(['date', 'task_id'], keep='last'))
-
-    is_daily = df['task_type'] == 'daily'
-    is_due = pd.Series(None, index=df.index, dtype=object)
-    completed = pd.Series(None, index=df.index, dtype=object)
-    # habit の行は分母が原理的に無いので is_due/completed を空のままにする（0埋め禁止）
-    is_due[is_daily] = df.loc[is_daily, 'is_due'].astype(str) == 'True'
-    completed[is_daily] = df.loc[is_daily, 'completed'].astype(str) == 'True'
-
-    out = pd.DataFrame({
-        'date': df['date'],
-        'habit': df['task_id'].map(id_to_name),
-        'task_type': df['task_type'],
-        'is_due': is_due,
-        'completed': completed,
-    })
-    return (out.sort_values(['date', 'habit'])
-               .reset_index(drop=True))[HABITS_DAILY_COLUMNS]
-
-
 def cmd_fetch(_args) -> int:
     require_private_path(HISTORY_CSV)
     require_private_path(TASKS_JSON)
-    require_private_path(HABITS_DAILY_CSV)
     client = HabiticaClient.from_env()
 
     old = load_history()
@@ -262,11 +217,6 @@ def cmd_fetch(_args) -> int:
     # 全上書きのスナップショット。削除されたタスクの復元用（private の git が世代を持つ）
     TASKS_JSON.write_text(json.dumps(tasks, ensure_ascii=False, indent=1))
 
-    roster = load_config().get('habits') or {}
-    daily = habits_daily(merged, roster, tasks)
-    ensure_dir(HABITS_DAILY_CSV.parent)
-    daily.to_csv(HABITS_DAILY_CSV, index=False)
-
     added = len(merged) - len(old)
     live = set(new['task_id']) if not new.empty else set()
     gone = sorted(set(merged['task_id']) - live) if not merged.empty else []
@@ -274,7 +224,6 @@ def cmd_fetch(_args) -> int:
     print(f"Habit {len(tasks['habits'])}件 / Daily {len(tasks['dailys'])}件 を取得しました")
     print(f"history: {len(merged)}行（新規 {added}行）  {HISTORY_CSV}")
     print(f"tasks  : {TASKS_JSON}")
-    print(f"habits : {len(daily)}行  {HABITS_DAILY_CSV}")
     if gone:
         # Habitica 上には無いが CSV には残っている＝削除されたタスク。消さずに残す
         names = merged[merged['task_id'].isin(gone)].groupby('task_id')['task_name'].last()

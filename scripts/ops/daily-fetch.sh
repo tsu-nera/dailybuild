@@ -72,6 +72,8 @@ else
   FAILED+=("フォームのレジストリ")
 fi
 step "Toggl 2.0"     uv run python scripts/toggl.py fetch-focus --days "$DAYS"
+# 習慣の日次表（reports/habits_daily.csv）。fetch-focus が書くエントリとプロジェクト一覧を読むのでその後
+step "習慣"          uv run python scripts/habits.py build
 step "Toggl反映"      uv run python scripts/toggl.py push --days "$DAYS"
 step "Todoist"       uv run python scripts/todoist.py fetch --update
 # 一括更新のキックは完了を待たない。取り込まれた明細は翌日の実行で回収される

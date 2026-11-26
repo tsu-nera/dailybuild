@@ -156,7 +156,7 @@ ssh vaio 'bash -lc "~/repo/dailybuild/scripts/ops/weekly-routine.sh"'
 | `scripts/dawarich.py` / `scripts/gpslogger.py` / 位置の履歴（Dawarich）を扱うとき | [docs/dawarich.md](docs/dawarich.md) — 正本は data/ で DB は派生物。mouse で動き寝る。import 名で二重投入を判定。Visit は Timeline の重複と自前判定が重なる |
 | `scripts/xoss.py` / XOSS サイコンの FIT・ロードバイクのライドを扱うとき | [docs/xoss.md](docs/xoss.md) — BLE のみで一覧は `workouts.json`。サイズ不一致でも上流は保存する。心拍 0・標高 -500 は無効値。FIT が正本で rides.csv は消さない |
 | `scripts/habitica.py` / Habitica を扱うとき | [docs/habitica.md](docs/habitica.md) — 達成率の分母は history の長さではない |
-| 習慣の phase / 目標値 / 移行判断を扱うとき | [docs/habits.md](docs/habits.md) — 達成率の分母は `target_per_week` であって `is_due` ではない |
+| `scripts/habits.py` / 習慣（Toggl Focus の「良い習慣」「悪い習慣」）の対象・目標値を扱うとき | [docs/habits.md](docs/habits.md) — 移行済みプロジェクトの created_at は移行時刻なので行の起点は切替日で切る。観測していない日に行を作らない |
 | レポートの数値を解釈する / テンプレートを変更するとき | [docs/reports.md](docs/reports.md) — 指標の定義と母集団の違い |
 | 行動活性化（BATD-R）を再開・再設計するとき | [docs/batdr.md](docs/batdr.md) — 日次帳票の実装は2026-09-07に廃止済み。同じ形を作り直す前に廃案の節を読む |
 | 観察日記（`scripts/observation.py` / `reports/observation/`）を扱うとき | [docs/observation.md](docs/observation.md) — 材料が欠けた区切りは別の材料で埋めない。判定を変えたら `eval` で答え合わせとのズレを比べる |

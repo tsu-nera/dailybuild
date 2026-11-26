@@ -30,7 +30,14 @@ Usage:
     python scripts/toggl.py stop                      # 計測中のエントリを停止
     python scripts/toggl.py current                   # 計測中のエントリを表示
     python scripts/toggl.py projects                  # プロジェクト名の一覧（キャッシュ）
+    python scripts/toggl.py project add 新しい習慣      # プロジェクトを作りクライアント「良い習慣」に入れる
+    python scripts/toggl.py project add やめたい習慣 --bad  # 「悪い習慣」に入れる
     python scripts/toggl.py open                      # Toggl 2.0 の Web 画面を開く
+
+fetch-focus はアーカイブ済みを含むプロジェクト一覧も focus_projects.csv に全上書きする
+（習慣の対象は scripts/habits.py がここから読む）。project add のクライアント ID は
+focus_projects.csv の既存プロジェクトから名前で引く（クライアント一覧の API が無い）。
+アーカイブは API でできないので画面で行う。
 
 show は既定では API を一切叩かない。push の書き込みも 2.0 のレート制限
 （30 req/h と仮定）を消費する。
@@ -43,6 +50,8 @@ import sys
 import webbrowser
 from pathlib import Path
 from typing import IO
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
@@ -163,6 +172,8 @@ def run_fetch_focus(args, out: IO[str]) -> None:
     entries = toggl_focus.fetch_time_entries(api_token, organization_id, workspace_id, start, end)
     # push・start がタグ名から ID を引くための対応。0件の窓でも既存の対応は縮めない
     toggl_focus.save_tags(toggl_focus.collect_tags(entries))
+    # 習慣（habits.py）の対象を決める一覧。エントリが0件の窓でも書く
+    save_focus_projects(toggl_focus.Workspace(api_token, organization_id, workspace_id), out)
     df_new = toggl_focus.build_dataframe(entries, workspace_id=int(workspace_id))
 
     if df_new.empty:
@@ -175,6 +186,42 @@ def run_fetch_focus(args, out: IO[str]) -> None:
     print(f"取得件数: {len(df_new)}件", file=out)
     print(f"保存完了: {toggl_focus.CSV_FILE} (総行数 {len(df_merged)}行)", file=out)
     print(f"CSVの期間: {df_merged['start'].min()} ～ {df_merged['start'].max()}", file=out)
+
+
+def save_focus_projects(workspace: toggl_focus.Workspace, out: IO[str]) -> None:
+    """アーカイブ済みを含むプロジェクト一覧を focus_projects.csv に全上書きする"""
+    df = toggl_focus.build_projects_dataframe(toggl_focus.fetch_project_records(workspace))
+    path = toggl_focus.save_projects(df)
+    archived = int((df['archived_at'] != '').sum())
+    print(f"プロジェクト一覧: {len(df)}件（うちアーカイブ済み {archived}件） {path}", file=out)
+
+
+HABIT_CLIENTS_YAML = BASE_DIR / 'config' / 'habits.yaml'
+
+
+def run_project_add(args, workspace: toggl_focus.Workspace, out: IO[str]) -> int:
+    """プロジェクトを作り、クライアント「良い習慣」（--bad なら「悪い習慣」）に入れる"""
+    clients = (yaml.safe_load(HABIT_CLIENTS_YAML.read_text()) or {}).get('clients') or {}
+    client_name = clients.get('bad' if args.bad else 'good')
+    if not client_name:
+        print(f"⚠️ {HABIT_CLIENTS_YAML} の clients が読めない", file=out)
+        return 1
+    client_id = toggl_focus.client_id_by_name(toggl_focus.load_projects(), client_name)
+    if client_id is None:
+        print(f"⚠️ クライアント「{client_name}」の ID が {toggl_focus.PROJECTS_CSV_FILE} に無い。"
+              "画面でそのクライアントのプロジェクトを1つ作り、fetch-focus してから実行する", file=out)
+        return 1
+    if args.dry_run:
+        print(f"[dry-run] 作成しない: {args.name}（クライアント {client_name} / {client_id}）", file=out)
+        return 0
+    project = toggl_focus.create_project(workspace, args.name, client_id)
+    print(f"作成: {args.name}（id {project['id']}、クライアント {client_name}）", file=out)
+    save_focus_projects(workspace, out)
+    return 0
+
+
+def cmd_project_add(args) -> None:
+    sys.exit(run_project_add(args, load_workspace(sys.stderr), sys.stderr))
 
 
 def cmd_fetch_focus(args) -> None:
@@ -540,6 +587,16 @@ def build_parser() -> argparse.ArgumentParser:
     projects_parser.add_argument('--refresh', action='store_true',
                                  help='APIから取り直す')
     projects_parser.set_defaults(func=cmd_projects, parser=projects_parser)
+
+    project_parser = subparsers.add_parser('project', help='プロジェクトの操作（習慣の追加）')
+    project_sub = project_parser.add_subparsers(dest='project_command', required=True)
+    project_add_parser = project_sub.add_parser(
+        'add', help='プロジェクトを作りクライアント「良い習慣」（--bad なら「悪い習慣」）に入れる')
+    project_add_parser.add_argument('name', type=str, help='プロジェクト名（習慣名）')
+    project_add_parser.add_argument('--bad', action='store_true', help='「悪い習慣」に入れる')
+    project_add_parser.add_argument('--dry-run', action='store_true',
+                                    help='作成予定を表示するだけで書き込まない')
+    project_add_parser.set_defaults(func=cmd_project_add, parser=project_add_parser)
 
     open_parser = subparsers.add_parser('open', help='Toggl 2.0 の Web 画面をブラウザで開く')
     open_parser.add_argument('--print', dest='print_url', action='store_true',
