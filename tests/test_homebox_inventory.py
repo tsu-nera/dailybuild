@@ -5,10 +5,12 @@ import uuid
 
 import pytest
 
+from lib.inventory.buyback import BuybackError, fetch_buybacks, parse_buyback
 from lib.inventory.homebox import (InventoryError, add_item, dispose_item, export_rows, field_text,
-                                   find_rows, fit_name, mercari_sales, move_item, normalize_isbn,
+                                   find_rows, fit_name, load_items, mercari_sales, move_item, normalize_isbn,
                                    notes_with_link, plan_disposal, set_market_price, set_market_query,
                                    market_targets, write_csv)
+from lib.inventory.market import read_history
 
 NIL = '00000000-0000-0000-0000-000000000000'
 ITEM_TYPE = {'id': 't-item', 'name': 'Item', 'isLocation': False}
@@ -371,3 +373,111 @@ def test_bad_isbn_refuses_before_touching_homebox(isbn):
         normalize_isbn(isbn)
     with pytest.raises(InventoryError):
         add_item(Untouchable(), 'manual:1', '本', name='x', isbn=isbn)
+
+
+# ---- 買取価格（lib.inventory.buyback）。参照元はフェイクにする ----
+
+def _books(hb):
+    add_item(hb, 'manual:1', '本', name='電験三種 理論', isbn=ISBN)
+    add_item(hb, 'manual:2', '本', name='電験三種 電力', isbn='9784300108826')
+    add_item(hb, 'manual:3', '日用品', name='フライパン')
+
+
+def _fake(prices):
+    calls = []
+
+    def fetch(isbn):
+        calls.append(isbn)
+        v = prices[isbn]
+        if isinstance(v, Exception):
+            raise v
+        return v
+    return fetch, calls
+
+
+def test_buyback_new_item_is_fetched_and_written(tmp_path):
+    hb = FakeHomebox()
+    _books(hb)
+    path = tmp_path / 'buyback.csv'
+    fetch, calls = _fake({ISBN: 300, '9784300108826': 250})
+
+    assert fetch_buybacks(hb, path, '2026-11-26', 30, fetch=fetch) == 0
+
+    assert sorted(calls) == sorted([ISBN, '9784300108826'])  # ISBN の無い物は引かない
+    rows = {r['key']: r for r in read_history(path)}
+    assert rows['manual:1'] == {'date': '2026-11-26', 'key': 'manual:1', 'name': '電験三種 理論',
+                                'isbn': ISBN, 'price': '300', 'source': '駿河屋 買取'}
+    owned = load_items(hb)
+    assert field_text(owned['manual:1'], '買取価格') == '300'
+    assert '買取' not in owned['manual:1']['notes']  # メモには書かない
+
+
+def test_buyback_recent_item_is_not_fetched_again(tmp_path):
+    hb = FakeHomebox()
+    _books(hb)
+    path = tmp_path / 'buyback.csv'
+    fetch, calls = _fake({ISBN: 300, '9784300108826': 250})
+    fetch_buybacks(hb, path, '2026-11-01', 30, fetch=fetch)
+    calls.clear()
+
+    fetch_buybacks(hb, path, '2026-11-30', 30, fetch=fetch)
+    assert calls == []
+    fetch_buybacks(hb, path, '2026-12-01', 30, fetch=fetch)
+    assert sorted(calls) == sorted([ISBN, '9784300108826'])
+
+
+def test_buyback_failure_leaves_no_row_and_others_continue(tmp_path):
+    hb = FakeHomebox()
+    _books(hb)
+    path = tmp_path / 'buyback.csv'
+    fetch, _ = _fake({ISBN: RuntimeError('503'), '9784300108826': 250})
+
+    assert fetch_buybacks(hb, path, '2026-11-26', 30, fetch=fetch) == 1
+
+    assert [r['key'] for r in read_history(path)] == ['manual:2']
+    assert field_text(load_items(hb)['manual:1'], '買取価格') == ''
+
+
+def test_buyback_not_buyable_keeps_previous_price(tmp_path):
+    hb = FakeHomebox()
+    _books(hb)
+    path = tmp_path / 'buyback.csv'
+    fetch_buybacks(hb, path, '2026-10-01', 30, fetch=_fake({ISBN: 300, '9784300108826': 250})[0])
+
+    fetch_buybacks(hb, path, '2026-11-26', 30, fetch=_fake({ISBN: None, '9784300108826': 250})[0])
+
+    latest = [r for r in read_history(path) if r['date'] == '2026-11-26' and r['key'] == 'manual:1']
+    assert latest[0]['price'] == ''
+    assert field_text(load_items(hb)['manual:1'], '買取価格') == '300'
+
+
+def test_buyback_skips_disposed(tmp_path):
+    hb = FakeHomebox()
+    _books(hb)
+    dispose_item(hb, 'manual:1', '2026-11-20', how='売却')
+    fetch, calls = _fake({ISBN: 300, '9784300108826': 250})
+
+    fetch_buybacks(hb, tmp_path / 'buyback.csv', '2026-11-26', 30, fetch=fetch)
+
+    assert calls == ['9784300108826']
+
+
+def _page(rows_html):
+    return f'<html><table class="result">{rows_html}</table></html>'
+
+
+def _row(isbn, kakaku):
+    return (f'<tr class="listap"><td><input data-product="{{&quot;shinaban&quot;:&quot;BO1&quot;,'
+            f'&quot;kakaku&quot;:{kakaku}}}"></td><td>{isbn}<br>BO1</td></tr>')
+
+
+def test_parse_buyback_price_and_not_buyable():
+    assert parse_buyback(_page(_row(ISBN, 300)), ISBN) == 300
+    assert parse_buyback(_page(_row(ISBN, -1)), ISBN) is None  # メールにてお見積
+    assert parse_buyback(_page(_row('9784300108826', 500)), ISBN) is None  # 別の本しか出ない
+    assert parse_buyback('<p>検索結果は０件です。条件を変更して下さい。</p>', ISBN) is None
+
+
+def test_parse_buyback_changed_page_raises():
+    with pytest.raises(BuybackError):
+        parse_buyback('<html>メンテナンス中</html>', ISBN)

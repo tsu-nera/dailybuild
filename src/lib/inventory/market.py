@@ -122,15 +122,15 @@ def due(targets, rows: list[dict], today: Date, every_days: int) -> list[str]:
     return [k for k in targets if k not in checked or (today - checked[k]).days >= every_days]
 
 
-def append_history(path: Path, new: list[dict]) -> None:
+def append_history(path: Path, new: list[dict], columns: list[str] = HISTORY_COLUMNS) -> None:
     """同じ (date, key) は差し替え、他の行は残す。date, key 順で全体を書き直す"""
     replaced = {(r['date'], r['key']) for r in new}
     rows = [r for r in read_history(path) if (r['date'], r['key']) not in replaced] + new
     rows.sort(key=lambda r: (r['date'], r['key']))
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=HISTORY_COLUMNS, lineterminator='\n')
+    writer = csv.DictWriter(buf, fieldnames=columns, lineterminator='\n')
     writer.writeheader()
-    writer.writerows({c: r.get(c, '') for c in HISTORY_COLUMNS} for r in rows)
+    writer.writerows({c: r.get(c, '') for c in columns} for r in rows)
     tmp = path.with_suffix('.csv.tmp')
     tmp.write_text(buf.getvalue())
     tmp.replace(path)

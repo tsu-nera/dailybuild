@@ -24,6 +24,7 @@ KEY_FIELD = 'key'
 MARKET_FIELD = '中古相場'
 QUERY_FIELD = '相場検索'
 ISBN_FIELD = 'ISBN'
+BUYBACK_FIELD = '買取価格'
 DISPOSAL_KINDS = ('売却', '破棄')
 NAME_MAX_BYTES = 255  # ent schema の MaxLen(255)。len は UTF-8 のバイト数で数える
 NIL_ID = '00000000-0000-0000-0000-000000000000'
@@ -287,6 +288,20 @@ def market_targets(client) -> dict[str, tuple[dict, str]]:
     """key → (entity, 検索条件)。手放した物は除く"""
     return {k: (e, q) for k, e in load_items(client).items()
             if not e.get('archived') and (q := field_text(e, QUERY_FIELD))}
+
+
+def buyback_targets(client) -> dict[str, tuple[dict, str]]:
+    """key → (entity, ISBN)。手放した物は除く"""
+    return {k: (e, i) for k, e in load_items(client).items()
+            if not e.get('archived') and (i := field_text(e, ISBN_FIELD))}
+
+
+def set_buyback_price(client, key: str, price: int) -> dict:
+    """買取価格の最新値を custom field `買取価格` に入れる（上書き）。履歴は buyback.csv だけに持ち、メモには書かない"""
+    entity = _owned(client, key)
+    body = _update_body(entity)
+    _set_field(body, BUYBACK_FIELD, f'{price:d}')
+    return client.update_entity(entity['id'], body)
 
 
 def mercari_sales(purchases_dir: Path) -> dict[str, dict]:
