@@ -81,6 +81,22 @@ def _load_all(page) -> dict[str, str]:
     return found
 
 
+def _fit_viewport(page, view: dict) -> None:
+    """画面の高さを中身に合わせてから描き終わりを待つ。
+
+    full_page で撮ると撮る瞬間に画面を引き伸ばし、Grafana がそれに反応して描き直している途中の
+    空の画面が写る（スマホ幅は毎回、PC 幅は中身が画面より長いときに真っ白になった）。
+    """
+    bottom = page.evaluate(
+        "() => Math.ceil(Math.max(...[...document.querySelectorAll('body *')]"
+        ".map(e => e.getBoundingClientRect().bottom)))")
+    page.set_viewport_size({'width': view['width'], 'height': max(view['height'], bottom + 16)})
+    page.wait_for_function(
+        "() => !document.querySelector('[aria-label=\"Panel loading bar\"], [data-testid=\"data-testid panel content loading\"]')",
+        timeout=LOAD_TIMEOUT_MS)
+    page.wait_for_timeout(SETTLE_MS)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('uids', nargs='+')
@@ -105,6 +121,7 @@ def main(argv=None) -> int:
                     if r.status >= 400 and not any(s in r.url for s in IGNORED) else None)
             for uid in args.uids:
                 errors.clear()
+                page.set_viewport_size(VIEWS[view])  # 前の画面で広げた高さを戻す
                 page.goto(f'{args.base}/d/{uid}', wait_until='networkidle')
                 panels: dict[str, str] = {}
                 try:
@@ -112,7 +129,8 @@ def main(argv=None) -> int:
                 except Exception as e:  # 読み込みが終わらなくても、撮れた範囲は残す
                     errors.append(f'読み込み待ちが打ち切られた: {type(e).__name__}')
                 path = out / f'{uid}-{view}.png'
-                page.screenshot(path=str(path), full_page=True)
+                _fit_viewport(page, VIEWS[view])
+                page.screenshot(path=str(path))
                 # 画面幅で中身は変わらないので、テキストは最初の幅でだけ出す
                 print(f'== {uid} ({view}) {path}')
                 if view == args.views.split(',')[0]:
