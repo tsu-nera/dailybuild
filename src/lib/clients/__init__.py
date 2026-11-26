@@ -5,5 +5,4 @@ APIクライアントモジュール
 """
 
 from . import gsheets_client
-from . import healthplanet_official
 from . import healthplanet_unofficial
